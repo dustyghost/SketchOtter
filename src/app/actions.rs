@@ -463,6 +463,13 @@ impl App {
             Action::New => Some(Command::Request(PendingAction::New)),
             Action::Undo => Some(Command::Undo),
             Action::Redo => Some(Command::Redo),
+            Action::SavedCameras => {
+                self.ui.cameras.open = !self.ui.cameras.open;
+                self.viewport.finish_transform_drag(&mut self.document);
+                self.viewport.wait_for_release();
+                None
+            }
+            Action::ResetRoll => Some(Command::Camera(crate::command::CameraCommand::Roll(0.))),
             Action::ResetView => Some(Command::ResetView),
             Action::Perspective => Some(Command::SetPerspective(!self.camera.perspective)),
             Action::ZoomIn => Some(Command::ZoomIn),

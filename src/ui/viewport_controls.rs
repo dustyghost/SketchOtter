@@ -216,7 +216,7 @@ impl UiState {
                 Kind::Zoom => "Drag up to zoom in; down to zoom out",
                 Kind::Orbit => "Drag to rotate the camera",
                 Kind::Roll => {
-                    "Drag right to rotate clockwise in screen space; left for counterclockwise"
+                    "Drag right to rotate clockwise; left for counterclockwise. Double-click to reset roll"
                 }
                 Kind::Action(_) => "Right-click to change style, move or remove",
             }
@@ -229,6 +229,9 @@ impl UiState {
         super::search::highlight_response(&response, &format!("navigation:{:?}", control.kind));
         if let Some(action) = action {
             super::search::highlight_response(&response, &format!("action:{action:?}"));
+        }
+        if !arranging && control.kind == Kind::Roll && response.double_clicked() {
+            commands.push(Command::Action(Action::ResetRoll));
         }
         if !arranging && let Some(action) = action {
             if super::brush_controls::is_control(action) {
@@ -341,6 +344,9 @@ impl UiState {
                             && ui.button("Done placing controls").clicked()
                         {
                             self.viewport_controls.arranging = false;
+                        }
+                        if ui.button("Cameras…").clicked() {
+                            output.commands.push(Command::Action(Action::SavedCameras));
                         }
                         if ui.button("Viewport controls…").clicked() {
                             self.viewport_controls.editor_open = true;
@@ -645,7 +651,7 @@ fn control_glyph(control: &ViewportControl) -> Glyph {
         Kind::Orbit => Glyph::Orbit,
         Kind::Roll => Glyph::Roll,
         Kind::Action(action) => match action {
-            Action::ResetView | Action::ResetZoom => Glyph::Restore,
+            Action::ResetView | Action::ResetZoom | Action::ResetRoll => Glyph::Restore,
             Action::PolygroupColors | Action::GroupAll | Action::GroupMasked => Glyph::Groups,
             Action::Wireframe | Action::WireTriangles => Glyph::Wire,
             Action::Undo => Glyph::Undo,

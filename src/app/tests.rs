@@ -4,6 +4,7 @@ use eframe::egui::{Pos2, Vec2};
 mod about;
 mod appearance;
 mod attached_arrays;
+mod cameras;
 mod deformation_stack;
 mod discoverability;
 mod grouped_path;

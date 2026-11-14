@@ -8,7 +8,7 @@ use crate::{
     },
 };
 
-fn setup() -> (App, egui::Context, u64) {
+pub(super) fn setup() -> (App, egui::Context, u64) {
     let mut app = App::default();
     // Controller fixtures intentionally exercise explicit model-unit overrides.
     app.paths.use_brush_size = false;
@@ -42,7 +42,7 @@ fn setup() -> (App, egui::Context, u64) {
     (app, ctx, id)
 }
 
-fn finish_preview(app: &mut App) {
+pub(super) fn finish_preview(app: &mut App) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     while app.paths.busy() {
         app.poll_paths();

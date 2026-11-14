@@ -153,6 +153,14 @@ impl App {
             self.execute_action(action, ctx);
             return;
         }
+        if let Command::Camera(command) = command {
+            let result = self.dispatch_camera(command);
+            self.ui.cameras.notice = result.err().unwrap_or_default();
+            if !self.ui.cameras.notice.is_empty() {
+                self.ui.status = self.ui.cameras.notice.clone();
+            }
+            return;
+        }
         if let Command::Path(command) = command {
             if let Err(error) = self.dispatch_path(command) {
                 self.ui.status = error;
@@ -253,6 +261,7 @@ impl App {
                 | Command::UvSeams(_)
         );
         let result: Result<(), String> = match command {
+            Command::Camera(_) => unreachable!("camera commands handled above"),
             Command::Texture(command) => self.texture_command(command),
             Command::UvUnwrap(automatic, padding) => {
                 self.start_mesh_job(Operation::UvUnwrap(automatic, padding))

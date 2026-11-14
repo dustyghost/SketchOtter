@@ -27,7 +27,7 @@ The main paths through the app are:
 | Subdivision or remesh jobs | `mesh_job.rs` | Compute privately; commit through the controller. |
 | Surface relaxation | `sculpt/relaxation.rs`, `app/projection.rs`, `document/projection.rs` | Fixed local reference fans, protected features, bounded cancellable work, shared preview/apply lifecycle. |
 | Detail projection | `sculpt/projection.rs`, `document/projection.rs`, `app/projection.rs` | Preserve reference submodels; preview privately and commit once. |
-| Navigation or projection | `camera.rs`, `viewport/projection.rs` | Camera state is session-only. |
+| Navigation or projection | `camera.rs`, `viewport/projection.rs`, `saved_camera.rs` | Live navigation is session-only; explicit bookmarks are project metadata. |
 | Gestures, picking, or drawing | `viewport/` | Picking and rendering share one immutable mesh snapshot per frame. |
 | Controls and menus | `ui/` | File and mesh operations belong outside widgets. |
 | Shortcuts, layouts, or workspaces | `preferences.rs` | Preferences are separate from the project. |
@@ -41,7 +41,7 @@ Desktop startup lives in `main.rs`. See [integration details](architecture/integ
 - **Validate before changing the document.** Invalid geometry, failed loads, cancelled workers, and stale drafts leave the existing document intact.
 - **Preview privately.** Drafts and modifier previews do not mutate persistent geometry. Commit through a document method.
 - **Keep indices in sync.** Display, picking, and surface guides use the same frame snapshot, including during adaptive topology changes.
-- **Keep navigation separate.** Camera changes and temporary handles do not dirty the document or create history.
+- **Keep navigation separate.** Camera changes and temporary handles do not dirty the document or create history. Explicit saved-camera edits dirty only project metadata and preserve geometry history, including redo.
 - **Respect protected geometry.** Hidden faces and their boundary vertices remain protected during edits; each algorithm's reference describes its additional checks.
 
 ## Extending the app
@@ -60,7 +60,7 @@ Introduce a trait when a second implementation needs one. Current concrete modul
 
 ## Compatibility and storage
 
-New `.clay` projects use version 5 for attached arrays; versions 1–4 remain readable, including version 3 UVs and texture images and version 4 standalone instance recipes. The `.brush.json` format remains version 1. Optional fields omit defaults, keeping older single-model files valid. Camera and undo state are never saved in a project; preferences use an independent versioned JSON file.
+New `.clay` projects use version 6; versions 1–5 remain readable, including version 3 UVs and texture images, version 4 standalone instance recipes and version 5 attached arrays. The `.brush.json` format remains version 1. Optional fields omit defaults, keeping older single-model files valid. The live camera and undo history are not saved in a project. Explicit named views are stored in the optional `saved_cameras` field; projects without it default to an empty library. Preferences use an independent versioned JSON file.
 
 `sculpt/instances.rs` owns bounded placement recipes and baking. `SceneSettings.instances` stores stable source references and per-slot overrides; captured meshes use `Arc<Mesh>`. `document/instances.rs` owns private previews and transactional commits. Rendering expands positions in a shared display snapshot and reuses source shading. `viewport/objects.rs` handles placement gestures; `app/instances.rs` routes commands and cancellable baking. Referenced source/path deletion is blocked until consumers are baked or removed. Previews never enter save/recovery snapshots. Source and expanded-display limits are separate.
 
@@ -157,3 +157,9 @@ The viewport retains its renderer, path editor, model selection, and reference o
 Mesh, projection, and path workers use `BackgroundJob<T>` for cancellation, panic reporting, and completion. Mesh cancellation keeps the worker tracked until it finishes, preventing overlapping cancel/retry jobs. Mesh workers return `ValidatedGeometry`; document commits consume that result without rebuilding subdivision levels on the UI thread. Synchronous document operations still validate before committing.
 
 History caches settings allocation estimates per entry and counts shared alpha/icon buffers once across undo and redo. Estimates exclude allocator overhead and the live document; diagnostic serialization retains separate export size limits.
+
+### Saved cameras
+
+`camera.rs` converts the live view to/from the UI-independent `saved_camera::View`. It stores angles, projection, field of view, perspective radius, zoom and pan normalised by the viewport's shorter dimension. Orbit uses the fixed model-space origin, so no separate movable pivot is introduced. Restoration validates the complete view before replacing live camera state; it uses the shared gesture teardown and waits for release.
+
+`document/cameras.rs` validates a bounded library of named bookmarks before changing project metadata. It does not clone geometry, invalidate display caches or record sculpt history. Project save/load, recovery, new-project reset and current-stage diagnostics carry the library; geometry Undo/Redo leaves it intact. `ui/cameras.rs` emits commands through the common availability policy. The launcher remains in the viewport in Zen mode, and the window owns pointer input only within its bounds.

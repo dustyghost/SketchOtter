@@ -23,7 +23,17 @@ pub(crate) enum AssetKind {
     Brush,
     BrushLibrary,
 }
+pub(crate) enum CameraCommand {
+    Save(String),
+    Update(usize),
+    Recall(usize),
+    Rename(usize, String),
+    Delete(usize),
+    Roll(f32),
+}
+
 pub(crate) enum Command {
+    Camera(CameraCommand),
     Instances(InstanceCommand),
     Texture(crate::app::textures::TextureCommand),
     UvUnwrap(bool, f32),

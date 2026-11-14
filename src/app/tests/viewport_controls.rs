@@ -4,7 +4,11 @@ use crate::preferences::{
     ViewportControlStyle as Style,
 };
 
-fn frame(app: &mut App, ctx: &egui::Context, events: Vec<egui::Event>) -> egui::FullOutput {
+pub(super) fn frame(
+    app: &mut App,
+    ctx: &egui::Context,
+    events: Vec<egui::Event>,
+) -> egui::FullOutput {
     ctx.run(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -21,7 +25,7 @@ fn frame(app: &mut App, ctx: &egui::Context, events: Vec<egui::Event>) -> egui::
     )
 }
 
-fn center(output: &egui::FullOutput, label: &str) -> Pos2 {
+pub(super) fn center(output: &egui::FullOutput, label: &str) -> Pos2 {
     output
         .shapes
         .iter()
@@ -34,12 +38,12 @@ fn center(output: &egui::FullOutput, label: &str) -> Pos2 {
         .unwrap_or_else(|| panic!("Missing {label}"))
 }
 
-fn control_rect(ctx: &egui::Context, index: usize) -> egui::Rect {
+pub(super) fn control_rect(ctx: &egui::Context, index: usize) -> egui::Rect {
     ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new(("viewport_control_response", index))))
         .unwrap()
 }
 
-fn click(app: &mut App, ctx: &egui::Context, position: Pos2) {
+pub(super) fn click(app: &mut App, ctx: &egui::Context, position: Pos2) {
     frame(
         app,
         ctx,
@@ -51,7 +55,7 @@ fn click(app: &mut App, ctx: &egui::Context, position: Pos2) {
     frame(app, ctx, vec![primary_event(position, false)]);
 }
 
-fn settle(app: &mut App, ctx: &egui::Context) -> egui::FullOutput {
+pub(super) fn settle(app: &mut App, ctx: &egui::Context) -> egui::FullOutput {
     for _ in 0..3 {
         frame(app, ctx, vec![]);
     }

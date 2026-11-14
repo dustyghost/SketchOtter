@@ -276,6 +276,7 @@ fn project_roundtrip() {
         alphas: Vec::new(),
         stencil: None,
         references: Vec::new(),
+        saved_cameras: Vec::new(),
         scene: Default::default(),
         model_name: "Model".into(),
         submodels: Vec::new(),

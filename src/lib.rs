@@ -14,6 +14,7 @@ pub mod persistence;
 mod preferences;
 mod recovery;
 pub mod reference;
+pub mod saved_camera;
 pub mod sculpt;
 mod tablet;
 mod touch;

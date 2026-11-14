@@ -1,7 +1,7 @@
-//! Session-only camera state. Camera changes never modify the sculpt document.
+//! Live camera state. Explicit bookmarks are stored separately in the project.
 use crate::sculpt::Vec3;
 use eframe::egui::Vec2;
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Camera {
     pub yaw: f32,
     pub pitch: f32,
@@ -28,6 +28,48 @@ impl Default for Camera {
     }
 }
 impl Camera {
+    pub fn saved_view(&self, viewport_size: Vec2) -> Result<crate::saved_camera::View, String> {
+        let scale = viewport_size.min_elem();
+        if !viewport_size.is_finite() || scale <= 0. {
+            return Err("The viewport has no usable size".into());
+        }
+        let view = crate::saved_camera::View {
+            yaw: self.yaw,
+            pitch: self.pitch,
+            roll: self.roll,
+            zoom: self.zoom,
+            pan: [self.pan.x / scale, self.pan.y / scale],
+            perspective: self.perspective,
+            field_of_view: self.field_of_view,
+            perspective_radius: self.perspective_radius,
+        };
+        view.validate()?;
+        Ok(view)
+    }
+    pub fn from_saved_view(
+        view: crate::saved_camera::View,
+        viewport_size: Vec2,
+    ) -> Result<Self, String> {
+        view.validate()?;
+        let scale = viewport_size.min_elem();
+        if !viewport_size.is_finite() || scale <= 0. {
+            return Err("The viewport has no usable size".into());
+        }
+        let camera = Self {
+            yaw: view.yaw,
+            pitch: view.pitch,
+            roll: view.roll,
+            zoom: view.zoom,
+            pan: Vec2::from(view.pan) * scale,
+            perspective: view.perspective,
+            field_of_view: view.field_of_view,
+            perspective_radius: view.perspective_radius,
+        };
+        if !camera.pan.is_finite() || !camera.eye_distance().is_finite() {
+            return Err("Saved camera exceeds the supported view range".into());
+        }
+        Ok(camera)
+    }
     // Imported meshes retain their original units and can need much less than
     // 20% zoom. Use the same limit for fitting, wheel input and UI controls.
     pub const MIN_ZOOM: f32 = 1e-6;

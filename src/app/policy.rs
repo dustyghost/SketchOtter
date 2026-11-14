@@ -150,9 +150,12 @@ impl<'a> EditorPolicy<'a> {
             | Action::CreatePathAssembly
             | Action::CaptureObjectBrush => Intent::Instances,
             Action::CancelMeshOperation => Intent::CancelJob,
-            Action::ResetView | Action::ZoomIn | Action::ZoomOut | Action::Perspective => {
-                Intent::Navigate
-            }
+            Action::SavedCameras
+            | Action::ResetRoll
+            | Action::ResetView
+            | Action::ZoomIn
+            | Action::ZoomOut
+            | Action::Perspective => Intent::Navigate,
             Action::Undo | Action::Redo => Intent::History,
             Action::SelectBrush(_)
             | Action::SelectObjectBrush(_)
@@ -779,7 +782,8 @@ impl<'a> EditorPolicy<'a> {
             Command::Path(_) => Intent::Path,
             Command::OpenRetopology if self.ui.path_brush_active => Intent::Path,
             Command::Instances(_) => Intent::Instances,
-            Command::ResetView
+            Command::Camera(_)
+            | Command::ResetView
             | Command::ZoomIn
             | Command::ZoomOut
             | Command::SetZoom(_)
