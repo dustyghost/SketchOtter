@@ -1,19 +1,20 @@
 use super::*;
 fn guide() -> Mesh {
-    let mut m = Mesh::default();
-    m.vertices = vec![
-        Vec3(-2., -1., 0.),
-        Vec3(2., -1., 0.),
-        Vec3(2., 1., 0.),
-        Vec3(-2., 1., 0.),
-        Vec3(4., 0., 0.),
-        Vec3(5., 0., 0.),
-        Vec3(4., 1., 0.),
-    ];
-    m.triangles = vec![[0, 1, 2], [0, 2, 3], [4, 5, 6]];
-    m.quads = vec![[0, 1, 2, 3]];
-    m.mask = vec![0.; 7];
-    m
+    Mesh {
+        vertices: vec![
+            Vec3(-2., -1., 0.),
+            Vec3(2., -1., 0.),
+            Vec3(2., 1., 0.),
+            Vec3(-2., 1., 0.),
+            Vec3(4., 0., 0.),
+            Vec3(5., 0., 0.),
+            Vec3(4., 1., 0.),
+        ],
+        triangles: vec![[0, 1, 2], [0, 2, 3], [4, 5, 6]],
+        quads: vec![[0, 1, 2, 3]],
+        mask: vec![0.; 7],
+        ..Default::default()
+    }
 }
 fn part() -> Mesh {
     let mut p = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Cube);

@@ -326,6 +326,9 @@ impl App {
                 };
                 self.ui.instances.editor = Some(set.clone());
                 self.ui.instances.invalid = false;
+                // Bring new standalone recipes into view, just like attached
+                // arrays and the Edit command, as the editor grows below them.
+                self.ui.instances.focus_array = true;
                 // Reveal the authoring controls even when the first draft still
                 // needs group assignments. Opening UI does not edit the scene.
                 if matches!(command, C::NewPath | C::NewPathParts)
