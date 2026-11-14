@@ -116,6 +116,47 @@ impl App {
             return Err("Finish the current object stroke before changing brushes".into());
         }
         match command {
+            C::NewSurfaceArray | C::SurfaceSelection(_) => {
+                self.viewport.modeling.sync(&self.document);
+                let faces = self.viewport.modeling.selected_faces();
+                let set = if let C::SurfaceSelection(id) = command {
+                    self.document.preview_surface_region(id, faces)?
+                } else {
+                    self.document
+                        .preview_surface_array(self.ui.instances.asset, faces)?
+                };
+                self.viewport.cancel(&mut self.document);
+                self.viewport.object_brush = None;
+                self.ui.instances.placing = false;
+                self.ui.modeling.active = false;
+                self.ui.selection_tool = None;
+                self.ui.slice_active = false;
+                self.ui.edges.selecting = false;
+                self.ui.transform_mode = crate::viewport::TransformMode::Sculpt;
+                self.document.selected_instance = None;
+                self.ui.instances.editor = Some(set);
+                self.ui.instances.invalid = false;
+                self.ui.instances.focus_array = true;
+                self.ui.status =
+                    "Surface array preview · choose a captured part, then Apply instances".into();
+            }
+            C::SurfaceGuide(id, editing) => {
+                if self.ui.instances.invalid {
+                    return Err("Correct or cancel the invalid preview first".into());
+                }
+                self.viewport.cancel(&mut self.document);
+                self.document.set_surface_guide_mode(id, editing)?;
+                self.ui.instances.editor = None;
+                self.ui.instances.placing = false;
+                self.viewport.object_brush = None;
+                self.ui.selection_tool = None;
+                self.ui.slice_active = false;
+                self.ui.edges.selecting = false;
+                self.ui.modeling.active = editing;
+                self.ui.modeling.mode = crate::viewport::ComponentMode::Face;
+                self.ui.transform_mode = crate::viewport::TransformMode::Sculpt;
+                self.ui.status = if editing { "Edit guide · copies are temporarily hidden · select faces and use the new region, or Show result" } else { "Surface array result" }.into();
+            }
             C::NewArray => {
                 self.viewport.cancel(&mut self.document);
                 self.viewport.object_brush = None;
@@ -164,6 +205,11 @@ impl App {
             }
             C::FrameArray => self.viewport.frame_array = true,
             C::MakeArrayEditable(id) => {
+                if let Some(owner) = self.document.surface_owner(id)
+                    && owner != self.document.active_model_index()
+                {
+                    self.document.select_submodel(owner)?;
+                }
                 self.ui.instances.focus_array = true;
                 if self.document.instance_preview_active() {
                     self.document.apply_instance_preview()?;
@@ -301,7 +347,10 @@ impl App {
             }
             C::Edit(id) | C::EditCopy(id, _) => {
                 self.ui.instances.focus_array = true;
-                if let Some(owner) = self.document.array_owner(id)
+                if let Some(owner) = self
+                    .document
+                    .array_owner(id)
+                    .or_else(|| self.document.surface_owner(id))
                     && owner != self.document.active_model_index()
                 {
                     self.document.select_submodel(owner)?;

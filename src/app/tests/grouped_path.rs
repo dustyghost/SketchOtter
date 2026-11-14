@@ -113,7 +113,7 @@ fn grouped_path_object_preview_history_source_edits_save_and_bake() {
     assert_eq!(app.document.history_counts().0, history + 1);
     assert_eq!(app.document.mesh(), &source);
     let applied = app.document.project();
-    assert_eq!(applied.version, 6);
+    assert_eq!(applied.version, crate::sculpt::Project::VERSION);
     app.dispatch(Command::Undo, &ctx);
     assert!(app.document.instances().sets.is_empty());
     app.dispatch(Command::Redo, &ctx);

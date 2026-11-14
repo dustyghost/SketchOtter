@@ -529,7 +529,16 @@ impl DisplayMesh {
             if !model.metadata.visible || (boolean_result.is_some() && operand(model.metadata)) {
                 continue;
             }
-            let original = if index == active {
+            let guide = (index < document.model_count())
+                .then(|| {
+                    instances
+                        .source_meshes
+                        .get(&document.instance_model_id(index))
+                })
+                .flatten();
+            let original = if let Some(guide) = guide {
+                guide.as_ref()
+            } else if index == active {
                 active_mesh.unwrap_or_else(|| model.display_mesh(true))
             } else {
                 model.display_mesh(false)

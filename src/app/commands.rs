@@ -180,6 +180,8 @@ impl App {
             let preview_command = matches!(
                 &command,
                 C::NewArray
+                    | C::NewSurfaceArray
+                    | C::SurfaceSelection(_)
                     | C::NewLegacyArray
                     | C::NewLinkedCopy
                     | C::RepeatArray(_)
@@ -189,7 +191,14 @@ impl App {
                     | C::EditCopy(..)
                     | C::Preview(_)
             );
-            let show_array = matches!(&command, C::NewArray | C::ArrayMode(_));
+            let show_array = matches!(
+                &command,
+                C::NewArray
+                    | C::ArrayMode(_)
+                    | C::NewSurfaceArray
+                    | C::SurfaceSelection(_)
+                    | C::SurfaceGuide(..)
+            );
             if let Err(error) = self.dispatch_instances(command) {
                 if preview_command {
                     self.ui.instances.invalid = true;

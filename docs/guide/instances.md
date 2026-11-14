@@ -25,7 +25,8 @@ Each layer has two kinds of transform:
 | **Origin / radial centre** or **Layer origin offset** | Places the first layer in the scene, or moves a later layer relative to the preceding layer's origin. |
 | **Whole layer transform** | Sets X/Y/Z rotation in degrees and X/Y/Z size for the entire pattern around its origin, including the distance between copies. Works on a single linked copy too. |
 | **Step between copies** | Adds the given X/Y/Z distance for each linear repeat. Grid uses X/Y column and row spacing; Radial uses its axis, radius and arc. Both offer an **Additional position step** under **Per-repeat transforms**, for example to raise a ring into a helix. |
-| **Per-repeat transforms** | Adds X/Y/Z rotation and multiplies X/Y/Z size for each successive repeat. A Z rotation of 10° and an X size factor of 0.9 give angles of 0°, 10°, 20° and widths of 1, 0.9, 0.81 times the original. The first repeat keeps the input's orientation and size. |
+| **Rotation per copy** | Adds the signed X/Y/Z angles for each successive repeat: 0°, θ, 2θ… Zero keeps the input orientation. |
+| **Per-repeat transforms** | Multiplies X/Y/Z size for each repeat. A size factor of 0.9 gives sizes of 1, 0.9, 0.81 times the original. |
 
 **Repeat this array…** uses a saved array as the live source for a separate array. Leave **Copies** at one to place one linked rack; increase it to repeat the whole rack. You can use the same source array in several patterns. Choose **Edit source array…** beside a linked array to change the pattern they share. Editing its layers, source mesh, or individual copy adjustments updates each use. Each linked array keeps its own placement relative to the source pattern’s origin. Turning off **Show instances** on the source hides that occurrence in the scene; arrays using it still appear. Hiding an individual source copy, in contrast, hides that part in every use. Bake or remove dependent arrays before removing or baking their source.
 
@@ -34,6 +35,44 @@ For standalone sets, inspect the preview and choose **Apply instances**, or **Ca
 To move one copy, click it in the viewport or select its numbered row under **Copies**. Gold brackets and a label identify the copy, for example **Array #2 · Copy 3**. Choose **Edit selected copy…** and drag a **Move**, **Rotate** or **Scale** value. Drag a coloured axis handle to move along X, Y or Z, or drag the centre diamond to move in the view plane. The frame follows the copy as you preview its placement. Drag elsewhere to orbit the view. Scroll to zoom and use the usual navigation modifiers to pan or zoom. **Show this copy** controls visibility. Choose **Apply placement** to keep the change, or **Cancel preview** to restore the previous placement. The other slots in this set keep their placements. If another array repeats this set, its matching copies inherit the adjustment. The copy’s shape stays linked to its source. These adjustments belong to numbered slots. Reducing and restoring an array’s count restores the adjustments for those slots. To sculpt the copy itself, choose **Make independent** in its row. Undo restores the link. To hide an entire set, turn off **Show instances** in the whole-set editor.
 
 Source visibility is separate from copy visibility. Bake or remove linked sets before deleting or merging their source. Instances use the source's current mesh, masks, face visibility, attributes, creases and valid UVs/textures. Apply a source's Thickness modifier first if required; inactive subdivision levels are not instanced.
+
+## Rotate each successive copy
+
+1. Make an array from a thin fin or stair tread. Choose **Linear**, set **Count** to 9 and space the copies along Z.
+2. In **Rotation per copy**, drag or type **Z 20°**. The copies turn through 0°, 20°, 40° and onward. Try **−20°** to reverse the twist, or **0°** for a straight stack.
+3. Use X or Y instead to twist around those axes. Each field accepts signed degrees; existing recipes with several nonzero axes keep all their values.
+4. Change Count or spacing to adjust the same live pattern. **Whole layer transform** rotates the complete arrangement. For a standalone array, **Apply instances** keeps the edit and **Cancel preview** discards it; attached-array numeric edits commit when you finish editing the value. Undo restores the previous recipe.
+
+![A stack of fins with the Rotation per copy controls visible](../images/progressive-rotation.png)
+
+*The angle changes at each placement while the spacing stays vertical.*
+
+Angles use the layer's X/Y/Z axes before **Whole layer transform**. Each copy rotates around its placement origin; a later layer rotates the preceding pattern around that pattern's origin. Radial orientation composes with the per-copy angle. If several axes are nonzero, rotations apply in X, Y, Z order. **Make editable…** preserves the displayed orientations.
+
+## Cover selected faces with a captured part
+
+1. Capture a part in **Object brush settings**. Set its **Up**, **Forward** and **Contact point**, just as for an object brush.
+2. Select the guide submodel. Open **Mesh → Modeling**, choose face selection and select the region to cover.
+3. Choose **Surface array from selected faces…**. In **Submodels → Instances**, choose a thumbnail from the existing Object brush library. Each selected polygon gets one copy, including one copy for a quad.
+4. Adjust **Scale**, **Face rotation** and **Normal offset**. The contact point sits at the face center; Up follows its normal and Forward follows its first boundary edge.
+5. Choose **Keep faces** to retain the guide beneath the parts, or **Replace faces** to hide only the assigned faces. **Uniform** fit scales the part to the face's projected bounds; **Stretch in plane** fits width and length independently while preserving depth. Fitting does not clip the part to the polygon border.
+6. Choose **Apply instances**, or **Cancel preview** to restore the previous result.
+
+![Captured panels placed over four selected guide quads](../images/surface-keep.png)
+
+*Keep faces leaves the guide beneath the panels. Unselected guide faces stay visible.*
+
+![The same panels with Replace faces selected](../images/surface-replace.png)
+
+*Replace faces hides only the four assigned quads, leaving gaps around the smaller panels.*
+
+To reshape the guide, choose **Edit guide / select new region**. Copies are temporarily hidden so you can pick and edit the original faces. Moving vertices updates the placements when you choose **Show result**. To change the region, select faces and choose **Use selected faces for surface array**, then Apply. A new region clears individual copy overrides because the slot assignments have changed.
+
+Subdivision, remeshing or other connectivity changes suspend the assignment and show the original guide with a notice. Use **Edit guide / select new region** to assign faces again. Saving preserves a suspended assignment; reopening does not silently move it to different faces.
+
+Turn off **Show instances** or **Remove set** to restore the original guide. One surface array can own a submodel; remove it before deleting or merging that guide. Hiding the guide hides its copies. Duplicating the guide makes an ordinary mesh copy.
+
+**Make editable…** defaults to replacing the guide with the remaining guide faces and the visible parts. Keep/Replace is honored, and one Undo restores the live array. The new-submodel options retain the original guide and put the evaluated guide body plus parts in the new output. **Fuse overlapping surfaces** is optional and requires closed, fully visible input surfaces; open replacement regions usually need fusion left off.
 
 ## Build a path object from one model
 
@@ -111,8 +150,8 @@ The two single-submodel destinations offer **Fuse overlapping surfaces**. Leave 
 
 Baking removes each baked set and its link to the source. Hidden or detached copies in that set are skipped. **Bake all…** leaves entirely hidden sets in the project. If another array still uses a source array you want to bake, include the dependent array in **Bake all…** or bake it first. One **Undo** restores the geometry and instance sets for the entire operation.
 
-Mesh exporters export the active submodel: make the array editable first, then select the result to export. Native `.clay` version 6 preserves attached arrays, recipes, links and captured assets. Versions 1–5 remain readable; earlier app versions cannot read version 6 saves.
+Mesh exporters export the active submodel: make the array editable first, then select the result to export. Native `.clay` version 7 preserves surface regions, attached arrays, recipes, links and captured assets. Versions 1–6 remain readable; earlier app versions cannot read version 7 saves.
 
 Limits: 256 copies per project, with at most eight layers per array and 16 levels of linked arrays. Layer counts multiply: a 16 × 16 pattern produces 256 copies. Scale factors must be positive; overly large, small or flat combinations are rejected before Apply. Other limits: 64 captured assets and 64 named object brushes per project; 100,000 vertices / 200,000 triangles per captured asset; one million captured source vertices in total. Instance display/baking is bounded to one million expanded vertices / two million triangles. A bent or joined assembly is limited to 250,000 expanded vertices / 500,000 triangles, with up to 4,096 boundary vertices per joining end. Generated geometry is cached across unchanged frames; projects store source geometry and recipes. A later source edit exceeding a budget or making joins incompatible produces an Instances-panel warning and omits copies until settings or source detail are corrected. Bake also respects the 64-submodel limit and configured mesh capacity.
 
-Create linked array, Create path object and Capture object brush are available through custom menus and configurable shortcuts.
+Create linked array, Surface array from selected faces, Create path object and Capture object brush are available through custom menus and configurable shortcuts.

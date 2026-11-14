@@ -24,6 +24,7 @@ See [Development](../development.md#update-guide-screenshots) for prerequisites 
 
 | Images | What they explain | Capture test |
 | --- | --- | --- |
+| `surface-keep.png`, `surface-replace.png`, `progressive-rotation.png` | [Selected-face surface arrays and signed per-copy rotation](../guide/instances.md#cover-selected-faces-with-a-captured-part) | `surface_array_controls_offscreen_review` |
 | [Guided retopology comparisons](../validation/guided-retopology/README.md) | Matched cylinder and bulb wireframes with the path and painted density controls | `guided_retopology_offscreen_review` |
 | `mesh-capacity.png` | [Mesh capacity](../guide/workspace.md#change-mesh-capacity): saved limits, active session limits and restart notice | `gpu_mesh_capacity_settings_capture` |
 | `alien-cone-head-workspace.png` | Earlier README capture: alien head with teal material and three-point lighting | User-supplied application screenshot; retained reference |

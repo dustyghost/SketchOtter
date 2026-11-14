@@ -2,6 +2,7 @@
 use super::*;
 use crate::sculpt::{Vec3, instances::*};
 mod brushes;
+mod surface;
 
 pub type ResolvedInstances = std::sync::Arc<ResolvedCopies>;
 
@@ -68,8 +69,38 @@ impl Document {
             {
                 continue;
             }
+            let surface_placements = if let Layout::Surface(a) = &set.layout {
+                if self.surface_guide_editing(set.id)
+                    || !(0..self.model_count()).any(|i| {
+                        self.instance_model_id(i) == a.owner
+                            && self.model(i).unwrap().metadata.visible
+                    })
+                {
+                    continue;
+                }
+                let placements = match resolver.placements(set, self.paths()) {
+                    Ok(placements) => placements,
+                    Err(error) => {
+                        result.notices.push(format!("{}: {error}", set.name));
+                        continue;
+                    }
+                };
+                if a.replace {
+                    let guide = self
+                        .instance_source(Source::Model(a.owner))
+                        .ok_or("Surface guide is missing")?;
+                    result
+                        .source_meshes
+                        .insert(a.owner, std::sync::Arc::new(a.display_guide(guide)?));
+                }
+                Some(placements)
+            } else {
+                None
+            };
             let generated = set.generated(self.paths(), |s| self.instance_source(s), &|| false)?;
-            let placements = if let Some(copies) = generated {
+            let placements = if let Some(placements) = surface_placements {
+                placements
+            } else if let Some(copies) = generated {
                 let mut placements = Vec::new();
                 for copy in copies {
                     placements.push((copy.slot, copy.placement));
@@ -162,6 +193,17 @@ impl Document {
         self.begin_instance_preview()?;
         if self.instances().sets.iter().any(|old| old == &set) {
             return Ok(());
+        }
+        if set.visible
+            && let Layout::Surface(a) = &set.layout
+        {
+            let guide = self
+                .instance_source(Source::Model(a.owner))
+                .ok_or("Surface guide is missing")?;
+            let part = self
+                .instance_source(a.piece.source)
+                .ok_or("Captured part is missing")?;
+            a.slots(guide, part)?;
         }
         let before = self.instances().clone();
         let preview = self.instance_preview.as_mut().unwrap();

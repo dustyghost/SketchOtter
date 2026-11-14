@@ -515,6 +515,15 @@ impl<'a> ArrayResolver<'a> {
                 .filter_map(|(i, &p)| p.map(|p| (i, p)))
                 .collect());
         }
+        if let Layout::Surface(a) = &set.layout {
+            let source = self
+                .sources
+                .as_ref()
+                .ok_or("Surface arrays need guide geometry")?;
+            let guide = source(Source::Model(a.owner)).ok_or("Surface guide is missing")?;
+            let part = source(a.piece.source).ok_or("Captured part is missing")?;
+            return Ok(numbered(set.adjust_slots(a.slots(guide, part)?)?));
+        }
         set.placements(paths)
     }
     fn slots(
