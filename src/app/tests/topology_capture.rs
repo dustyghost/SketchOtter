@@ -117,3 +117,123 @@ fn manual_topology_offscreen_review() {
     restored.validate().unwrap();
     assert_eq!(restored.mesh, preview);
 }
+
+#[test]
+#[ignore = "requires Vulkan; exercises chain bridging and face-region controls"]
+fn topology_regions_offscreen_review() {
+    use crate::app::tests::regions::fixture;
+    use crate::sculpt::Geometry;
+    let directory =
+        std::env::var("CLAY_GUIDE_PREVIEW").unwrap_or_else(|_| "/tmp/clay-regions-review".into());
+    let directory = std::path::Path::new(&directory);
+    std::fs::create_dir_all(directory).unwrap();
+    let mut g = Guide::new(directory, [1100, 1000]);
+    g.interactive = true;
+    g.app.ui.wire = true;
+    g.panel(Tool::Mesh, Dock::Right);
+    g.app
+        .document
+        .replace_geometry(Geometry::new(fixture(true)))
+        .unwrap();
+    g.app.camera.yaw = 0.;
+    g.app.camera.pitch = 0.;
+    g.app.camera.zoom = 0.55;
+    g.frame(vec![]);
+    click_guide_modeling_checkbox(&mut g);
+    reach_sidebar_control(&mut g, "Edge");
+    click_guide_label(&mut g, "Edge");
+    click_guide_label(&mut g, "Add");
+    // Select the two inner border edges with actual viewport clicks.
+    for x in [-1., 1.] {
+        let rect = g.frame(vec![]).0;
+        let scale = rect.width().min(rect.height()) * 0.35 * g.app.camera.zoom;
+        let point = rect.center() + Vec2::new(x * scale, 0.);
+        g.frame(vec![
+            egui::Event::PointerMoved(point),
+            primary_event(point, true),
+        ]);
+        g.frame(vec![primary_event(point, false), egui::Event::PointerGone]);
+    }
+    assert_eq!(g.app.viewport.modeling.selected.len(), 2);
+    reach_sidebar_control(&mut g, "Topology");
+    click_guide_label(&mut g, "Topology");
+    g.app.ui.modeling.bridge_segments = 3;
+    reach_sidebar_control(&mut g, "Bridge partial chains");
+    click_guide_label(&mut g, "Bridge partial chains");
+    let original = g.app.document.geometry_snapshot();
+    let bridge = g
+        .app
+        .viewport
+        .modeling
+        .preview()
+        .expect(&g.app.ui.status)
+        .clone();
+    assert_eq!(bridge.quads.len(), 5);
+    reach_sidebar_control(&mut g, "Cancel topology preview");
+    g.save("partial-chain-bridge-preview");
+    click_guide_label(&mut g, "Cancel topology preview");
+    assert_eq!(g.app.document.geometry_snapshot(), original);
+    reach_sidebar_control(&mut g, "Bridge partial chains");
+    click_guide_label(&mut g, "Bridge partial chains");
+    reach_sidebar_control(&mut g, "Apply topology");
+    click_guide_label(&mut g, "Apply topology");
+    assert_eq!(g.app.document.mesh(), &bridge);
+    click_guide_label(&mut g, "Undo");
+    assert_eq!(g.app.document.geometry_snapshot(), original);
+    click_guide_label(&mut g, "Redo");
+    assert_eq!(g.app.document.mesh(), &bridge);
+    // A flat triangle fan becomes one quad, with face selection via the pen path.
+    g.app
+        .document
+        .replace_geometry(Geometry::new(fixture(false)))
+        .unwrap();
+    reach_sidebar_control(&mut g, "Face");
+    click_guide_label(&mut g, "Face");
+    click_guide_label(&mut g, "Add");
+    for (x, y) in [(0., -0.6), (0.6, 0.), (0., 0.6), (-0.6, 0.)] {
+        let rect = g.frame(vec![]).0;
+        let scale = rect.width().min(rect.height()) * 0.35 * g.app.camera.zoom;
+        let point = rect.center() + Vec2::new(x * scale, -y * scale);
+        g.frame(vec![
+            egui::Event::PointerMoved(point),
+            primary_event(point, true),
+        ]);
+        g.frame(vec![primary_event(point, false), egui::Event::PointerGone]);
+    }
+    assert_eq!(g.app.viewport.modeling.selected.len(), 4);
+    reach_sidebar_control(&mut g, "Dissolve face region");
+    g.save("face-region-selected");
+    click_guide_label(&mut g, "Dissolve face region");
+    let dissolved = g
+        .app
+        .viewport
+        .modeling
+        .preview()
+        .expect(&g.app.ui.status)
+        .clone();
+    assert_eq!(dissolved.quads.len(), 1);
+    reach_sidebar_control(&mut g, "Apply topology");
+    g.save("face-region-dissolve-preview");
+    click_guide_label(&mut g, "Apply topology");
+    assert_eq!(g.app.document.mesh(), &dissolved);
+    click_guide_label(&mut g, "Undo");
+    // Re-select the connected fan, then reverse its complete orientation.
+    g.app.viewport.modeling.sync(&g.app.document);
+    g.app.viewport.modeling.selected = (0..4).map(crate::viewport::Component::Face).collect();
+    reach_sidebar_control(&mut g, "Flip face orientation");
+    click_guide_label(&mut g, "Flip face orientation");
+    let flipped = g
+        .app
+        .viewport
+        .modeling
+        .preview()
+        .expect(&g.app.ui.status)
+        .clone();
+    reach_sidebar_control(&mut g, "Apply topology");
+    click_guide_label(&mut g, "Apply topology");
+    assert_eq!(g.app.document.mesh(), &flipped);
+    g.app.camera.yaw = std::f32::consts::PI;
+    g.save("face-region-flipped-back-view");
+    click_guide_label(&mut g, "Undo");
+    assert_eq!(g.app.document.mesh(), &fixture(false));
+}

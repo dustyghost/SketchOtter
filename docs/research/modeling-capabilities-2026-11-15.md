@@ -39,3 +39,9 @@ The user-facing guide and focused geometry/controller/rendered-interaction check
 1. #125: advanced caps, using the same boundary and preview vocabulary.
 2. #121: reconcile remaining open-end joining acceptance without duplicating its implemented connector.
 3. Follow-up tickets #153–#157 are tracked in the development project as Backlog. Extend only a separately scoped missing operation from the matrix after its interaction and validation cases have been agreed. General snapping, bevels, partial bridges and face-region editing are independent changes and are not completion criteria for this first implementation batch.
+
+## Follow-up batch: #156 and #157
+
+Partial-chain bridges now preview equal-count edge runs with 1–16 segments and opposite directed endpoint pairing; ambiguous symmetry, unequal counts, branches, folds and intersections reject. Complete loops and joining separate submodels retain their existing owners. Face-region bridging was considered separately: it requires defining which caps are removed, correspondence between their perimeters and collision handling. It is not an alias for an edge-chain bridge and is not introduced here; arbitrary solid fusion remains separate.
+
+Face orientation now supports complete connected shells. Face-region dissolution supports planar single-boundary patches, preserving uniform vertex channels and affine UV interpolation; seams, creases, group boundaries and sculpt detail are protected through explicit rejection. The [guide](../guide/modeling.md#flip-or-dissolve-face-regions) records the supported limits. #156/#157 remain In progress while awaiting PR review and merge. #153/#154 have their own open PR #164; #155 remains separate bevel work.

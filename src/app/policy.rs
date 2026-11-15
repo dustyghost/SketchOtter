@@ -542,13 +542,7 @@ impl<'a> EditorPolicy<'a> {
             }
             Action::ModelTopology(edit) => {
                 self.edge_unavailable(action).is_none()
-                    && (self.ui.modeling.active
-                        || matches!(
-                            edit,
-                            crate::sculpt::TopologyEdit::Connect
-                                | crate::sculpt::TopologyEdit::Fill
-                                | crate::sculpt::TopologyEdit::CreateFace
-                        ))
+                    && (self.ui.modeling.active || edit.previews())
                     && self.ui.modeling.count > 0
             }
             Action::ModelApply => {

@@ -229,7 +229,10 @@ impl Mesh {
     }
 }
 
-fn triangulate_boundary(mesh: &Mesh, cycle: &[usize]) -> Result<(Vec<[usize; 3]>, bool), String> {
+pub(super) fn triangulate_boundary(
+    mesh: &Mesh,
+    cycle: &[usize],
+) -> Result<(Vec<[usize; 3]>, bool), String> {
     if !(3..=MAX_BOUNDARY).contains(&cycle.len()) {
         return Err(format!(
             "Basic filling supports 3–{MAX_BOUNDARY} boundary vertices"

@@ -3885,3 +3885,5 @@ fn uv_island_selection_highlight_does_not_rebuild_topology_for_every_face() {
 
 mod touch;
 mod viewport_controls;
+
+mod regions;

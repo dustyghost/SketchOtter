@@ -74,6 +74,9 @@ See [Development](../development.md#update-guide-screenshots) for prerequisites 
 
 | `create-face-preview.png`, `connect-vertices-preview.png` | [Manual face construction with Apply/Cancel](../guide/modeling.md#connect-vertices-and-create-faces) | `manual_topology_offscreen_review` |
 
+| `partial-chain-bridge-preview.png` | [Bridge two partial boundary chains](../guide/modeling.md#bridge-two-partial-boundary-chains) | `topology_regions_offscreen_review` |
+| `face-region-selected.png`, `face-region-dissolve-preview.png` | [Flip or dissolve face regions](../guide/modeling.md#flip-or-dissolve-face-regions) | `topology_regions_offscreen_review` |
+
 ## Example assets
 
 [pyramid.obj](../examples/pyramid.obj) contains the imported sample. [Front study](../examples/front-study.png) and [Side study](../examples/side-study.png) are original renders of a scaled UV sphere, exported by the same model-icon renderer used in the app. They are input assets, not screenshots of controls.

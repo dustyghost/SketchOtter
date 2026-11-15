@@ -185,6 +185,9 @@ impl ModelInteraction {
         }
     }
 }
+fn bridge_segments_default() -> u32 {
+    1
+}
 fn legacy_interaction() -> ModelInteraction {
     ModelInteraction::Axis
 }
@@ -222,6 +225,8 @@ pub(crate) struct ModelingOptions {
     pub erase_radius: f32,
     pub join: bool,
     pub loop_count: u32,
+    #[serde(default = "bridge_segments_default")]
+    pub bridge_segments: u32,
     pub axis: ModelAxis,
     #[serde(default = "legacy_interaction")]
     pub interaction: ModelInteraction,
@@ -409,6 +414,7 @@ impl ModelingState {
                     o.tool != preview.tool
                         || o.mode != preview.mode
                         || o.protect_mask != preview.protect
+                        || (preview.is_bridge() && o.bridge_segments != preview.bridge_segments)
                 })
                 || preview.selected != self.selected
                 || &preview.symmetry != document.symmetry()
@@ -721,7 +727,20 @@ impl Viewport {
         }
         let selected = Color32::from_rgb(70, 225, 240);
         let highlighted = Color32::from_rgb(255, 205, 95);
-        if let Some(drag) = &self.modeling.edit_drag {
+        if let Some(edges) = self
+            .modeling
+            .topology_preview
+            .as_ref()
+            .and_then(|p| p.overlay.as_ref())
+        {
+            // Source face indices may no longer describe the proposed topology.
+            // Draw the cached result edges, never the dissolved source diagonals.
+            for &edge in edges {
+                if let Some(points) = scene.clip_segment(edge) {
+                    painter.line_segment(points, egui::Stroke::new(2_f32, highlighted));
+                }
+            }
+        } else if let Some(drag) = &self.modeling.edit_drag {
             if let Some(Ok(result)) = &drag.result {
                 let components = if matches!(
                     model.tool,
@@ -900,7 +919,9 @@ impl Viewport {
             .as_ref()
             .and_then(|(_, r)| r.as_ref().err())
             .cloned();
-        let hint = if let Some(drag) = &self.modeling.edit_drag {
+        let hint = if let Some(label) = self.modeling.topology_preview_label() {
+            format!("Preview: {label} · Apply topology to commit · Esc cancels")
+        } else if let Some(drag) = &self.modeling.edit_drag {
             match &drag.result {
                 Some(Err(e)) => format!("{e} · Esc cancels"),
                 Some(Ok(_)) if model.tool == ModelTool::CutCell => {
@@ -1324,6 +1345,7 @@ impl ModelingOptions {
             || !self.snap.is_finite()
             || !(0.0..=0.25).contains(&self.snap)
             || !(1..=LoopCut::MAX_COUNT).contains(&self.loop_count)
+            || !(1..=16).contains(&self.bridge_segments)
             || !self.span.available(self.mode)
         {
             return Err("Invalid modeling preset settings".into());

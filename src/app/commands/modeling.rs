@@ -66,12 +66,7 @@ impl App {
             }
             Command::ModelTopology(edit) => {
                 self.viewport.cancel(&mut self.document);
-                if matches!(
-                    edit,
-                    crate::sculpt::TopologyEdit::Connect
-                        | crate::sculpt::TopologyEdit::Fill
-                        | crate::sculpt::TopologyEdit::CreateFace
-                ) {
+                if edit.previews() {
                     // Search and shelf actions must reveal the persistent preview
                     // even after leaving Modeling with a retained selection.
                     if !self.ui.modeling.active {

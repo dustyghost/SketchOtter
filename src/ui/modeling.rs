@@ -11,6 +11,7 @@ pub(crate) struct ModelingControls {
     pub erase_radius: f32,
     pub count: usize,
     pub loop_count: u32,
+    pub bridge_segments: u32,
     pub join: bool,
     pub axis: crate::viewport::ModelAxis,
     pub interaction: crate::viewport::ModelInteraction,
@@ -65,6 +66,7 @@ impl ModelingControls {
         self.erase_radius = o.erase_radius;
         self.join = o.join;
         self.loop_count = o.loop_count;
+        self.bridge_segments = o.bridge_segments;
         self.axis = o.axis;
         self.amount = o.amount;
         self.protect_mask = o.protect_mask;
@@ -85,6 +87,7 @@ impl ModelingControls {
             erase_radius: self.erase_radius,
             join: self.join,
             loop_count: self.loop_count,
+            bridge_segments: self.bridge_segments,
             axis: self.axis,
             interaction: self.interaction,
             transform_direction: self.transform_direction,
@@ -489,9 +492,16 @@ impl UiState {
                 ui.weak("Saves action, target and options. Right-click a preset to add it to a shelf.");
             });
             egui::CollapsingHeader::new("Topology").open(search::requested_section(ui.ctx(), "model_topology")).show(ui,|ui|{
+                if self.modeling.mode == ComponentMode::Edge {
+                    ui.add(egui::Slider::new(&mut self.modeling.bridge_segments, 1..=16).text("Bridge segments"));
+                    ui.weak("Partial chains: select two open chains with equal edge counts. Endpoints pair in opposite boundary directions; twisting or crossing is rejected. Segments divide the gap. Change the selection to change alignment, then preview again.");
+                }
+                if self.modeling.mode == ComponentMode::Face {
+                    ui.weak("Flip needs complete connected shells. Dissolve combines flat regions while preserving their outline; curvature, seams, creases and painted gradients are protected.");
+                }
                 for edit in crate::sculpt::TopologyEdit::ALL {
                     use crate::sculpt::TopologyEdit as T;
-                    let mode=match edit {T::DeleteFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace=>ComponentMode::Vertex,_=>ComponentMode::Edge};
+                    let mode=match edit {T::DeleteFaces|T::FlipFaces|T::DissolveFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace=>ComponentMode::Vertex,_=>ComponentMode::Edge};
                     if self.modeling.mode==mode && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
                 }
                 ui.weak("Connect vertices splits a quad. Create face uses every vertex around an opening; Fill boundary uses its complete edge loop. These actions preview before Apply. New caps follow the boundary winding and need unwrapping before texture painting. Loose edges are not supported.");
