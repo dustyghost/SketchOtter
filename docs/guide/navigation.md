@@ -45,11 +45,15 @@ Drag **Roll view** right for clockwise roll or left for counterclockwise roll. D
 
 Open **Cameras…** in the viewport, or **View → Saved cameras…**:
 
-1. Enter a name and click **Save view**. Leaving the name empty creates a numbered camera.
+1. Enter a name and click **Save view**. Leaving the name empty creates a numbered camera. A successful save clears the name field and highlights the new camera. Save controls and feedback stay above the scrolling library.
 2. Click a saved camera's name to return to it. This restores orientation including roll, pan, zoom, projection mode, field of view and perspective distance. The orbit pivot remains the shared model-space origin. Pan scales with the viewport's shorter dimension to preserve relative framing after resizing or changing the panel layout.
-3. Navigate normally. The bookmark stays unchanged until you click **Update from view** for that camera.
-4. Use **Rename** and **Apply name** to change its name, or **Delete** and **Delete camera** to remove it. **Keep camera** cancels deletion.
+3. Navigate normally. The selected camera stays highlighted and shows **View modified** when you move away from its saved framing. **Update from view** asks before overwriting: choose **Replace saved view** to commit, or **Keep saved view** to cancel. The old view cannot be restored through sculpt Undo.
+4. Use **Rename** and **Apply name** to change its name. Blank or duplicate names show an error beside the field and keep your draft open. **Delete** and **Delete camera** remove a view; **Keep camera** cancels deletion.
 5. Save the project to keep its cameras when reopening. Recovery copies also include them. A new project starts with no saved cameras; older projects open normally.
+
+![Saved camera marked View modified with Replace saved view and Keep saved view controls](../images/camera-overwrite-1100.png)
+
+*Update from view asks before replacing the stored framing. Keep saved view leaves the bookmark unchanged.*
 
 Up to 128 uniquely named cameras can be stored per project. Camera-library edits mark the project as changed and remain separate from sculpt Undo/Redo, like reference-image placements; updating or deleting a camera has no sculpt Undo step. Recalling a camera, opening the window and resetting roll do not dirty the project. Switching view ends an unfinished viewport gesture before changing the camera. Saved views remain available while working in tool dialogs and in Zen mode.
 
