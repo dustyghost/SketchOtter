@@ -53,24 +53,24 @@ Angles use the layer's X/Y/Z axes before **Whole layer transform**. Each copy ro
 
 1. Capture a part in **Object brush settings**. Set its **Up**, **Forward** and **Contact point**, just as for an object brush.
 2. Select the guide submodel. Open **Mesh → Modeling**, choose face selection and select the region to cover.
-3. Choose **Surface array from selected faces…**. In **Submodels → Instances**, choose a thumbnail from the existing Object brush library. Each selected polygon gets one copy, including one copy for a quad.
-4. Adjust **Scale**, **Face rotation** and **Normal offset**. The contact point sits at the face center; Up follows its normal and Forward follows its first boundary edge.
+3. Choose **Surface array from selected faces…**. In **Submodels → Surface array**, choose a thumbnail from the existing Object brush library. Each selected polygon gets one copy, including one copy for a quad.
+4. Choose fitting, then adjust **Scale**, **Face rotation** and **Normal offset**. Expand **Orientation and contact point** for custom axes or a mount point. Choosing the current part again keeps these edits; **Reset orientation and contact** restores that part’s captured settings. The contact point sits at the face center; Up follows its normal and Forward follows its first boundary edge.
 5. Choose **Keep faces** to retain the guide beneath the parts, or **Replace faces** to hide only the assigned faces. **Uniform** fit scales the part to the face's projected bounds; **Stretch in plane** fits width and length independently while preserving depth. Fitting does not clip the part to the polygon border.
-6. Choose **Apply instances**, or **Cancel preview** to restore the previous result.
+6. Choose **Apply surface array**, or **Cancel preview** to restore the previous result.
 
 ![Captured panels placed over four selected guide quads](../images/surface-keep.png)
 
-*Keep faces leaves the guide beneath the panels. Unselected guide faces stay visible.*
+*Keep faces leaves the guide beneath the panels. Cyan outlines identify the assigned faces during preview; unselected guide faces stay visible.*
 
 ![The same panels with Replace faces selected](../images/surface-replace.png)
 
 *Replace faces hides only the four assigned quads, leaving gaps around the smaller panels.*
 
-To reshape the guide, choose **Edit guide / select new region**. Copies are temporarily hidden so you can pick and edit the original faces. Moving vertices updates the placements when you choose **Show result**. To change the region, select faces and choose **Use selected faces for surface array**, then Apply. A new region clears individual copy overrides because the slot assignments have changed.
+To reshape the guide, choose **Edit guide / select new region**. Copies are temporarily hidden so you can pick and edit the original faces. Moving vertices updates the placements when you choose **Show surface array result**. To change the region, select faces and choose **Use selected faces for surface array**, then Apply. Edits on retained faces follow those faces, including hidden and detached copies. Removed faces lose their individual edits; new faces start without edits. If connectivity changed, all individual edits reset because the old face identities are no longer reliable. Cancel restores the previous assignment; applying records one Undo step.
 
 Subdivision, remeshing or other connectivity changes suspend the assignment and show the original guide with a notice. Use **Edit guide / select new region** to assign faces again. Saving preserves a suspended assignment; reopening does not silently move it to different faces.
 
-Turn off **Show instances** or **Remove set** to restore the original guide. One surface array can own a submodel; remove it before deleting or merging that guide. Hiding the guide hides its copies. Duplicating the guide makes an ordinary mesh copy.
+Turn off **Show surface array** or **Remove surface array** to restore the original guide. One surface array can own a submodel; remove it before deleting or merging that guide. Hiding the guide hides its copies. Duplicating the guide makes an ordinary mesh copy.
 
 **Make editable…** defaults to replacing the guide with the remaining guide faces and the visible parts. Keep/Replace is honored, and one Undo restores the live array. The new-submodel options retain the original guide and put the evaluated guide body plus parts in the new output. **Fuse overlapping surfaces** is optional and requires closed, fully visible input surfaces; open replacement regions usually need fusion left off.
 
