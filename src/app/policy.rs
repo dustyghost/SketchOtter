@@ -540,9 +540,15 @@ impl<'a> EditorPolicy<'a> {
             Action::ModelSmoothPreview | Action::ModelTapRepeat => {
                 self.edge_unavailable(action).is_none()
             }
-            Action::ModelTopology(_) => {
+            Action::ModelTopology(edit) => {
                 self.edge_unavailable(action).is_none()
-                    && self.ui.modeling.active
+                    && (self.ui.modeling.active
+                        || matches!(
+                            edit,
+                            crate::sculpt::TopologyEdit::Connect
+                                | crate::sculpt::TopologyEdit::Fill
+                                | crate::sculpt::TopologyEdit::CreateFace
+                        ))
                     && self.ui.modeling.count > 0
             }
             Action::ModelApply => {

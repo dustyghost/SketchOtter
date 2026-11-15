@@ -3,5 +3,5 @@ running 1 test
 test app::tests::guide_captures::topology_capture::manual_topology_offscreen_review ... wgpu adapter: AdapterInfo { name: "llvmpipe (LLVM 23.1.4, 256 bits)", vendor: 65541, device: 0, device_type: Cpu, driver: "llvmpipe", driver_info: "Mesa 26.2.6-arch1.1 (LLVM 23.1.4)", backend: Vulkan }
 ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1301 filtered out; finished in 22.81s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1317 filtered out; finished in 22.75s
 

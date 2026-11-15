@@ -59,7 +59,7 @@ impl App {
             Command::ApplyModelTopology => self
                 .viewport
                 .modeling
-                .apply_topology(&mut self.document, self.ui.modeling.protect_mask),
+                .apply_topology(&mut self.document, self.ui.modeling.options()),
             Command::CancelModelTopology => {
                 self.viewport.modeling.cancel_topology();
                 Ok(())
@@ -72,6 +72,14 @@ impl App {
                         | crate::sculpt::TopologyEdit::Fill
                         | crate::sculpt::TopologyEdit::CreateFace
                 ) {
+                    // Search and shelf actions must reveal the persistent preview
+                    // even after leaving Modeling with a retained selection.
+                    if !self.ui.modeling.active {
+                        self.dispatch_modeling(Command::ModelingMode(true))?;
+                    }
+                    self.ui
+                        .modeling
+                        .set_tool(crate::viewport::ModelTool::Select);
                     self.viewport.modeling.preview_topology(
                         &self.document,
                         edit,

@@ -423,7 +423,7 @@ This requires complete, noncrossing interior quad loops. An open loop must end a
 | **Create face** | In Vertex mode, select every vertex around an existing opening | Create a face or patch using the boundary's order |
 | **Fill boundary** | In Edge mode, choose Boundary and select a complete opening | Fill the selected loop; other holes remain open |
 
-Choose an action to preview it. Inspect the shaded surface and wireframe, orbit the view, then use **Apply topology** near the top of Modeling. **Cancel topology preview** or Escape discards it and keeps the selection. Apply creates one Undo step and clears the old component selection. Undo restores the geometry and subdivision levels; Redo restores the result. The applied result saves with the project; an uncommitted preview is session-only.
+Choose an action to preview it; Modeling returns to **Select** while you inspect. Inspect the shaded surface and wireframe, orbit the view, then use **Apply topology** near the top of Modeling. **Cancel topology preview** or Escape discards it and keeps the selection. Apply creates one Undo step and clears the old component selection. Undo restores the geometry and subdivision levels; Redo restores the result. The applied result saves with the project; an uncommitted preview is session-only.
 
 Changing the selection or modelling tool cancels the preview. Switching to a sculpt brush offers **Apply and switch**, **Discard and switch**, or **Keep editing**. Hidden and masked boundary vertices remain protected; **Protect mask** can be turned off deliberately before generating a new preview. Changed targets or protection settings require a fresh preview.
 

@@ -2242,3 +2242,33 @@ fn modeling_manual_topology_cap_protection_hidden_and_changed_target() {
     assert!(app.ui.status.contains("changed"), "{}", app.ui.status);
     assert!(app.viewport.modeling.topology_preview_label().is_none());
 }
+
+#[test]
+fn modeling_manual_topology_actions_reopen_modeling_and_reject_changed_tool() {
+    use crate::{sculpt::TopologyEdit, viewport::Component};
+    let (mut app, ctx, _) = setup();
+    app.dispatch(Command::ModelingComponent(ComponentMode::Vertex), &ctx);
+    let q = app.document.mesh().quads[0];
+    app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
+    navigation_frame(&mut app, &ctx, vec![]);
+    app.dispatch(Command::ModelingMode(false), &ctx);
+    app.dispatch(
+        Command::Action(Action::ModelTopology(TopologyEdit::Connect)),
+        &ctx,
+    );
+    assert!(app.ui.modeling.active);
+    assert!(app.viewport.modeling.topology_preview_label().is_some());
+    // A failed attempt must not leave an earlier, different construction ready to Apply.
+    app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+    app.execute_action(Action::ModelTool(ModelTool::Move), &ctx);
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    assert_eq!(app.ui.modeling.tool, ModelTool::Select);
+    let before = app.document.geometry_snapshot();
+    app.execute_action(Action::ModelTool(ModelTool::Move), &ctx);
+    // Direct command paths must be safe before the next viewport frame invalidates the preview.
+    app.dispatch(Command::ApplyModelTopology, &ctx);
+    assert!(app.ui.status.contains("changed"), "{}", app.ui.status);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+}

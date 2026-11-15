@@ -26,6 +26,7 @@ impl ModelingState {
         options: ModelingOptions,
     ) -> Result<(), String> {
         self.sync(document);
+        self.cancel_topology();
         document.require_modeling()?;
         let faces = self.selected_faces();
         let edges: Vec<_> = self
@@ -82,7 +83,11 @@ impl ModelingState {
         });
         Ok(())
     }
-    pub fn apply_topology(&mut self, document: &mut Document, protect: bool) -> Result<(), String> {
+    pub fn apply_topology(
+        &mut self,
+        document: &mut Document,
+        options: ModelingOptions,
+    ) -> Result<(), String> {
         let p = self
             .topology_preview
             .as_ref()
@@ -90,7 +95,9 @@ impl ModelingState {
         if p.revision != document.display_revision()
             || p.selected != self.selected
             || &p.symmetry != document.symmetry()
-            || p.protect != protect
+            || p.protect != options.protect_mask
+            || p.tool != options.tool
+            || p.mode != options.mode
         {
             self.topology_preview = None;
             return Err(

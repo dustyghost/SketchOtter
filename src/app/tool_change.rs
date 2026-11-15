@@ -104,7 +104,7 @@ impl App {
             } else if self.viewport.modeling.topology_preview_label().is_some() {
                 self.viewport
                     .modeling
-                    .apply_topology(&mut self.document, self.ui.modeling.protect_mask)
+                    .apply_topology(&mut self.document, self.ui.modeling.options())
             } else if self.document.instance_preview_active() {
                 self.dispatch_instances(InstanceCommand::Apply)
             } else {
