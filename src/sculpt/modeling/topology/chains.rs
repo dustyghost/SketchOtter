@@ -80,10 +80,10 @@ impl Mesh {
                     let key: BTreeSet<_> = chains[i].iter().map(|&v| map[v]).collect();
                     keys.iter().position(|k| *k == key)
                 };
-                if let (Some(a), Some(b)) = (locate(0), locate(other)) {
-                    if a != b {
-                        pairs.insert(edge(a, b));
-                    }
+                if let (Some(a), Some(b)) = (locate(0), locate(other))
+                    && a != b
+                {
+                    pairs.insert(edge(a, b));
                 }
             }
             let used: Vec<_> = pairs.iter().flatten().copied().collect();
