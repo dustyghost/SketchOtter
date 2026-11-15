@@ -765,7 +765,7 @@ impl UiState {
                 ui.separator();
                 egui::CollapsingHeader::new("Lighting")
                     .open(search::requested_section(ui.ctx(), "viewport_lighting"))
-                    .show(ui, |ui| self.preferences.lighting.controls(ui));
+                    .show(ui, |ui| self.preferences.lighting.controls(ui, *camera));
                 ui.separator();
                 design::checkbox(ui, &mut self.flat_shading, "Flat shading")
                     .customize(Action::FlatShading)
