@@ -324,8 +324,10 @@ mod tests {
             "hidden adjoining face blocks vertex"
         );
         mesh.hidden_faces.clear();
-        let mut symmetry = Symmetry::default();
-        symmetry.enabled = true;
+        let symmetry = Symmetry {
+            enabled: true,
+            ..Default::default()
+        };
         let sym = ModelingSymmetry::new(&mesh, &symmetry).unwrap();
         let source = BTreeSet::from([Component::Vertex(17)]);
         let grown = resized(&mesh, &source, ComponentMode::Vertex, true, true, &sym).unwrap();
