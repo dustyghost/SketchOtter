@@ -66,6 +66,7 @@ impl ExportLighting {
             lights: rig
                 .lights
                 .iter()
+                .filter(|light| light.enabled)
                 .map(|light| {
                     let vector = light.vector(right, up, view);
                     ExportLight {
@@ -423,6 +424,22 @@ mod tests {
             );
         }
         assert!(export_bytes(&project, ExportFormat::Ply, None, &|| true).is_err());
+    }
+    #[test]
+    fn lighting_export_omits_disabled_lights_without_changing_the_rig() {
+        let mut rig = crate::lighting::Lighting::default();
+        rig.lights[0].enabled = false;
+        let saved = rig.clone();
+        let export = ExportLighting::capture(&rig, crate::camera::Camera::default());
+        assert_eq!(export.lights.len(), 2);
+        assert_eq!(export.ambient_fill, rig.fill);
+        assert_eq!(rig, saved);
+        rig.lights.iter_mut().for_each(|l| l.enabled = false);
+        assert!(
+            ExportLighting::capture(&rig, crate::camera::Camera::default())
+                .lights
+                .is_empty()
+        );
     }
     #[test]
     fn lighting_export_is_optional_and_freezes_camera_relative_lights() {

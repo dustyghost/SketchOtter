@@ -856,7 +856,7 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
     ),
     (
         "Light list",
-        "Add light Remove light selected",
+        "Add light Remove light selected name rename enable disable front back",
         Destination::Menu(BuiltinMenu::View),
         "Adjust light list in Lighting. Per-light settings apply to the selected light.",
     ),
