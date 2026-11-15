@@ -13,6 +13,8 @@ mod grouped_path_capture;
 mod object_kits;
 #[path = "path_assembly.rs"]
 mod path_assembly;
+#[path = "precision_capture.rs"]
+mod precision_capture;
 #[path = "surface_array_capture.rs"]
 mod surface_array_capture;
 use super::*;

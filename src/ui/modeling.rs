@@ -10,6 +10,8 @@ pub(crate) struct ModelingControls {
     pub flat_angle: f32,
     pub erase_radius: f32,
     pub count: usize,
+    pub selection_undo: bool,
+    pub selection_redo: bool,
     pub loop_count: u32,
     pub join: bool,
     pub axis: crate::viewport::ModelAxis,
@@ -21,6 +23,11 @@ pub(crate) struct ModelingControls {
     pub protect_mask: bool,
     pub individual: bool,
     pub snap: f32,
+    pub snap_target: crate::viewport::SnapTarget,
+    pub snap_radius: Option<f32>,
+    pub snap_active: bool,
+    pub snap_ready: bool,
+    pub snap_hint: Option<String>,
     pub construction: crate::viewport::ModelConstruction,
     pub tap_repeat: bool,
     pub smooth_preview: bool,
@@ -69,6 +76,8 @@ impl ModelingControls {
         self.protect_mask = o.protect_mask;
         self.individual = o.individual;
         self.snap = o.snap;
+        self.snap_target = o.snap_target;
+        self.snap_radius = Some(o.snap_radius);
         self.construction = o.construction;
         self.tap_repeat = o.tap_repeat;
         self.smooth_preview = o.smooth_preview;
@@ -91,6 +100,8 @@ impl ModelingControls {
             protect_mask: self.protect_mask,
             individual: self.individual,
             snap: self.snap,
+            snap_target: self.snap_target,
+            snap_radius: self.snap_radius.unwrap_or(12.),
             construction: self.construction,
             tap_repeat: self.tap_repeat,
             smooth_preview: self.smooth_preview,
@@ -413,6 +424,34 @@ impl UiState {
                     if ui.add_enabled(self.modeling.count>0 && has_direction,egui::Button::new("Apply amount")).customize(Action::ModelApply).clicked() { commands.push(Command::ModelApply); }
                     ui.weak("Release applies · Esc cancels · one Undo per drag");
                     ui.weak("Rotate and scale around the selection center");
+                    if direct {
+                        ui.separator();
+                        ui.strong("Snap to target");
+                        ui.horizontal_wrapped(|ui| {
+                            use crate::viewport::SnapTarget;
+                            for target in [SnapTarget::Vertex, SnapTarget::Edge, SnapTarget::Surface] {
+                                search::setting_response(ui.selectable_value(&mut self.modeling.snap_target, target, target.label()), "Snap target type");
+                            }
+                        });
+                        search::setting_response(ui.add(egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.)).range(4. ..=40.).prefix("Pick radius ").suffix(" px")), "Snap pick radius");
+                        ui.weak("Active mesh · visible, unselected targets").on_hover_text("Selected vertices, symmetry copies and incident target geometry are excluded. Free/Gizmo snap freely; Axis / amount uses the chosen axis.");
+                        ui.weak(match self.modeling.tool {
+                            ModelTool::Move => "Move aligns the source to the target; an axis projects that movement.",
+                            ModelTool::Rotate => "Rotate aims the source direction at the target around the selection center; distance stays fixed.",
+                            _ => "Scale matches distance from the selection center, or its chosen axis component; direction stays fixed.",
+                        });
+                        if let Some(hint) = &self.modeling.snap_hint { ui.label(hint); }
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.add_enabled(self.modeling.count>0,egui::Button::new("Pick snap source")).customize(Action::ModelSnap).clicked() { commands.push(Command::ModelSnap); }
+                            if self.modeling.snap_active {
+                                if ui.button("Pick another target").clicked() { commands.push(Command::ModelSnapRetarget); }
+                                if ui.add_enabled(self.modeling.snap_ready,egui::Button::new("Apply snap")).clicked() { commands.push(Command::ModelSnapApply); }
+                                if ui.button("Cancel snap").clicked() { commands.push(Command::ModelSnapCancel); }
+                            }
+                        });
+                        ui.weak("Click source, then target. Orbit/zoom to inspect.").on_hover_text("Apply amount uses the numeric value without snapping and discards this preview.");
+                    }
+
                 }
                 ModelTool::LoopCut => {
                     use crate::sculpt::LoopCut;
@@ -446,6 +485,17 @@ impl UiState {
                     commands.push(Command::ModelSelectLoop);
                 }
             });
+            ui.horizontal_wrapped(|ui| {
+                for (label, action) in [("Grow selection", Action::ModelGrowSelection), ("Shrink selection", Action::ModelShrinkSelection)] {
+                    if ui.add_enabled(self.modeling.count > 0, egui::Button::new(label)).customize(action.clone()).clicked() { commands.push(Command::Action(action)); }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                for (label, action, enabled) in [("Undo selection change", Action::ModelUndoSelection, self.modeling.selection_undo), ("Redo selection change", Action::ModelRedoSelection, self.modeling.selection_redo)] {
+                    if ui.add_enabled(enabled, egui::Button::new(label)).customize(action.clone()).clicked() { commands.push(Command::Action(action)); }
+                }
+            });
+            ui.weak("One polygon step. Hidden/protected geometry blocks growth. Selection Undo/Redo is separate from geometry history.");
             if self.modeling.mode==ComponentMode::Face && ui.button("Select region boundary").customize(Action::ModelBoundary).clicked() { commands.push(Command::ModelBoundary); }
             if self.modeling.mode==ComponentMode::Edge {
                 ui.horizontal_wrapped(|ui| {

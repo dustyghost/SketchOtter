@@ -417,9 +417,12 @@ fn action_destination(action: &Action) -> Destination {
         | ModelCreateGroup | ModelAddToGroup | ModelRemoveFromGroup | ModelRepeat
         | ModelProtectMask | ModelSmoothPreview | ModelTapRepeat | ModelApply | ModelBoundary
         | ModelClearSelection | ModelDissolveLoops | ModelNewMesh | ModelJoin | ModelFewerLoops
-        | ModelMoreLoops | ModelSelectLoop | ModelInteraction(_) | ModelSelect | ModelExtrude
-        | ModelLoopCut | ModelReplace | ModelAdd | ModelRemove | ModelSelectSingle
-        | ModelSelectLoops | ModelSelectRing | ModelAxis(_) => Destination::Panel(Tool::Mesh),
+        | ModelSnap | ModelGrowSelection | ModelShrinkSelection | ModelUndoSelection
+        | ModelRedoSelection | ModelMoreLoops | ModelSelectLoop | ModelInteraction(_)
+        | ModelSelect | ModelExtrude | ModelLoopCut | ModelReplace | ModelAdd | ModelRemove
+        | ModelSelectSingle | ModelSelectLoops | ModelSelectRing | ModelAxis(_) => {
+            Destination::Panel(Tool::Mesh)
+        }
         PenModeling => Destination::Panel(Tool::Mesh),
         ViewportContextMenu | ModelFaces | ModelEdges | ModelVertices | ModelTool(_)
         | ModelTarget(_) => Destination::Menu(BuiltinMenu::Modeling),

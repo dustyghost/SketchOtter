@@ -18,7 +18,8 @@ impl App {
             || self.projection.draft.is_some()
             || self.ui.fusion.busy
             || self.ui.fusion.ready
-            || self.document.instance_preview_active();
+            || self.document.instance_preview_active()
+            || self.viewport.modeling.snap_active();
         if pending {
             self.ui.tool_change = Some(action.clone());
             self.ui.tool_change_error = None;
@@ -53,7 +54,8 @@ impl App {
     }
 
     fn tool_change_can_apply(&self) -> bool {
-        !self.paths.busy()
+        (!self.viewport.modeling.snap_active() || self.viewport.modeling.snap_ready())
+            && !self.paths.busy()
             && !self.ui.projection.busy
             && !self.ui.fusion.busy
             && (!self.document.instance_preview_active() || !self.ui.instances.invalid)
@@ -89,7 +91,11 @@ impl App {
             return;
         }
         let result = if decision == Decision::Apply {
-            if self.paths.has_preview() {
+            if self.viewport.modeling.snap_active() {
+                self.viewport
+                    .modeling
+                    .apply_snap(&mut self.document, self.ui.modeling.options())
+            } else if self.paths.has_preview() {
                 self.dispatch_path(PathCommand::Apply)
             } else if self.viewport.paths.active
                 && self.viewport.paths.has_unfinished(&self.document)

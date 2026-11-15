@@ -334,6 +334,11 @@ impl App {
                     as u32;
                 None
             }
+            Action::ModelGrowSelection => Some(Command::ModelResizeSelection(true)),
+            Action::ModelShrinkSelection => Some(Command::ModelResizeSelection(false)),
+            Action::ModelUndoSelection => Some(Command::ModelSelectionHistory(false)),
+            Action::ModelRedoSelection => Some(Command::ModelSelectionHistory(true)),
+            Action::ModelSnap => Some(Command::ModelSnap),
             Action::ModelClearSelection => Some(Command::ClearModelSelection),
             Action::ModelSelectLoop => Some(Command::ModelSelectLoop),
             Action::ModelDissolveLoops => Some(Command::ModelDissolveLoops),

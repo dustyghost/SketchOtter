@@ -35,8 +35,42 @@ impl App {
                     .set_tool(crate::viewport::ModelTool::Select);
                 Ok(())
             }
+            Command::ModelResizeSelection(grow) => {
+                self.viewport.cancel(&mut self.document);
+                self.viewport.modeling.resize_selection(
+                    &self.document,
+                    self.ui.modeling.mode,
+                    self.ui.modeling.protect_mask,
+                    grow,
+                )
+            }
+            Command::ModelSelectionHistory(redo) => {
+                self.viewport.cancel(&mut self.document);
+                self.viewport
+                    .modeling
+                    .restore_selection(&self.document, redo)
+            }
+            Command::ModelSnap => {
+                self.viewport.cancel(&mut self.document);
+                self.viewport
+                    .modeling
+                    .begin_snap(&self.document, self.ui.modeling.options())
+            }
+            Command::ModelSnapApply => self
+                .viewport
+                .modeling
+                .apply_snap(&mut self.document, self.ui.modeling.options()),
+            Command::ModelSnapCancel => {
+                self.viewport.cancel(&mut self.document);
+                Ok(())
+            }
+            Command::ModelSnapRetarget => {
+                self.viewport.modeling.reset_snap_target();
+                Ok(())
+            }
             Command::ClearModelSelection => {
                 self.viewport.cancel(&mut self.document);
+                self.viewport.modeling.clear_selection_history();
                 self.viewport.modeling.selected.clear();
                 self.viewport.set_edge_selection(Vec::new(), &self.document);
                 Ok(())

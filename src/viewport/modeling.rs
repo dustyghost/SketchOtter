@@ -4,6 +4,9 @@ use crate::sculpt::{Extrusion, LoopCut, Mesh, ModelingSymmetry, Symmetry};
 use std::collections::BTreeSet;
 mod edit;
 mod selection;
+mod selection_growth;
+mod snapping;
+pub(crate) use snapping::SnapTarget;
 mod transform;
 use edit::EditDrag;
 use selection::SelectionDrag;
@@ -231,6 +234,10 @@ pub(crate) struct ModelingOptions {
     pub individual: bool,
     pub snap: f32,
     #[serde(default)]
+    pub snap_target: SnapTarget,
+    #[serde(default = "snapping::snap_radius_default")]
+    pub snap_radius: f32,
+    #[serde(default)]
     pub construction: ModelConstruction,
     #[serde(default = "tap_repeat_default")]
     pub tap_repeat: bool,
@@ -249,6 +256,7 @@ pub(crate) enum Component {
 #[derive(Default)]
 pub(crate) struct ModelingState {
     pub selected: BTreeSet<Component>,
+    selection_history: selection_growth::SelectionHistory,
     pub revision: u64,
     selection_anchor: Option<Vec3>,
     pub requested_direction: Option<Vec3>,
@@ -256,6 +264,7 @@ pub(crate) struct ModelingState {
     drag: Option<ExtrudeDrag>,
     edit_drag: Option<EditDrag>,
     fuse_amount_preview: Option<FuseAmountPreview>,
+    snap_preview: Option<snapping::SnapPreview>,
     selection_drag: Option<SelectionDrag>,
     loop_preview: Option<LoopPreview>,
     loop_drag: Option<LoopDrag>,
@@ -303,11 +312,13 @@ impl ModelingState {
             self.symmetry = None;
             self.smooth = None;
             self.selected.clear();
+            self.selection_history = Default::default();
             self.selection_anchor = None;
             self.selection_drag = None;
             self.drag = None;
             self.edit_drag = None;
             self.fuse_amount_preview = None;
+            self.snap_preview = None;
             self.loop_drag = None;
             self.loop_preview = None;
             self.revision = document.display_revision();
@@ -325,6 +336,7 @@ impl ModelingState {
         self.drag = None;
         self.edit_drag = None;
         self.fuse_amount_preview = None;
+        self.snap_preview = None;
         self.loop_drag = None;
         self.loop_preview = None;
     }
@@ -367,6 +379,9 @@ impl ModelingState {
         self.edit_drag.as_ref().map(|drag| drag.amount)
     }
     pub fn preview(&self) -> Option<&Mesh> {
+        if let Some(preview) = &self.snap_preview {
+            return preview.mesh();
+        }
         if let Some(drag) = &self.edit_drag {
             return drag
                 .result
@@ -397,6 +412,14 @@ impl ModelingState {
         escape: bool,
     ) {
         self.sync(document);
+        if !enabled
+            && !escape
+            && self.snap_active()
+            && let Some(options) = options
+        {
+            self.sync_snap(document, options);
+            return;
+        }
         if !enabled || escape || options.is_none() {
             self.cancel();
             return;
@@ -436,6 +459,7 @@ impl ModelingState {
             }
         }
         let options = options.unwrap();
+        self.sync_snap(document, options);
         if self
             .fuse_amount_preview
             .as_ref()
@@ -524,6 +548,7 @@ impl ModelingState {
 }
 impl Viewport {
     pub(crate) fn set_model_edges(&mut self, edges: Vec<[usize; 2]>, document: &Document) {
+        self.modeling.clear_selection_history();
         self.modeling.selected = edges.iter().copied().map(Component::Edge).collect();
         self.modeling.revision = document.display_revision();
         self.set_edge_selection(edges, document);
@@ -673,6 +698,12 @@ impl Viewport {
             .or_else(|| response.interact_pointer_pos());
         let eligible =
             point.filter(|p| !navigation::contains(response.rect, *p) && !gizmo.contains(*p));
+        if self.modeling.snap_active() {
+            if !options.enabled {
+                return eligible.is_some_and(|p| scene.pick_model(p).is_some());
+            }
+            return self.update_snap(ui, response, painter, scene, document, eligible);
+        }
         self.modeling
             .advance_direct_transform(document, scene, point, model);
         if model.tool == ModelTool::Select
@@ -1253,6 +1284,7 @@ impl Viewport {
                     self.modeling.sync(document);
                 }
             } else if let Some(drag) = self.modeling.selection_drag.take() {
+                self.modeling.clear_selection_history();
                 self.modeling.selected = drag.current;
                 if model.mode == ComponentMode::Edge {
                     let edges = self
@@ -1299,6 +1331,8 @@ impl ModelingOptions {
             || self.construction.width > 1_000_000.
             || !self.amount.is_finite()
             || self.amount.abs() > 1_000_000.
+            || !self.snap_radius.is_finite()
+            || !(4. ..=40.).contains(&self.snap_radius)
             || !self.snap.is_finite()
             || !(0.0..=0.25).contains(&self.snap)
             || !(1..=LoopCut::MAX_COUNT).contains(&self.loop_count)
