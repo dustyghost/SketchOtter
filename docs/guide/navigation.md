@@ -39,6 +39,22 @@ The thin inset frame reserves a **20-pixel navigation strip**. Start a pen/left 
 
 Tap X, Y, or Z on the top-right orientation gizmo. Dimmed axes face away from you. Drag the gizmo to orbit using the current screen axes. Axis snaps clear roll; free orbit has no world-up constraint, in both sculpting and modeling.
 
+## Roll and saved cameras
+
+Drag **Roll view** right for clockwise roll or left for counterclockwise roll. Double-click it, or choose **View → Reset roll**, to straighten the view while keeping its direction, pan, zoom and projection. **Cameras…** also offers an editable Roll angle and Reset roll. These controls do not rotate the model.
+
+Open **Cameras…** in the viewport, or **View → Saved cameras…**:
+
+1. Enter a name and click **Save view**. Leaving the name empty creates a numbered camera.
+2. Click a saved camera's name to return to it. This restores orientation including roll, pan, zoom, projection mode, field of view and perspective distance. The orbit pivot remains the shared model-space origin. Pan scales with the viewport's shorter dimension to preserve relative framing after resizing or changing the panel layout.
+3. Navigate normally. The bookmark stays unchanged until you click **Update from view** for that camera.
+4. Use **Rename** and **Apply name** to change its name, or **Delete** and **Delete camera** to remove it. **Keep camera** cancels deletion.
+5. Save the project to keep its cameras when reopening. Recovery copies also include them. A new project starts with no saved cameras; older projects open normally.
+
+Up to 128 uniquely named cameras can be stored per project. Camera-library edits mark the project as changed and remain separate from sculpt Undo/Redo, like reference-image placements; updating or deleting a camera has no sculpt Undo step. Recalling a camera, opening the window and resetting roll do not dirty the project. Switching view ends an unfinished viewport gesture before changing the camera. Saved views remain available while working in tool dialogs and in Zen mode.
+
+**Saved cameras** and **Reset roll** are also available through search, custom menus, shelves, viewport buttons and configurable shortcuts. Neither adds a default key binding.
+
 ## Zoom
 
 Use the wheel, viewport **Zoom** control, or **View → Zoom in / Zoom out**. Default keys are **− / =**. Zoom goes up to **800%** and can go below **20%** to accommodate large imported models.
@@ -124,7 +140,7 @@ Enable **View → Perspective view** for depth and foreshortening. Leave it off 
 
 Picking, brush size, selections, transforms, guides, and cuts follow the displayed projection. Zoom enlarges the image without moving the camera eye through the model.
 
-View settings are session-only and do not add undo steps. Changing projection or field of view ends the current drag and cancels unapplied selections, stamps, and cuts. **Reset view** returns to orthographic.
+Live view settings are session-only unless explicitly stored as a saved camera, and navigation does not add undo steps. Changing projection or field of view ends the current drag and cancels unapplied selections, stamps, and cuts. **Reset view** returns to orthographic.
 
 Assign **Toggle perspective view** in Key settings or add it to a custom menu; it has no default shortcut. Geometry behind the camera is clipped. A path cut through geometry crossing the eye reports an error; switch to orthographic and redraw it.
 

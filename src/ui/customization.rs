@@ -295,6 +295,7 @@ impl UiState {
         let active = self.brush_index_for_context(document, ctx);
         let brush = active.map(|index| &document.brushes()[index]);
         match action {
+            Action::SavedCameras => self.cameras.open,
             Action::ToggleStencil => document.stencil().is_some_and(|s| s.enabled),
             Action::SelectBrush(id) => self
                 .highlighted_brush_index(document, ctx)

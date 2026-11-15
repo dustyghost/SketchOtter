@@ -726,6 +726,27 @@ impl UiState {
                     });
             }
             BuiltinMenu::View => {
+                if ui
+                    .button("Saved cameras…")
+                    .customize(Action::SavedCameras)
+                    .clicked()
+                {
+                    commands.push(Command::Action(Action::SavedCameras));
+                    if popup {
+                        ui.close_kind(egui::UiKind::Menu);
+                    }
+                }
+                if ui
+                    .button("Reset roll")
+                    .customize(Action::ResetRoll)
+                    .on_hover_text(
+                        "Straighten the view without changing direction, pan, zoom or projection",
+                    )
+                    .clicked()
+                {
+                    commands.push(Command::Action(Action::ResetRoll));
+                }
+                ui.separator();
                 let mut perspective = camera.perspective;
                 if design::checkbox(ui, &mut perspective, "Perspective view")
                     .customize(Action::Perspective)

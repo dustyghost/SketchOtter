@@ -176,6 +176,8 @@ pub struct Project {
         deserialize_with = "crate::reference::deserialize_list"
     )]
     pub references: Vec<crate::reference::ReferenceImage>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub saved_cameras: Vec<crate::saved_camera::SavedCamera>,
     pub version: u32,
     #[serde(default, skip_serializing_if = "SceneSettings::is_default")]
     pub scene: SceneSettings,
@@ -235,6 +237,7 @@ impl Project {
             stencil.validate()?;
         }
         crate::reference::validate(&self.references)?;
+        crate::saved_camera::validate(&self.saved_cameras)?;
         if !(1..=Self::VERSION).contains(&self.version) {
             return Err("Unsupported project version".into());
         }

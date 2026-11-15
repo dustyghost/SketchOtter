@@ -14,6 +14,7 @@ use eframe::egui;
 
 mod actions;
 mod boolean;
+mod cameras;
 mod commands;
 mod context_menu;
 mod diagnostics;
@@ -498,7 +499,7 @@ impl App {
         });
         let navigation_rect = ui.available_rect_before_wrap();
         self.viewport.navigation_rect = Some(navigation_rect);
-        let controls = self.ui.viewport_controls(
+        let mut controls = self.ui.viewport_controls(
             ui.ctx(),
             navigation_rect,
             &self.document,
@@ -518,6 +519,13 @@ impl App {
                 ViewportControlKind::Roll => self.camera.roll_drag(delta),
                 ViewportControlKind::Action(_) => unreachable!(),
             }
+        }
+        let (camera_commands, camera_window_blocks) =
+            self.ui
+                .camera_window(ui.ctx(), &self.document, &self.camera);
+        controls.blocks_viewport |= camera_window_blocks;
+        for command in camera_commands {
+            self.dispatch(command, ui.ctx());
         }
         let light_input = self.ui.light_controls.show(
             ui.ctx(),

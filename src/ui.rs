@@ -10,6 +10,7 @@ use eframe::egui::{self, Color32, Sense, Vec2};
 mod about;
 pub(crate) mod alphas;
 mod appearance;
+mod cameras;
 mod design;
 mod material;
 mod operation_status;
@@ -53,6 +54,7 @@ pub(crate) struct UiState {
     pub instances: instances::Controls,
     pub uv: uv::UvControls,
     pub viewport_controls: viewport_controls::ControlsState,
+    pub(crate) cameras: cameras::Controls,
     pub viewport_menu: context_menu::ViewportMenuState,
     icons: icons::Icons,
     pinned_menu_rects: Vec<egui::Rect>,
@@ -149,6 +151,7 @@ impl Default for UiState {
             search_blocks_frame: false,
             instances: Default::default(),
             viewport_controls: Default::default(),
+            cameras: Default::default(),
             uv: Default::default(),
             viewport_menu: Default::default(),
             icons: Default::default(),

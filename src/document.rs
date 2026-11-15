@@ -27,6 +27,7 @@ mod boolean;
 #[cfg(test)]
 mod boolean_tests;
 mod cage;
+mod cameras;
 mod instances;
 mod materials;
 mod paint;
@@ -66,6 +67,7 @@ pub struct Document {
     alphas: Vec<crate::sculpt::alpha::Asset>,
     stencil: Option<crate::sculpt::alpha::Stencil>,
     references: Vec<crate::reference::ReferenceImage>,
+    saved_cameras: Vec<crate::saved_camera::SavedCamera>,
     geometry: Geometry,
     display_revision: u64,
     geometry_display_revision: u64,
@@ -104,6 +106,7 @@ impl Default for Document {
             alphas: Vec::new(),
             stencil: None,
             references: Vec::new(),
+            saved_cameras: Vec::new(),
             geometry: Geometry::new(Mesh::starting_sphere()),
             display_revision: 0,
             geometry_display_revision: 0,
@@ -210,6 +213,7 @@ impl Document {
             alphas: self.alphas.clone(),
             stencil: self.stencil.clone(),
             references: self.references.clone(),
+            saved_cameras: self.saved_cameras.clone(),
             version: Project::VERSION,
             scene: geometry.scene,
             model_name: geometry.name,
@@ -235,6 +239,7 @@ impl Document {
         self.end_edit();
         self.texture_paint = None;
         self.references.clear();
+        self.saved_cameras.clear();
         self.stencil = None;
         self.geometry = Geometry::new(Mesh::starting_sphere());
         self.display_changed();
@@ -264,6 +269,7 @@ impl Document {
         self.alphas = project.alphas;
         self.stencil = project.stencil;
         self.references = project.references;
+        self.saved_cameras = project.saved_cameras;
         self.brushes = project.brushes;
         self.symmetry = project.symmetry;
         self.history.reset();

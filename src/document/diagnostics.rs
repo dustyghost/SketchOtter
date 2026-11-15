@@ -80,6 +80,7 @@ impl Document {
                         alphas: Vec::new(),
                         stencil: None,
                         references: Vec::new(),
+                        saved_cameras: Vec::new(),
                         scene: geometry.scene.clone(),
                         model_name: geometry.name.clone(),
                         submodels: geometry.submodels.clone(),

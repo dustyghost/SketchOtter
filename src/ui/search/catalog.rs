@@ -323,7 +323,7 @@ fn action_destination(action: &Action) -> Destination {
         OpenMenu(id) => Destination::Custom(*id),
         Save | SaveAs | Open | New | Export | ImportObj => Destination::Project,
         Undo | Redo => Destination::Menu(BuiltinMenu::Edit),
-        ResetView | ResetZoom | ZoomIn | ZoomOut | Perspective => {
+        SavedCameras | ResetRoll | ResetView | ResetZoom | ZoomIn | ZoomOut | Perspective => {
             Destination::Menu(BuiltinMenu::View)
         }
         Symmetry | Mirror(..) | Guides | CenterSymmetry => Destination::Menu(BuiltinMenu::Symmetry),
@@ -461,6 +461,8 @@ fn action_aliases(action: &Action) -> &'static str {
         Action::Undo => "back revert mistake",
         Action::Redo => "repeat undo",
         Action::ResetView => "frame fit focus camera home",
+        Action::ResetRoll => "camera roll rotation straighten neutral",
+        Action::SavedCameras => "camera view bookmark save recall position angle roll",
         Action::PenModeling => "modelling modeling components polygons",
         Action::ModelVertices => "vertex vertices verts points",
         Action::ModelEdges => "edge edges lines",
@@ -484,6 +486,12 @@ fn action_description(action: &Action) -> String {
     match action {
         Action::Save => {
             "Save the current project, including its models and embedded assets.".into()
+        }
+        Action::SavedCameras => {
+            "Save, revisit, update and manage named camera views in this project.".into()
+        }
+        Action::ResetRoll => {
+            "Straighten the view without changing its direction, framing or projection.".into()
         }
         Action::SaveAs => "Save the current project to another file.".into(),
         Action::Open => {
