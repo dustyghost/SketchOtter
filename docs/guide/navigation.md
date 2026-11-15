@@ -45,6 +45,8 @@ Drag **Roll view** right for clockwise roll or left for counterclockwise roll. D
 
 Open **Cameras…** in the viewport, or **View → Saved cameras…**:
 
+Choose **Orthographic** or **Perspective** beside **Projection** at the top of the window to change the current view. **Save view** stores that choice; **Update from view → Replace saved view** stores it in an existing camera. Switching projection alone leaves saved cameras unchanged. Recalling a camera restores its projection and updates the selector.
+
 1. Enter a name and click **Save view**. Leaving the name empty creates a numbered camera. A successful save clears the name field and highlights the new camera. Save controls and feedback stay above the scrolling library.
 2. Click a saved camera's name to return to it. This restores orientation including roll, pan, zoom, projection mode, field of view and perspective distance. The orbit pivot remains the shared model-space origin. Pan scales with the viewport's shorter dimension to preserve relative framing after resizing or changing the panel layout.
 3. Navigate normally. The selected camera stays highlighted and shows **View modified** when you move away from its saved framing. **Update from view** asks before overwriting: choose **Replace saved view** to commit, or **Keep saved view** to cancel. The old view cannot be restored through sculpt Undo.

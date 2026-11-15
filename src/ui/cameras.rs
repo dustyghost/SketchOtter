@@ -74,6 +74,15 @@ impl UiState {
                 if let Some(reason) = reason { ui.label(reason); }
                 ui.add_enabled_ui(reason.is_none(), |ui| {
                     ui.horizontal_wrapped(|ui| {
+                        ui.label("Projection");
+                        if ui.selectable_label(!camera.perspective, "Orthographic").on_hover_text("Use parallel projection for the current view. Save or update a camera to keep it.").clicked() {
+                            commands.push(Command::SetPerspective(false));
+                        }
+                        if ui.selectable_label(camera.perspective, "Perspective").on_hover_text("Show depth and foreshortening in the current view. Save or update a camera to keep it.").clicked() {
+                            commands.push(Command::SetPerspective(true));
+                        }
+                    });
+                    ui.horizontal_wrapped(|ui| {
                         ui.label("Roll");
                         let mut degrees = camera.roll.to_degrees();
                         if ui.add(egui::DragValue::new(&mut degrees).speed(0.5).suffix("°")).on_hover_text("Clockwise rotation around the viewing axis. Drag or type an angle.").changed() {
@@ -84,7 +93,7 @@ impl UiState {
                         }
                     });
                     ui.separator();
-                    ui.label("Save views with this project. Navigation leaves them unchanged.");
+                    ui.label("Save the current view, including projection and roll, with this project.");
                     let cameras = document.saved_cameras();
                     let mut name_error = None;
                     ui.horizontal_wrapped(|ui| {
@@ -108,7 +117,7 @@ impl UiState {
                     }
                     ui.weak(format!("{} / {} views · Camera edits are separate from sculpt Undo.", cameras.len(), crate::saved_camera::MAX_CAMERAS));
                     if cameras.is_empty() { ui.weak("No saved cameras in this project yet."); }
-                    egui::ScrollArea::vertical().id_salt("saved_camera_list").max_height((ctx.content_rect().height() - 350.).max(100.)).show(ui, |ui| {
+                    egui::ScrollArea::vertical().id_salt("saved_camera_list").max_height((ctx.content_rect().height() - 380.).max(100.)).show(ui, |ui| {
                         for (index, saved) in cameras.iter().enumerate() {
                             ui.push_id(index, |ui| {
                                 ui.separator();

@@ -29,11 +29,24 @@ fn saved_cameras_offscreen_review() {
         click_guide_label(&mut g, "Cameras…");
         g.frame(vec![]);
         g.frame(vec![]);
+        click_guide_label(&mut g, "Perspective");
+        assert!(g.app.camera.perspective);
         click_guide_label(&mut g, "Save view");
         assert_eq!(g.app.document.saved_cameras().len(), 1);
+        assert!(g.app.document.saved_cameras()[0].view.perspective);
         let before = g.app.camera;
+        click_guide_label(&mut g, "Orthographic");
+        assert!(!g.app.camera.perspective);
+        assert!(g.app.document.saved_cameras()[0].view.perspective);
+        let orthographic = g.app.camera;
         click_guide_label(&mut g, "Reset roll");
-        assert_eq!(g.app.camera, Camera { roll: 0., ..before });
+        assert_eq!(
+            g.app.camera,
+            Camera {
+                roll: 0.,
+                ..orthographic
+            }
+        );
         click_guide_label(&mut g, "Camera 1");
         assert_eq!(g.app.camera, before);
         if size[0] == 1100 {
@@ -46,6 +59,8 @@ fn saved_cameras_offscreen_review() {
         }
         g.save(&format!("saved-cameras-{}", size[0]));
         let saved = g.app.document.saved_cameras()[0].clone();
+        click_guide_label(&mut g, "Orthographic");
+        assert!(!g.app.camera.perspective);
         g.app.camera.roll_by(0.2);
         click_guide_label(&mut g, "Update from view");
         assert_eq!(
@@ -67,6 +82,7 @@ fn saved_cameras_offscreen_review() {
             g.app.camera.roll
         );
         assert_eq!(g.app.document.saved_cameras().len(), 1);
+        assert!(!g.app.document.saved_cameras()[0].view.perspective);
         if size[0] == 1100 {
             camera_name_input(&mut g, "camera_save_name_rect", "Detail");
             click_guide_label(&mut g, "Save view");
