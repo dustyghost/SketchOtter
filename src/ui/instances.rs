@@ -224,7 +224,14 @@ impl UiState {
         commands: &mut Vec<Command>,
     ) {
         let response = egui::CollapsingHeader::new(
-            if document
+            if self
+                .instances
+                .editor
+                .as_ref()
+                .is_some_and(|s| matches!(s.layout, Layout::Surface(_)))
+            {
+                "Surface array"
+            } else if document
                 .attached_array(document.active_model_index())
                 .is_some()
             {
@@ -320,7 +327,7 @@ impl UiState {
                 ui.label("Drag a coloured axis to move the copy, or drag its centre handle to move in the view plane. Drag elsewhere to orbit.");
             } else {
                 ui.label(match &set.layout {
-                    Layout::Surface(_) => "One captured part per guide face · Up follows the face normal; Forward follows its first edge.",
+                    Layout::Surface(_) => "Preview one part per guide face, then apply the surface array.",
                     Layout::Array(_) => "Edit whole array · Change the count, spacing or layout of the blue-framed copies.",
                     Layout::Path(a) if a.regions.is_some() => "Grouped path object · Place Start and End once and repeat the Middle group.",
                     Layout::Path(_) => "Separate pieces · Repeat the whole Middle model along the path.",
@@ -331,12 +338,14 @@ impl UiState {
                 ui.weak("Arrays that repeat this set also inherit these changes.");
             }
             let (apply, cancel) = ui
-                .horizontal(|ui| {
+                .horizontal_wrapped(|ui| {
                     (
                         ui.add_enabled(
                             !self.instances.invalid,
                             egui::Button::new(if copy.is_some() {
                                 "Apply placement"
+                            } else if matches!(set.layout, Layout::Surface(_)) {
+                                "Apply surface array"
                             } else {
                                 "Apply instances"
                             }),
@@ -396,7 +405,14 @@ impl UiState {
                 }
             } else {
                 ui.text_edit_singleline(&mut set.name);
-                ui.checkbox(&mut set.visible, "Show instances");
+                ui.checkbox(
+                    &mut set.visible,
+                    if matches!(set.layout, Layout::Surface(_)) {
+                        "Show surface array"
+                    } else {
+                        "Show instances"
+                    },
+                );
                 match &mut set.layout {
                     Layout::Array(a) => {
                         arrays::editor(ui, a, &mut self.instances.array_layer, document)
@@ -413,7 +429,7 @@ impl UiState {
                             set.adjustments.clear();
                         }
                     }
-                    Layout::Surface(a) => surface::editor(ui, a),
+                    Layout::Surface(a) => surface::editor(ui, a, document),
                     Layout::Manual(p) => {
                         ui.label(format!("{} placed objects", p.len()));
                     }
@@ -619,11 +635,22 @@ fn instance_set(
         if !matches!(set.layout, Layout::Surface(_)) && ui.button("Bake set…").clicked() {
             *bake = Some(BakeRequest::new(BakeScope::Set(set.id)));
         }
-        if ui.small_button("Remove set").clicked() {
+        if ui
+            .small_button(if matches!(set.layout, Layout::Surface(_)) {
+                "Remove surface array"
+            } else {
+                "Remove set"
+            })
+            .clicked()
+        {
             commands.push(Command::Instances(C::Remove(set.id)));
         }
     });
     if let Layout::Surface(a) = &set.layout {
+        ui.label(format!(
+            "Guide: {}",
+            source_name(document, Source::Model(a.owner)).unwrap_or("Missing guide")
+        ));
         ui.label(format!(
             "{} guide faces · {}",
             a.faces.len(),
@@ -636,7 +663,7 @@ fn instance_set(
         let editing = document.surface_guide_editing(set.id);
         if ui
             .button(if editing {
-                "Show result"
+                "Show surface array result"
             } else {
                 "Edit guide / select new region"
             })
@@ -645,7 +672,10 @@ fn instance_set(
             commands.push(Command::Instances(C::SurfaceGuide(set.id, !editing)));
         }
         if editing {
-            ui.weak("Copies are hidden while editing the guide. Select faces in Modeling and choose Use selected faces; this clears per-copy overrides.");
+            ui.weak("Copies are hidden. Select faces in Modeling and choose Use selected faces. Edits on retained faces are kept while connectivity is unchanged.");
+            if !set.adjustments.is_empty() {
+                ui.colored_label(egui::Color32::YELLOW, format!("{} copy edits: removed faces lose their edits. If connectivity changed, all will reset. Cancel the preview to keep the previous assignment.", set.adjustments.len()));
+            }
         }
     }
     if let Layout::Array(array) = &set.layout {
