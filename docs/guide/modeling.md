@@ -220,6 +220,18 @@ Loop selections can wrap around the model, including its far side. Face loops an
 
 **Keeping a selection:** navigation keeps it; topology, visibility, or model changes clear it. Drag the navigation frame or empty space to orbit, or use secondary-button navigation. Escape exits modeling when no preview is active.
 
+### Grow and shrink a component selection
+
+Select a face, edge, or vertex, then use **Grow selection** or **Shrink selection** in Modeling. Both actions are also in Search and can be assigned to a shelf or shortcut. They preserve the current component mode and tool.
+
+Each click takes one step through the mesh's logical polygons. Faces cross shared edges, vertices follow real polygon edges, and edges reach other edges sharing an endpoint. Rendering diagonals inside quads do not count. Disconnected islands stay separate. Shrink removes the outer layer at open borders as well as beside unselected components; a fully selected closed island stays selected.
+
+Hidden faces block growth through their vertices. With **Protect mask** enabled, any nonzero mask blocks growth through that vertex too. Grow retains existing protected selections without expanding through them; Shrink removes protected components. Exact symmetry applies to whole matching sets, including when protection blocks one side. As with other Modeling selections, mismatched hidden faces across symmetry require showing matching faces first.
+
+**Undo selection change** and **Redo selection change** restore these selection steps without consuming sculpt Undo/Redo. The selection history belongs to the current mesh and selection; changing geometry or choosing a different selection invalidates it. It is temporary and is not saved with a project. Geometry changes made afterwards keep their usual single Undo step.
+
+![A centre face grown to its four polygon neighbours, with selection history controls](../images/precision-selection-growth.png)
+
 ### Shared targets and component transforms
 
 Hover before pressing to check what the edit will affect. Pressing an already-selected component uses the current selection; pressing elsewhere uses the hovered **Target**.
@@ -262,6 +274,27 @@ These edits replace stored subdivision levels; Undo restores them.
 A free or gizmo drag remembers its direction and amount. **Apply amount** reuses that direction with the displayed value; move and rotation need an initial drag to establish a direction. **Repeat last edit** also retains it. Free scaling stays uniform. Free mode supports **Tap to repeat** after establishing the edit; Gizmo mode reserves taps for selecting targets and handles.
 
 Transform modes, directions and amounts save in presets; older presets retain Axis / amount behavior. Right-click Free, Gizmo or Axis / amount to add it to a custom menu or shelf, or assign a shortcut.
+
+### Snap components to a precise target
+
+1. Select the components to transform and choose **Move**, **Rotate**, or **Scale**.
+2. In **Snap to target**, choose **Vertex**, **Edge**, or **Surface**. Set the pick radius in screen pixels for vertex/edge targets; Surface picks the point directly under the pointer.
+3. Click **Pick snap source**, then click a visible vertex belonging to your selection. Click a visible target on the active mesh. The highlighted candidate shows which point will be used.
+4. Inspect the preview while orbiting or zooming. **Pick another target** retains the source; **Pick snap source** starts again. **Apply snap** commits one geometry Undo step. **Cancel snap** or Escape leaves the mesh and history intact.
+
+| Operation | Result |
+| --- | --- |
+| Move | Aligns the source vertex to the target. With an axis constraint, only the displacement along that axis is used. |
+| Rotate | Aims the source's direction from the selection centre toward the target. The source's radius stays fixed. With an axis constraint, both directions are projected into its rotation plane. |
+| Scale | Matches the source's distance from the selection centre to the target distance. With an axis constraint, it matches their signed axis distances. Direction stays fixed; zero, negative and excessive scales are rejected. |
+
+**Free** and **Gizmo** use unrestricted click snapping. **Axis / amount** uses the selected X/Y/Z or region-normal axis; Uniform scales uniformly. For rotation and scale, a target is a direction or distance reference: it need not coincide with the resulting source point. The source/target markers and connecting line show any remaining separation. **Apply amount** always uses the numeric value without snapping and discards the click preview.
+
+Targets are visible, unselected geometry on the active mesh. Selected vertices, their symmetry copies and incident target geometry are excluded; back or occluded surfaces are not picked through. Masks can be used as stationary references, while Protect mask still prevents moving masked source vertices. Snapping changes positions, preserves polygon connectivity and attributes, and does not weld coincident vertices. Exact symmetry can constrain a source on a mirror seam.
+
+Use a single subdivision level and an editable mesh. Convert primitives or arrays explicitly and apply or disable temporary Thickness first. Changing the target mesh, selection, symmetry or snap settings cancels a stale preview. Switching to a sculpt brush offers Apply, Discard or Keep editing. Save the project after applying to preserve the geometry; unfinished snap previews are not saved.
+
+![A source vertex aligned to an unselected target with the snap preview awaiting Apply](../images/precision-snap-preview.png)
 
 ### Cut a one-cell notch
 

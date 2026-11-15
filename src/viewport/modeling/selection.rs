@@ -344,6 +344,7 @@ impl Viewport {
 
 impl ModelingState {
     pub fn convert_selection(&mut self, mesh: &Mesh, mode: ComponentMode, boundary: bool) {
+        self.clear_selection_history();
         let vertices: BTreeSet<_> = self.selected_vertices(mesh).into_iter().collect();
         let faces = mesh.polygons();
         self.selected = match mode {

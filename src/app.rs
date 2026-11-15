@@ -422,7 +422,18 @@ impl App {
         }
         self.viewport.modeling.sync(&self.document);
         self.ui.modeling.count = self.viewport.modeling.selection().len();
+        self.ui.modeling.selection_undo = self
+            .viewport
+            .modeling
+            .can_restore_selection(&self.document, false);
+        self.ui.modeling.selection_redo = self
+            .viewport
+            .modeling
+            .can_restore_selection(&self.document, true);
         self.ui.modeling.preview_amount = self.viewport.modeling.preview_amount();
+        self.ui.modeling.snap_active = self.viewport.modeling.snap_active();
+        self.ui.modeling.snap_ready = self.viewport.modeling.snap_ready();
+        self.ui.modeling.snap_hint = self.viewport.modeling.snap_hint();
         if self.ui.file_picker.is_none()
             && self.ui.modeling.active
             && !mask_consumes_escape
@@ -431,6 +442,7 @@ impl App {
         {
             if !self.viewport.modeling.dragging()
                 && self.viewport.modeling.fuse_contact_preview().is_none()
+                && !self.viewport.modeling.snap_active()
             {
                 self.ui.modeling.active = false;
             }
@@ -832,6 +844,14 @@ impl App {
             self.paint_temporary_mask_status(ui);
         }
         self.ui.modeling.count = self.viewport.modeling.selection().len();
+        self.ui.modeling.selection_undo = self
+            .viewport
+            .modeling
+            .can_restore_selection(&self.document, false);
+        self.ui.modeling.selection_redo = self
+            .viewport
+            .modeling
+            .can_restore_selection(&self.document, true);
         if temporary_visibility {
             let rect = self.ui.viewport_menu.viewport_rect.unwrap_or(ui.max_rect());
             let galley = ui.painter().layout(
