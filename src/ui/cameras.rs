@@ -172,7 +172,9 @@ impl UiState {
                                     });
                                 }
                                 if self.cameras.focus_edit && (self.cameras.update == Some(index) || self.cameras.delete == Some(index) || self.cameras.rename.as_ref().is_some_and(|(i, _)| *i == index)) {
-                                    ui.scroll_to_rect_animation(ui.min_rect(), None, egui::style::ScrollAnimation::none());
+                                    let row = ui.min_rect();
+                                    let align = (row.height() > ui.clip_rect().height()).then_some(egui::Align::Max);
+                                    ui.scroll_to_rect_animation(row, align, egui::style::ScrollAnimation::none());
                                     self.cameras.focus_edit = false;
                                 }
                             });
