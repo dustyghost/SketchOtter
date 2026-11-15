@@ -77,9 +77,22 @@ impl Document {
         let Layout::Surface(a) = &mut set.layout else {
             return Err("Choose a surface array".into());
         };
+        let old_faces = a.faces.clone();
+        let old_topology = a.topology;
         a.select(self.mesh(), faces)?;
-        // A new region defines new copy slots; old per-copy overrides must not jump.
-        set.adjustments.clear();
+        // Slots can move when faces are added or removed. Keep edits by face identity,
+        // including hidden/detached copies, only while that identity is still valid.
+        set.adjustments.retain_mut(|adjustment| {
+            if old_topology == a.topology
+                && let Some(face) = old_faces.get(adjustment.slot)
+                && let Ok(slot) = a.faces.binary_search(face)
+            {
+                adjustment.slot = slot;
+                true
+            } else {
+                false
+            }
+        });
         let mode = self.array_source_edit.take();
         self.instance_cache.take();
         if let Err(error) = self.preview_instance_set(set.clone()) {
@@ -105,6 +118,79 @@ mod tests {
             .capture_object("Part".into(), Vec3::default(), 0, 2)
             .unwrap();
         (d, asset)
+    }
+    #[test]
+    fn surface_region_retains_face_edits_and_cancel_undo_restore_the_old_region() {
+        let (mut d, asset) = document();
+        let mut set = d.preview_surface_array(Some(asset), vec![1, 3, 5]).unwrap();
+        let mut moved = Adjustment::new(0);
+        moved.offset = Vec3(0.1, 0.2, 0.3);
+        moved.rotation = Vec3(10., 20., 30.);
+        moved.scale = 1.2;
+        let mut hidden = Adjustment::new(1);
+        hidden.visible = false;
+        let mut detached = Adjustment::new(2);
+        detached.detached = true;
+        set.adjustments = vec![moved, hidden.clone(), detached.clone()];
+        d.preview_instance_set(set.clone()).unwrap();
+        d.apply_instance_preview().unwrap();
+        let before = d.geometry_snapshot();
+        assert_eq!(
+            d.preview_surface_region(set.id, vec![1, 3, 5])
+                .unwrap()
+                .adjustments,
+            set.adjustments
+        );
+        d.cancel_instance_preview();
+
+        let preview = d.preview_surface_region(set.id, vec![5, 0, 3, 0]).unwrap();
+        assert_eq!(preview.adjustments, vec![hidden.clone(), detached.clone()]);
+        d.cancel_instance_preview();
+        assert_eq!(d.geometry_snapshot(), before);
+
+        let preview = d.preview_surface_region(set.id, vec![3, 5]).unwrap();
+        hidden.slot = 0;
+        detached.slot = 1;
+        assert_eq!(preview.adjustments, vec![hidden, detached]);
+        let history = d.history_counts().0;
+        d.apply_instance_preview().unwrap();
+        let applied = d.geometry_snapshot();
+        assert_eq!(d.history_counts().0, history + 1);
+        d.undo();
+        assert_eq!(d.geometry_snapshot(), before);
+        d.redo();
+        assert_eq!(d.geometry_snapshot(), applied);
+    }
+    #[test]
+    fn surface_region_keeps_edits_after_deformation_but_not_changed_connectivity() {
+        let (mut d, asset) = document();
+        let mut set = d.preview_surface_array(Some(asset), vec![0, 1]).unwrap();
+        let mut edit = Adjustment::new(1);
+        edit.offset = Vec3(0.2, 0., 0.);
+        set.adjustments.push(edit);
+        d.preview_instance_set(set.clone()).unwrap();
+        d.apply_instance_preview().unwrap();
+        d.geometry.mesh.vertices[0].0 += 0.1;
+        d.display_changed();
+        assert_eq!(
+            d.preview_surface_region(set.id, vec![0, 1, 2])
+                .unwrap()
+                .adjustments,
+            set.adjustments
+        );
+        d.cancel_instance_preview();
+        d.geometry.mesh.triangles.swap(0, 1);
+        d.display_changed();
+        assert!(
+            d.preview_surface_region(set.id, vec![0, 1, 2])
+                .unwrap()
+                .adjustments
+                .is_empty()
+        );
+        d.cancel_instance_preview();
+        assert_eq!(d.instances().sets[0].adjustments, set.adjustments);
+        assert!(d.preview_surface_region(set.id, vec![99]).is_err());
+        assert_eq!(d.instances().sets[0].adjustments, set.adjustments);
     }
     #[test]
     fn surface_preview_cancel_undo_redo_and_project_roundtrip() {

@@ -54,6 +54,36 @@ fn surface_array_controls_offscreen_review() {
         g.app.ui.status
     );
     assert_eq!(g.app.document.instance_placements().unwrap().len(), 4);
+    let mut edited = g.app.ui.instances.editor.clone().unwrap();
+    let Layout::Surface(a) = &mut edited.layout else {
+        panic!()
+    };
+    a.piece.pivot.0 = 0.12;
+    a.piece.forward = 1;
+    let custom = a.piece;
+    g.app.dispatch(
+        Command::Instances(C::Preview(Box::new(edited.clone()))),
+        &g.ctx,
+    );
+    g.app.ui.instances.editor = Some(edited);
+    click_guide_label(&mut g, "Panel");
+    let Layout::Surface(a) = &g.app.document.instances().sets[0].layout else {
+        panic!()
+    };
+    assert_eq!(
+        a.piece, custom,
+        "reselecting the part preserves its custom mount"
+    );
+    g.save("surface-before-orientation");
+    click_guide_label(&mut g, "Orientation and contact point");
+    g.save("surface-orientation");
+    click_guide_label(&mut g, "Reset orientation and contact");
+    let Layout::Surface(a) = &g.app.document.instances().sets[0].layout else {
+        panic!()
+    };
+    assert_eq!(a.piece.pivot, Vec3(0., 0., -0.08));
+    assert_eq!((a.piece.forward, a.piece.up), (0, 2));
+    click_guide_label(&mut g, "Orientation and contact point");
     g.save("surface-keep");
     click_guide_label(&mut g, "Replace faces");
     let resolved = g.app.document.instance_placements().unwrap();
@@ -67,9 +97,11 @@ fn surface_array_controls_offscreen_review() {
         8
     );
     g.save("surface-replace");
-    click_guide_label(&mut g, "Apply instances");
+    click_guide_label(&mut g, "Apply surface array");
     let saved = g.app.document.geometry_snapshot();
+    g.app.ui.modeling.set_tool(crate::viewport::ModelTool::Move);
     click_guide_label(&mut g, "Edit guide / select new region");
+    assert_eq!(g.app.ui.modeling.tool, crate::viewport::ModelTool::Select);
     assert!(g.app.document.instance_placements().unwrap().is_empty());
     g.app.viewport.modeling.sync(&g.app.document);
     g.app.viewport.modeling.selected = [4, 5].map(Component::Face).into_iter().collect();
