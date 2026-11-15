@@ -76,7 +76,10 @@ impl SurfaceArray {
         }
         Ok(())
     }
-    fn polygons(&self, guide: &Mesh) -> Result<Vec<crate::sculpt::edges::Polygon>, String> {
+    pub(crate) fn polygons(
+        &self,
+        guide: &Mesh,
+    ) -> Result<Vec<crate::sculpt::edges::Polygon>, String> {
         self.validate()?;
         if topology(guide) != self.topology {
             return Err("Guide topology changed. Edit guide and use selected faces to assign a new region; original faces are shown until then.".into());

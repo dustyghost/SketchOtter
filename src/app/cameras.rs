@@ -12,14 +12,44 @@ impl App {
                 .ok_or("Open the viewport before using saved cameras")
         };
         match command {
-            CameraCommand::Save(name) => self
-                .document
-                .save_camera(name, self.camera.saved_view(viewport_size()?)?),
-            CameraCommand::Update(index) => self
-                .document
-                .update_camera(index, self.camera.saved_view(viewport_size()?)?),
-            CameraCommand::Rename(index, name) => self.document.rename_camera(index, name),
-            CameraCommand::Delete(index) => self.document.delete_camera(index),
+            CameraCommand::Save(name) => {
+                self.document
+                    .save_camera(name.clone(), self.camera.saved_view(viewport_size()?)?)?;
+                self.ui.cameras.saved(name.trim().into());
+                Ok(())
+            }
+            CameraCommand::Update(index) => {
+                self.document
+                    .update_camera(index, self.camera.saved_view(viewport_size()?)?)?;
+                self.ui
+                    .cameras
+                    .updated(self.document.saved_cameras()[index].name.clone());
+                Ok(())
+            }
+            CameraCommand::Rename(index, name) => {
+                let old = self
+                    .document
+                    .saved_cameras()
+                    .get(index)
+                    .ok_or("Saved camera no longer exists")?
+                    .name
+                    .clone();
+                self.document.rename_camera(index, name.clone())?;
+                self.ui.cameras.renamed(&old, name.trim().into());
+                Ok(())
+            }
+            CameraCommand::Delete(index) => {
+                let name = self
+                    .document
+                    .saved_cameras()
+                    .get(index)
+                    .ok_or("Saved camera no longer exists")?
+                    .name
+                    .clone();
+                self.document.delete_camera(index)?;
+                self.ui.cameras.deleted(&name);
+                Ok(())
+            }
             CameraCommand::Recall(index) => {
                 let view = self
                     .document
@@ -29,6 +59,9 @@ impl App {
                     .view;
                 let next = Camera::from_saved_view(view, viewport_size()?)?;
                 self.change_camera(next);
+                self.ui
+                    .cameras
+                    .recalled(self.document.saved_cameras()[index].name.clone());
                 Ok(())
             }
             CameraCommand::Roll(radians) => {
