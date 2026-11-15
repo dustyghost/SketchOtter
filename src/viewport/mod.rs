@@ -11,7 +11,7 @@ pub(crate) mod objects;
 mod retopology_density;
 pub(crate) use modeling::{
     Component, ComponentMode, ModelAxis, ModelConstruction, ModelInteraction, ModelTool,
-    ModelingOptions, SelectionChange, SelectionSpan,
+    ModelingOptions, SelectionChange, SelectionSpan, SnapTarget,
 };
 mod gizmo;
 mod gpu;
@@ -98,6 +98,7 @@ pub(crate) struct Viewport {
     pub(crate) session: interaction::InteractionSession,
     pub(crate) paths: paths::PathEditor,
     pub(crate) copy_move: instances::CopyMove,
+    surface_outline: instances::SurfaceOutline,
     pub(crate) array_layer: Option<usize>,
     pub(crate) array_command: Option<crate::command::InstanceCommand>,
     pub(crate) array_selected: bool,
@@ -201,6 +202,7 @@ impl Viewport {
         self.cage = Default::default();
         self.array_controls.cancel(document);
         self.copy_move = Default::default();
+        self.surface_outline = Default::default();
         self.path_thickness.reset();
         if let Some(brush) = &mut self.object_brush {
             brush.cancel(document);
@@ -419,6 +421,8 @@ impl Viewport {
             renderer.set_backfaces(options.backface_opacity);
             renderer.set_polygroups(options.show_polygroups);
         }
+        self.surface_outline
+            .paint(&scene, &painter, document, options.instance_editor);
         instances::paint(&scene, &painter, document, options.instance_editor);
         if let Some(brush) = &self.size_preview {
             let position = self

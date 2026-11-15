@@ -20,8 +20,8 @@ impl LightControls {
         enabled: bool,
     ) -> bool {
         let was_dragging = self.drag.is_some();
-        if self.drag.is_some_and(|(index, _, _)| {
-            index != lighting.selected || index >= lighting.lights.len()
+        if self.drag.as_ref().is_some_and(|(index, _, _)| {
+            *index != lighting.selected || *index >= lighting.lights.len()
         }) {
             self.drag = None;
         }
@@ -43,18 +43,25 @@ impl LightControls {
                 .order(egui::Order::Foreground)
                 // The default Area estimate is much wider than this widget and
                 // constrains its first-frame hit rectangle over the sculpt.
-                .default_size(Vec2::new(162., 430.))
+                .default_size(Vec2::new(174., (viewport.height() - 24.).clamp(100., 640.)))
                 .fixed_pos(viewport.right_top() + Vec2::new(-172., 156.))
                 .constrain_to(viewport)
                 .movable(false)
                 .show(ctx, |ui| {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        // Reset the content budget after a collapsed frame; otherwise
+                        // the Area's previous height can permanently clip expanded controls.
+                        ui.set_width(148.);
+                        ui.set_max_height((viewport.height() - 24.).clamp(100., 640.));
+                        egui::ScrollArea::vertical().id_salt("light_widget_scroll").max_height((viewport.height() - 24.).max(100.)).show(ui, |ui| {
                         ui.set_width(148.);
                         ui.add_enabled_ui(enabled, |ui| {
                             if ui.button("Close light controls").clicked() { lighting.show_controls = false; }
                             lighting.selector(ui);
                             let selected = lighting.selected;
                             let Some(light) = lighting.lights.get_mut(selected) else { return; };
+                            light.identity_controls(ui);
+                            light.side_controls(ui, *camera);
                             egui::CollapsingHeader::new("Light")
                                 .default_open(true)
                                 .show_unindented(ui, |ui| {
@@ -62,11 +69,11 @@ impl LightControls {
                                     let pad = pad.on_hover_cursor(egui::CursorIcon::Grab)
                                         .on_hover_text("Drag to orbit the light around the model. Escape cancels. The hollow marker is behind the model.");
                                     if !cancel && pad.drag_started_by(egui::PointerButton::Primary) {
-                                        self.drag = Some((selected, *light, *camera));
+                                        self.drag = Some((selected, light.clone(), *camera));
                                     }
-                                    if let Some((_, start, camera)) = self.drag
+                                    if let Some((_, start, camera)) = &self.drag
                                         && let Some(delta) = pad.total_drag_delta() {
-                                        light.orbit_in_view(start, camera, delta);
+                                        light.orbit_in_view(start, *camera, delta);
                                         ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
                                     }
                                     if pad.drag_stopped_by(egui::PointerButton::Primary) {
@@ -83,12 +90,9 @@ impl LightControls {
                                         ui.add(egui::Slider::new(&mut light.distance, 0.1..=50.).logarithmic(true))
                                             .on_hover_text("Move the point light closer to or farther from the model");
                                     }
-                                    if ui.button("Front / back").on_hover_text("Move the light to the opposite side of the view plane").clicked() {
-                                        let local = light.direction_in_view(*camera);
-                                        light.set_view_direction(Vec3(local.0, local.1, -local.2), *camera);
-                                    }
                                     ui.checkbox(&mut light.camera_relative, "Follow camera");
                                 });
+                        });
                         });
                     });
                 });
@@ -110,12 +114,12 @@ impl LightControls {
     }
 }
 impl Light {
-    fn direction_in_view(self, camera: Camera) -> Vec3 {
+    pub(super) fn direction_in_view(&self, camera: Camera) -> Vec3 {
         let (right, up, view) = camera.basis();
         let world = self.vector(right, up, view).norm();
         Vec3(world.dot(right), world.dot(up), world.dot(view)).norm()
     }
-    fn set_view_direction(&mut self, local: Vec3, camera: Camera) {
+    pub(super) fn set_view_direction(&mut self, local: Vec3, camera: Camera) {
         let (right, up, view) = camera.basis();
         let direction = if self.camera_relative {
             local
@@ -131,7 +135,7 @@ impl Light {
             .to_degrees()
             .clamp(-89., 89.);
     }
-    fn orbit_in_view(&mut self, start: Self, camera: Camera, delta: Vec2) {
+    fn orbit_in_view(&mut self, start: &Self, camera: Camera, delta: Vec2) {
         let local = start.direction_in_view(camera);
         let azimuth = local.0.atan2(local.2) + delta.x * 0.015;
         let elevation = (local.1.clamp(-1., 1.).asin() - delta.y * 0.015)
@@ -207,15 +211,15 @@ mod tests {
         let mut local = Light::default();
         let mut world = Light {
             camera_relative: false,
-            ..local
+            ..local.clone()
         };
         world.set_view_direction(local.direction_in_view(camera), camera);
         let delta = Vec2::new(85., -24.);
-        local.orbit_in_view(local, camera, delta);
-        world.orbit_in_view(world, camera, delta);
+        local.orbit_in_view(&local.clone(), camera, delta);
+        world.orbit_in_view(&world.clone(), camera, delta);
         assert!((local.direction_in_view(camera) - world.direction_in_view(camera)).len() < 1e-5);
         for delta in [Vec2::splat(100000.), Vec2::splat(-100000.)] {
-            world.orbit_in_view(world, camera, delta);
+            world.orbit_in_view(&world.clone(), camera, delta);
             world.validate().unwrap();
         }
     }

@@ -2272,3 +2272,150 @@ fn modeling_manual_topology_actions_reopen_modeling_and_reject_changed_tool() {
     assert_eq!(app.document.geometry_snapshot(), before);
     assert!(app.viewport.modeling.topology_preview_label().is_none());
 }
+
+#[test]
+fn modeling_manual_topology_interacts_with_selection_history_and_snapping() {
+    use crate::{sculpt::TopologyEdit, viewport::Component};
+    let (mut app, ctx, _) = setup();
+    app.dispatch(Command::ModelingComponent(ComponentMode::Vertex), &ctx);
+    let q = app.document.mesh().quads[0];
+    let selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
+    app.viewport.modeling.selected = selected;
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts();
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    assert!(app.viewport.modeling.topology_preview_label().is_some());
+    app.dispatch(Command::ModelResizeSelection(true), &ctx);
+    navigation_frame(&mut app, &ctx, vec![]);
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+    app.dispatch(Command::ModelSelectionHistory(false), &ctx);
+    navigation_frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.viewport.modeling.selected.len(), 2);
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    app.execute_action(Action::ModelTool(ModelTool::Move), &ctx);
+    app.dispatch(Command::ModelSnap, &ctx);
+    navigation_frame(&mut app, &ctx, vec![]);
+    assert!(app.viewport.modeling.snap_active(), "{}", app.ui.status);
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    navigation_frame(&mut app, &ctx, vec![]);
+    assert!(app.viewport.modeling.topology_preview_label().is_some());
+    assert!(!app.viewport.modeling.snap_active());
+    assert_eq!(app.document.geometry_snapshot(), before);
+    assert_eq!(app.document.history_counts(), history);
+}
+
+#[test]
+fn precision_selection_controls_history_and_tool_choices() {
+    let (mut app, ctx, rect) = setup();
+    tap(&mut app, &ctx, rect.center());
+    let selected = app.viewport.modeling.selected.clone();
+    app.dispatch(Command::Action(Action::ModelTool(ModelTool::Move)), &ctx);
+    let options = app.ui.modeling.options();
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts();
+    app.dispatch(Command::Action(Action::ModelGrowSelection), &ctx);
+    let grown = app.viewport.modeling.selected.clone();
+    assert_eq!(grown.len(), 5, "{}", app.ui.status);
+    assert_eq!(app.ui.modeling.options(), options);
+    navigation_frame(&mut app, &ctx, vec![]);
+    app.dispatch(Command::Action(Action::ModelUndoSelection), &ctx);
+    assert_eq!(app.viewport.modeling.selected, selected);
+    navigation_frame(&mut app, &ctx, vec![]);
+    app.dispatch(Command::Action(Action::ModelRedoSelection), &ctx);
+    assert_eq!(app.viewport.modeling.selected, grown);
+    app.dispatch(Command::Action(Action::ModelShrinkSelection), &ctx);
+    assert_eq!(app.viewport.modeling.selected, selected);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    assert_eq!(app.document.history_counts(), history);
+    app.dispatch(Command::ClearModelSelection, &ctx);
+    assert!(
+        !app.viewport
+            .modeling
+            .can_restore_selection(&app.document, false)
+    );
+}
+
+pub(super) fn precision_snap_mesh() -> crate::sculpt::Mesh {
+    use crate::sculpt::{Mesh, Vec3};
+    Mesh {
+        vertices: vec![
+            Vec3(-1., -0.4, 0.),
+            Vec3(-0.4, -0.4, 0.),
+            Vec3(-0.4, 0.4, 0.),
+            Vec3(-1., 0.4, 0.),
+            Vec3(0.4, -0.4, 0.),
+            Vec3(1., -0.4, 0.),
+            Vec3(1., 0.4, 0.),
+            Vec3(0.4, 0.4, 0.),
+        ],
+        quads: vec![[0, 1, 2, 3], [4, 5, 6, 7]],
+        triangles: vec![[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]],
+        mask: vec![0.; 8],
+        ..Default::default()
+    }
+}
+#[test]
+fn precision_snap_pointer_preview_navigation_cancel_apply_and_switch() {
+    for perspective in [false, true] {
+        let (mut app, ctx, _) = setup();
+        let mesh = precision_snap_mesh();
+        app.document
+            .replace_geometry(Geometry::new(mesh.clone()))
+            .unwrap();
+        app.camera.perspective = perspective;
+        let rect = navigation_frame(&mut app, &ctx, vec![]);
+        let scale = rect.width().min(rect.height()) * 0.35;
+        let point = |x: f32, y: f32| rect.center() + Vec2::new(x, -y) * scale;
+        tap(&mut app, &ctx, point(-0.7, 0.));
+        assert_eq!(app.ui.modeling.count, 1);
+        app.dispatch(Command::Action(Action::ModelTool(ModelTool::Move)), &ctx);
+        app.dispatch(Command::Action(Action::ModelSnap), &ctx);
+        assert!(app.viewport.modeling.snap_active(), "{}", app.ui.status);
+        tap(&mut app, &ctx, point(-0.4, -0.4));
+        tap(&mut app, &ctx, point(0.4, -0.4));
+        assert!(
+            app.viewport.modeling.snap_ready(),
+            "{:?} · {}",
+            app.viewport.modeling.snap_hint(),
+            app.ui.status
+        );
+        let preview = app.viewport.modeling.preview().unwrap().clone();
+        assert!((preview.vertices[1] - mesh.vertices[4]).len() < 1e-5);
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        app.dispatch(Command::ZoomIn, &ctx);
+        navigation_frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.viewport.modeling.preview(), Some(&preview));
+        app.camera.yaw = 0.25;
+        navigation_frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.viewport.modeling.preview(), Some(&preview));
+        app.dispatch(Command::Action(Action::NextBrush), &ctx);
+        assert!(app.ui.tool_change.is_some());
+        navigation_frame(&mut app, &ctx, vec![]);
+        assert!(app.viewport.modeling.snap_ready());
+        app.resolve_tool_change(crate::app::tool_change::Decision::KeepEditing, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.dispatch(Command::ModelSnapCancel, &ctx);
+        assert!(!app.viewport.modeling.snap_active());
+        assert_eq!(app.document.history_counts(), history);
+        app.camera.yaw = 0.;
+        app.camera.zoom = 1.;
+        navigation_frame(&mut app, &ctx, vec![]);
+        app.dispatch(Command::ModelSnap, &ctx);
+        tap(&mut app, &ctx, point(-0.4, -0.4));
+        tap(&mut app, &ctx, point(0.4, -0.4));
+        app.dispatch(Command::ModelSnapApply, &ctx);
+        assert_eq!(app.document.mesh(), &preview);
+        assert_eq!(app.document.history_counts().0, history.0 + 1);
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.dispatch(Command::Redo, &ctx);
+        assert_eq!(app.document.mesh(), &preview);
+        let encoded = serde_json::to_string(&app.document.project()).unwrap();
+        let restored: crate::sculpt::Project = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(restored.mesh, preview);
+    }
+}

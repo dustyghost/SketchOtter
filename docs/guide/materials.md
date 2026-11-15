@@ -107,13 +107,15 @@ Lighting changes how you see the model; it does not paint or move it. To positio
 1. Enable **View → Lighting → Show light controls**. These controls start hidden each time you open the app.
 2. Choose a light in the **Light** widget beneath the viewport axes.
 3. Drag its gold marker around the model. A hollow marker means the light is behind the model. Escape cancels a drag.
-4. Use **Front / back** to flip sides, or choose **Directional** or **Point**. Point lights also have a **Distance** slider.
+4. Read **Position: Front**, **Position: Back** or **Position: On view plane**. Use **Move to back/front** to switch sides, or choose **Directional** or **Point**. Point lights also have a **Distance** slider.
 
 **Follow camera** controls whether the light moves with the view. Collapse the **Light** header to reduce the widget, or use **Close light controls** to hide it completely. You can also disable **Show light controls** in the Lighting panel.
 
 ![Viewport light controls and Lighting panel](../images/lighting-controls.png)
 
-Open **View → Lighting** to manage up to eight lights. Select a light from the list before adjusting it.
+Open **View → Lighting** to manage up to eight lights. Select a light by name before adjusting it. Both the panel and viewport widget let you edit **Light name** and toggle **Light on**. An off light remains selectable and editable, with **(off)** beside its name; turning it back on restores its configured illumination. Names may contain up to 80 characters. Blank names display a numbered fallback.
+
+Front/back is measured against the current view plane through the model origin, including camera roll. The indication follows camera movement for world-fixed lights. A light exactly on the plane is labelled explicitly; **Move to front** moves it off the plane. You can turn all lights off while leaving **Ambient fill** independent.
 
 | Control | Effect |
 | --- | --- |
@@ -124,9 +126,9 @@ Open **View → Lighting** to manage up to eight lights. Select a light from the
 | Colour and intensity | Changes the selected light |
 | **Ambient fill** | Changes illumination across the whole scene |
 | **Light follows camera** | Turn off to keep the light fixed in world space |
-| **Reset studio lighting** | Restores one studio light and neutral fill |
+| **Reset studio lighting** | Restores the Key, Fill and Rim lights and their ambient fill |
 
-Lights are saved in preferences.
+Light names, on/off state and settings are saved in preferences. Older settings receive numbered names and keep their lights on. Optional viewport-light export includes enabled lights only.
 
 Lighting controls do not edit paint or geometry.
 

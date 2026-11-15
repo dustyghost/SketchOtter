@@ -3,7 +3,7 @@ use crate::ui::search;
 mod overlay;
 pub(crate) use overlay::LightControls;
 
-use crate::sculpt::Vec3;
+use crate::{camera::Camera, sculpt::Vec3};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
@@ -13,9 +13,11 @@ pub(crate) enum LightKind {
     Directional,
     Point,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub(crate) struct Light {
+    pub name: String,
+    pub enabled: bool,
     pub kind: LightKind,
     pub azimuth: f32,
     pub elevation: f32,
@@ -27,6 +29,8 @@ pub(crate) struct Light {
 impl Default for Light {
     fn default() -> Self {
         Self {
+            name: String::new(),
+            enabled: true,
             kind: LightKind::Directional,
             azimuth: (-0.5_f32).atan().to_degrees(),
             elevation: (0.7 / 1.25_f32.sqrt()).atan().to_degrees(),
@@ -39,6 +43,9 @@ impl Default for Light {
 }
 impl Light {
     pub fn validate(&self) -> Result<(), String> {
+        if self.name.chars().count() > 80 || self.name.chars().any(char::is_control) {
+            return Err("Light names must contain at most 80 printable characters".into());
+        }
         for (value, min, max) in [
             (self.azimuth, -180., 180.),
             (self.elevation, -89., 89.),
@@ -58,7 +65,7 @@ impl Light {
         }
         Ok(())
     }
-    pub fn vector(self, right: Vec3, up: Vec3, view: Vec3) -> Vec3 {
+    pub fn vector(&self, right: Vec3, up: Vec3, view: Vec3) -> Vec3 {
         let (s, c) = self.azimuth.to_radians().sin_cos();
         let (se, ce) = self.elevation.to_radians().sin_cos();
         let local = Vec3(s * ce, se, c * ce);
@@ -74,7 +81,7 @@ impl Light {
                 1.
             }
     }
-    pub fn at(self, position: Vec3, right: Vec3, up: Vec3, view: Vec3) -> (Vec3, [f32; 3]) {
+    pub fn at(&self, position: Vec3, right: Vec3, up: Vec3, view: Vec3) -> (Vec3, [f32; 3]) {
         let vector = self.vector(right, up, view);
         let (direction, attenuation) = if self.kind == LightKind::Point {
             let delta = vector - position;
@@ -87,7 +94,62 @@ impl Light {
             self.colour.map(|c| c * self.intensity * attenuation),
         )
     }
-    pub fn controls(&mut self, ui: &mut egui::Ui) {
+    pub fn label(&self, index: usize) -> String {
+        let name = if self.name.trim().is_empty() {
+            format!("Light {}", index + 1)
+        } else {
+            self.name.clone()
+        };
+        if self.enabled {
+            name
+        } else {
+            format!("{name} (off)")
+        }
+    }
+    pub fn identity_controls(&mut self, ui: &mut egui::Ui) {
+        let label = ui.label("Light name");
+        ui.add(
+            egui::TextEdit::singleline(&mut self.name)
+                .char_limit(80)
+                .desired_width(140.),
+        )
+        .labelled_by(label.id);
+        self.name.retain(|c| !c.is_control());
+        ui.checkbox(&mut self.enabled, "Light on");
+    }
+    pub fn side_label(&self, camera: Camera) -> &'static str {
+        let depth = self.direction_in_view(camera).2;
+        if depth > 1e-5 {
+            "Position: Front"
+        } else if depth < -1e-5 {
+            "Position: Back"
+        } else {
+            "Position: On view plane"
+        }
+    }
+    pub fn switch_side(&mut self, camera: Camera) {
+        let local = self.direction_in_view(camera);
+        let depth = if local.2.abs() <= 1e-5 { 0.5 } else { -local.2 };
+        self.set_view_direction(Vec3(local.0, local.1, depth).norm(), camera);
+    }
+    pub fn side_controls(&mut self, ui: &mut egui::Ui, camera: Camera) {
+        ui.label(self.side_label(camera));
+        let action = if self.direction_in_view(camera).2 > 1e-5 {
+            "Move to back"
+        } else {
+            "Move to front"
+        };
+        if ui
+            .button(action)
+            .on_hover_text("Switch sides of the view plane through the model origin")
+            .clicked()
+        {
+            self.switch_side(camera);
+        }
+    }
+    pub fn controls(&mut self, ui: &mut egui::Ui, camera: Camera) {
+        self.identity_controls(ui);
+        self.side_controls(ui, camera);
         search::mark_destination(ui, "setting:Light type");
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.kind, LightKind::Directional, "Directional light");
@@ -177,12 +239,14 @@ impl Default for Lighting {
             // every model size: key, gentle fill, and a rear rim.
             lights: vec![
                 Light {
+                    name: "Key".into(),
                     azimuth: -40.,
                     elevation: 35.,
                     intensity: 2.3,
                     ..Default::default()
                 },
                 Light {
+                    name: "Fill".into(),
                     azimuth: 50.,
                     elevation: 10.,
                     intensity: 0.55,
@@ -190,6 +254,7 @@ impl Default for Lighting {
                     ..Default::default()
                 },
                 Light {
+                    name: "Rim".into(),
                     azimuth: 140.,
                     elevation: 35.,
                     intensity: 1.4,
@@ -215,12 +280,17 @@ impl<'de> Deserialize<'de> for Lighting {
             legacy: Light,
         }
         let saved = Saved::deserialize(de)?;
-        let result = Self {
+        let mut result = Self {
             lights: saved.lights.unwrap_or_else(|| vec![saved.legacy]),
             selected: saved.selected,
             fill: saved.fill,
             show_controls: false,
         };
+        for (index, light) in result.lights.iter_mut().enumerate() {
+            if light.name.trim().is_empty() {
+                light.name = format!("Light {}", index + 1);
+            }
+        }
         result.validate().map_err(serde::de::Error::custom)?;
         Ok(result)
     }
@@ -246,7 +316,12 @@ impl Lighting {
         let azimuth = self.lights.last().map_or(Light::default().azimuth, |l| {
             (l.azimuth + 120. + 180.).rem_euclid(360.) - 180.
         });
+        let name = (1..)
+            .map(|n| format!("Light {n}"))
+            .find(|name| self.lights.iter().all(|l| &l.name != name))
+            .unwrap();
         self.lights.push(Light {
+            name,
             azimuth,
             intensity: 1.,
             ..Default::default()
@@ -268,11 +343,12 @@ impl Lighting {
             return;
         }
         egui::ComboBox::from_id_salt("selected_light")
-            .selected_text(format!("Light {}", self.selected + 1))
-            .width(110.)
+            .selected_text(self.lights[self.selected].label(self.selected))
+            .width(140.)
+            .truncate()
             .show_ui(ui, |ui| {
                 for i in 0..self.lights.len() {
-                    ui.selectable_value(&mut self.selected, i, format!("Light {}", i + 1));
+                    ui.selectable_value(&mut self.selected, i, self.lights[i].label(i));
                 }
             });
     }
@@ -285,6 +361,7 @@ impl Lighting {
     ) -> impl Iterator<Item = (Vec3, [f32; 3])> + Clone + '_ {
         self.lights
             .iter()
+            .filter(|light| light.enabled)
             .map(move |light| light.at(position, right, up, view))
     }
     pub fn install(&self, ctx: &egui::Context) {
@@ -294,7 +371,7 @@ impl Lighting {
         ctx.data(|d| d.get_temp(egui::Id::new("viewport_lighting")))
             .unwrap_or_default()
     }
-    pub fn controls(&mut self, ui: &mut egui::Ui) {
+    pub fn controls(&mut self, ui: &mut egui::Ui, camera: Camera) {
         search::setting_response(
             ui.checkbox(&mut self.show_controls, "Show light controls"),
             "Show light controls",
@@ -320,7 +397,7 @@ impl Lighting {
         });
         ui.weak(format!("{} / {MAX_LIGHTS} lights", self.lights.len()));
         if let Some(light) = self.lights.get_mut(self.selected) {
-            ui.push_id(self.selected, |ui| light.controls(ui));
+            ui.push_id(self.selected, |ui| light.controls(ui, camera));
         }
         ui.separator();
         search::setting_response(
@@ -338,6 +415,84 @@ impl Lighting {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn lighting_names_and_switches_migrate_and_preserve_configuration() {
+        let mut rig: Lighting =
+            serde_json::from_value(serde_json::json!({"lights":[{}, {"kind":"Point"}]})).unwrap();
+        assert_eq!(
+            rig.lights
+                .iter()
+                .map(|l| l.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Light 1", "Light 2"]
+        );
+        assert!(rig.lights.iter().all(|l| l.enabled));
+        rig.lights[0].name = "Warm key".into();
+        rig.lights[0].enabled = false;
+        rig.lights[1].name = "Cool rim".into();
+        let loaded: Lighting = serde_json::from_slice(&serde_json::to_vec(&rig).unwrap()).unwrap();
+        assert_eq!(loaded, rig);
+        let axes = Camera::default().basis();
+        assert_eq!(
+            rig.samples(Vec3::default(), axes.0, axes.1, axes.2).count(),
+            1
+        );
+        rig.lights[1].enabled = false;
+        assert_eq!(
+            rig.samples(Vec3::default(), axes.0, axes.1, axes.2).count(),
+            0
+        );
+        assert_eq!(rig.fill, 1.);
+        let saved = rig.lights[0].clone();
+        rig.lights[0].enabled = true;
+        assert_eq!(
+            rig.samples(Vec3::default(), axes.0, axes.1, axes.2)
+                .next()
+                .unwrap(),
+            saved.at(Vec3::default(), axes.0, axes.1, axes.2)
+        );
+        assert!(rig.add_light());
+        assert_eq!(rig.lights[2].name, "Light 1");
+        rig.lights[2].name = "x".repeat(81);
+        assert!(rig.validate().is_err());
+    }
+    #[test]
+    fn lighting_side_tracks_camera_kind_follow_and_view_plane() {
+        for kind in [LightKind::Directional, LightKind::Point] {
+            for follows in [false, true] {
+                let camera = Camera::default();
+                let mut light = Light {
+                    kind,
+                    camera_relative: follows,
+                    azimuth: 0.,
+                    elevation: 0.,
+                    ..Default::default()
+                };
+                assert_eq!(light.side_label(camera), "Position: Front");
+                light.switch_side(camera);
+                assert_eq!(light.side_label(camera), "Position: Back");
+                light.switch_side(camera);
+                let turned = Camera {
+                    yaw: std::f32::consts::PI,
+                    roll: 0.7,
+                    ..camera
+                };
+                assert_eq!(
+                    light.side_label(turned),
+                    if follows {
+                        "Position: Front"
+                    } else {
+                        "Position: Back"
+                    }
+                );
+                light.azimuth = 90.;
+                assert_eq!(light.side_label(camera), "Position: On view plane");
+                light.switch_side(camera);
+                assert_eq!(light.side_label(camera), "Position: Front");
+                light.validate().unwrap();
+            }
+        }
+    }
     #[test]
     fn lighting_defaults_camera_lock_point_falloff_and_validation() {
         let axes = (Vec3(1., 0., 0.), Vec3(0., 1., 0.), Vec3(0., 0., 1.));
@@ -366,7 +521,7 @@ mod tests {
         assert_eq!(rig.lights[0].azimuth, 76.);
         assert_eq!(rig.fill, 0.4);
         assert!(!rig.show_controls);
-        let first = rig.lights[0];
+        let first = rig.lights[0].clone();
         for _ in 1..MAX_LIGHTS {
             assert!(rig.add_light());
         }

@@ -4,6 +4,8 @@ Scope: #127, with the manual-construction delivery in #126. This inventory uses 
 
 PRs #146 (interaction), #147 (cameras) and #150 (arrays) have merged. #146 supplies the Apply/Discard/Keep editing brush-switch decision reused by this batch. #150 adds face-based instance placement, not polygon construction. Neither implements the missing modelling operations below.
 
+Integration update: this branch now includes `main` through `b00f68e`, including PRs #152, #162, #163 and #164. The table records the original audit baseline. Its selection-growth (#153) and general-snapping (#154) gaps have since been delivered by #164 and are available alongside manual construction in this branch.
+
 | Capability | State before this batch | Evidence and limits | Delivery decision |
 | --- | --- | --- | --- |
 | Face/edge/vertex selection, paint Add/Remove, connected islands, flat islands, groups | Existing | `viewport/modeling/selection.rs`, `sculpt/modeling/selection.rs`; depth-tested targets, exact symmetry maps and explicit mode conversion | Reuse unchanged |
@@ -38,4 +40,4 @@ The user-facing guide and focused geometry/controller/rendered-interaction check
 
 1. #125: advanced caps, using the same boundary and preview vocabulary.
 2. #121: reconcile remaining open-end joining acceptance without duplicating its implemented connector.
-3. Follow-up tickets #153–#157 are tracked in the development project as Backlog. Extend only a separately scoped missing operation from the matrix after its interaction and validation cases have been agreed. General snapping, bevels, partial bridges and face-region editing are independent changes and are not completion criteria for this first implementation batch.
+3. The audit's follow-up tickets #153–#157 are tracked in the development project; #153 and #154 are now delivered through #164. Extend only a separately scoped remaining operation from the matrix after its interaction and validation cases have been agreed. Bevels, partial bridges and face-region editing are independent changes and are not completion criteria for this first implementation batch.

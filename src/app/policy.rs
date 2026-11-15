@@ -256,6 +256,11 @@ impl<'a> EditorPolicy<'a> {
                 | Action::ModelAdd
                 | Action::ModelRemove
                 | Action::ModelJoin
+                | Action::ModelSnap
+                | Action::ModelGrowSelection
+                | Action::ModelShrinkSelection
+                | Action::ModelUndoSelection
+                | Action::ModelRedoSelection
                 | Action::ModelClearSelection
                 | Action::ModelSelectLoop
                 | Action::ModelSelectSingle
@@ -312,6 +317,15 @@ impl<'a> EditorPolicy<'a> {
             {
                 "Choose an editing tool in Modeling before applying an amount"
             }
+            Action::ModelSnap if !self.ui.modeling.tool.is_transform() => {
+                "Choose Move, Rotate or Scale first"
+            }
+            Action::ModelSnap if document.mesh_settings().levels() != 1 => {
+                "Use a single subdivision level before component snapping"
+            }
+            Action::ModelUndoSelection | Action::ModelRedoSelection => {
+                "No selection change to restore on this mesh"
+            }
             Action::ModelRepeat if !self.ui.modeling.can_repeat => {
                 "Apply a modelling edit first, then select components to repeat it"
             }
@@ -328,6 +342,8 @@ impl<'a> EditorPolicy<'a> {
             Action::ModelApply
             | Action::ModelRepeat
             | Action::ModelTopology(_)
+            | Action::ModelGrowSelection
+            | Action::ModelShrinkSelection
             | Action::ModelBoundary
                 if self.ui.modeling.count == 0 =>
             {
@@ -539,6 +555,27 @@ impl<'a> EditorPolicy<'a> {
                 .any(|p| p.id == *id),
             Action::ModelSmoothPreview | Action::ModelTapRepeat => {
                 self.edge_unavailable(action).is_none()
+            }
+            Action::ModelSnap => {
+                document.mesh_settings().levels() == 1
+                    && self.edge_unavailable(action).is_none()
+                    && self.ui.modeling.active
+                    && self.ui.modeling.count > 0
+                    && self.ui.modeling.tool.is_transform()
+            }
+            Action::ModelGrowSelection | Action::ModelShrinkSelection => {
+                self.edge_unavailable(action).is_none()
+                    && self.ui.modeling.active
+                    && self.ui.modeling.count > 0
+            }
+            Action::ModelUndoSelection | Action::ModelRedoSelection => {
+                self.edge_unavailable(action).is_none()
+                    && self.ui.modeling.active
+                    && if *action == Action::ModelRedoSelection {
+                        self.ui.modeling.selection_redo
+                    } else {
+                        self.ui.modeling.selection_undo
+                    }
             }
             Action::ModelTopology(edit) => {
                 self.edge_unavailable(action).is_none()

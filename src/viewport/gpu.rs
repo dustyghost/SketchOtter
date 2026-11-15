@@ -1190,8 +1190,13 @@ impl Gpu {
             p.perspective[2],
             p.depth,
         ];
-        u.light_info = [p.lighting.lights.len() as f32, p.lighting.fill, 0., 0.];
-        for (i, light) in p.lighting.lights.iter().enumerate() {
+        u.light_info = [
+            p.lighting.lights.iter().filter(|l| l.enabled).count() as f32,
+            p.lighting.fill,
+            0.,
+            0.,
+        ];
+        for (i, light) in p.lighting.lights.iter().filter(|l| l.enabled).enumerate() {
             u.light_position[i] = vector(
                 light.vector(p.right, p.up, p.view),
                 f32::from(light.kind == crate::lighting::LightKind::Point),

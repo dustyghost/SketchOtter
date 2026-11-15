@@ -1666,6 +1666,36 @@ fn gpu_lighting_types_colour_and_distance_match_cpu() {
                     .collect(),
                 ..Default::default()
             },
+            Lighting {
+                lights: vec![
+                    Light {
+                        enabled: false,
+                        ..Default::default()
+                    },
+                    Light {
+                        enabled: false,
+                        kind: LightKind::Point,
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+            Lighting {
+                lights: vec![
+                    Light {
+                        azimuth: 75.,
+                        elevation: 15.,
+                        ..Default::default()
+                    },
+                    Light {
+                        enabled: false,
+                        kind: LightKind::Point,
+                        ..Default::default()
+                    },
+                ],
+                fill: 0.3,
+                ..Default::default()
+            },
         ];
         let mut samples = Vec::new();
         for lighting in configurations {
@@ -1697,6 +1727,14 @@ fn gpu_lighting_types_colour_and_distance_match_cpu() {
         assert_eq!(
             samples[5], samples[6],
             "Adding lights must not multiply ambient fill or emission"
+        );
+        assert_eq!(
+            samples[5], samples[9],
+            "All disabled lights leave ambient and emission intact"
+        );
+        assert_eq!(
+            samples[1], samples[10],
+            "Disabled point light adds no illumination"
         );
         assert_ne!(samples[4], samples[5], "Both light types contribute");
         assert!(
