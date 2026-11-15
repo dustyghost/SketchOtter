@@ -2078,3 +2078,167 @@ fn modeling_face_cell_notch_straight_on_preview_and_apply_to_selection_agree() {
     app.dispatch(Command::Redo, &ctx);
     assert_eq!(app.document.mesh(), &preview);
 }
+
+#[test]
+fn modeling_manual_topology_preview_apply_cancel_history_and_brush_switch() {
+    use crate::{sculpt::TopologyEdit, viewport::Component};
+    let (mut app, ctx, _) = setup();
+    app.dispatch(Command::ModelingComponent(ComponentMode::Vertex), &ctx);
+    let q = app.document.mesh().quads[0];
+    let select = |app: &mut App| {
+        app.viewport.modeling.sync(&app.document);
+        app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
+    };
+    select(&mut app);
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts();
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    assert_eq!(app.document.history_counts(), history);
+    let preview = app
+        .viewport
+        .modeling
+        .preview()
+        .expect(&app.ui.status)
+        .clone();
+    app.camera.yaw += 0.3;
+    navigation_frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.viewport.modeling.preview(), Some(&preview));
+    app.dispatch(Command::CancelModelTopology, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+    assert_eq!(app.viewport.modeling.selected.len(), 2);
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    app.dispatch(Command::ApplyModelTopology, &ctx);
+    assert_eq!(app.document.mesh(), &preview);
+    assert_eq!(app.document.history_counts().0, history.0 + 1);
+    app.dispatch(Command::Undo, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    app.dispatch(Command::Redo, &ctx);
+    assert_eq!(app.document.mesh(), &preview);
+    app.dispatch(Command::Undo, &ctx);
+    select(&mut app);
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    app.execute_action(
+        Action::SelectBrush(app.document.brushes()[0].identity()),
+        &ctx,
+    );
+    assert!(app.ui.tool_change.is_some());
+    navigation_frame(&mut app, &ctx, vec![]);
+    assert!(app.viewport.modeling.topology_preview_label().is_some());
+    app.resolve_tool_change(crate::app::tool_change::Decision::KeepEditing, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    app.execute_action(
+        Action::SelectBrush(app.document.brushes()[0].identity()),
+        &ctx,
+    );
+    app.resolve_tool_change(crate::app::tool_change::Decision::Apply, &ctx);
+    assert_eq!(app.document.mesh(), &preview);
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+}
+
+#[test]
+fn modeling_manual_topology_rejects_protected_and_stale_previews_and_escape_cancels() {
+    use crate::{sculpt::TopologyEdit, viewport::Component};
+    let (mut app, ctx, _) = setup();
+    app.dispatch(Command::ModelingComponent(ComponentMode::Vertex), &ctx);
+    let q = app.document.mesh().quads[0];
+    let select = |app: &mut App| {
+        app.viewport.modeling.sync(&app.document);
+        app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
+    };
+    select(&mut app);
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    assert!(app.viewport.modeling.topology_preview_label().is_some());
+    navigation_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        }],
+    );
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+    assert!(app.ui.modeling.active);
+    navigation_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers: Default::default(),
+        }],
+    );
+    select(&mut app);
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    app.ui.modeling.protect_mask = false;
+    let before = app.document.geometry_snapshot();
+    app.dispatch(Command::ApplyModelTopology, &ctx);
+    assert!(app.ui.status.contains("changed"));
+    assert_eq!(app.document.geometry_snapshot(), before);
+    let mut geometry = before.clone();
+    geometry.mesh.mask[q[0]] = 1.;
+    app.document.replace_geometry(geometry).unwrap();
+    app.ui.modeling.protect_mask = true;
+    select(&mut app);
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    assert!(app.ui.status.contains("masked"));
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+}
+
+#[test]
+fn modeling_manual_topology_cap_protection_hidden_and_changed_target() {
+    use crate::{sculpt::TopologyEdit, viewport::Component};
+    let (mut app, ctx, _) = setup();
+    let q = app.document.mesh().quads[0];
+    app.viewport.modeling.selected = [Component::Face(0)].into();
+    app.dispatch(Command::ModelTopology(TopologyEdit::DeleteFaces), &ctx);
+    app.dispatch(Command::ModelingComponent(ComponentMode::Vertex), &ctx);
+    let open = app.document.geometry_snapshot();
+    let select = |app: &mut App| {
+        app.viewport.modeling.sync(&app.document);
+        app.viewport.modeling.selected = q.map(Component::Vertex).into();
+    };
+    let mut protected = open.clone();
+    protected.mesh.mask[q[0]] = 1.;
+    app.document.replace_geometry(protected).unwrap();
+    select(&mut app);
+    app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
+    assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+    app.ui.modeling.protect_mask = false;
+    app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
+    assert!(
+        app.viewport.modeling.topology_preview_label().is_some(),
+        "{}",
+        app.ui.status
+    );
+    app.dispatch(Command::ApplyModelTopology, &ctx);
+    assert_eq!(app.document.mesh().mask[q[0]], 1.);
+    let mut hidden = open.clone();
+    hidden.mesh.hidden_faces = vec![true; hidden.mesh.triangles.len()];
+    app.document.replace_geometry(hidden).unwrap();
+    select(&mut app);
+    app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
+    assert!(app.ui.status.contains("hidden"), "{}", app.ui.status);
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+    app.document.replace_geometry(open.clone()).unwrap();
+    select(&mut app);
+    app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
+    assert!(app.viewport.modeling.topology_preview_label().is_some());
+    app.document
+        .replace_geometry(Geometry::new(
+            Primitive::for_kind(PrimitiveKind::Cube).mesh().unwrap(),
+        ))
+        .unwrap();
+    let changed = app.document.geometry_snapshot();
+    app.dispatch(Command::ApplyModelTopology, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), changed);
+    assert!(app.ui.status.contains("changed"), "{}", app.ui.status);
+    assert!(app.viewport.modeling.topology_preview_label().is_none());
+}

@@ -1,21 +1,24 @@
 //! Explicit topology operations. Each builds a separate mesh and validates before return.
 use super::*;
+mod manual;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TopologyEdit {
     DeleteFaces,
     Fill,
     Bridge,
     Connect,
+    CreateFace,
     Split,
     Weld,
     Collapse,
 }
 impl TopologyEdit {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::DeleteFaces,
         Self::Fill,
         Self::Bridge,
         Self::Connect,
+        Self::CreateFace,
         Self::Split,
         Self::Weld,
         Self::Collapse,
@@ -26,6 +29,7 @@ impl TopologyEdit {
             Self::Fill => "Fill boundary",
             Self::Bridge => "Bridge boundaries",
             Self::Connect => "Connect vertices",
+            Self::CreateFace => "Create face",
             Self::Split => "Split edges",
             Self::Weld => "Weld vertices",
             Self::Collapse => "Collapse edges",
@@ -130,13 +134,18 @@ impl Mesh {
         vertices: &[usize],
         symmetry: &ModelingSymmetry,
     ) -> Result<Mesh, String> {
+        if matches!(
+            edit,
+            TopologyEdit::Connect | TopologyEdit::Fill | TopologyEdit::CreateFace
+        ) {
+            return self.manual_topology(edit, edges, vertices, symmetry);
+        }
         manifold(self)?;
         let polygons = self.polygons();
         let mut out = self.empty_topology();
         let mut removed = BTreeSet::new();
         let mut mapping: BTreeMap<usize, usize> = BTreeMap::new();
         let mut split = BTreeMap::new();
-        let mut diagonals = BTreeMap::new();
         let pair = || -> Result<[usize; 2], String> {
             let wanted: BTreeSet<_> = vertices.iter().copied().collect();
             if wanted.len() == 2 {
@@ -150,15 +159,7 @@ impl Mesh {
                     }
                     let copies: BTreeSet<_> =
                         symmetry.edge_copies([a, b]).into_iter().flatten().collect();
-                    if copies == wanted
-                        && (edit != TopologyEdit::Connect
-                            || polygons.iter().any(|p| {
-                                p.vertices.len() == 4
-                                    && p.vertices.contains(&a)
-                                    && p.vertices.contains(&b)
-                                    && !p.edges().any(|(u, v)| edge(u, v) == edge(a, b))
-                            }))
-                    {
+                    if copies == wanted {
                         candidates.push([a, b]);
                     }
                 }
@@ -202,25 +203,6 @@ impl Mesh {
                     split.insert(e, out.append_blend(self, &[(e[0], 0.5), (e[1], 0.5)], p));
                 }
             }
-            TopologyEdit::Connect => {
-                for [a, b] in symmetry.edge_copies(pair()?) {
-                    let f = polygons
-                        .iter()
-                        .position(|p| {
-                            p.visible
-                                && p.vertices.len() == 4
-                                && p.vertices.contains(&a)
-                                && p.vertices.contains(&b)
-                                && !p.edges().any(|(u, v)| edge(u, v) == edge(a, b))
-                        })
-                        .ok_or("Connect requires opposite corners of a quad")?;
-                    if let Some(old) = diagonals.insert(f, edge(a, b))
-                        && old != edge(a, b)
-                    {
-                        return Err("Symmetry would create crossing diagonals in one face".into());
-                    }
-                }
-            }
             TopologyEdit::Weld | TopologyEdit::Collapse => {
                 let pairs = if edit == TopologyEdit::Weld {
                     symmetry.edges(&[pair()?])
@@ -259,17 +241,13 @@ impl Mesh {
                     }
                 }
             }
-            TopologyEdit::Fill | TopologyEdit::Bridge => {}
+            TopologyEdit::CreateFace | TopologyEdit::Connect | TopologyEdit::Fill => {
+                unreachable!("manual construction handled above")
+            }
+            TopologyEdit::Bridge => {}
         }
         for (f, p) in polygons.iter().enumerate() {
             if removed.contains(&f) {
-                continue;
-            }
-            if let Some(&[a, b]) = diagonals.get(&f) {
-                let index = p.vertices.iter().position(|&v| v == a).unwrap();
-                let v = &p.vertices;
-                out.push_polygon(&[a, v[(index + 1) % 4], b], p.group, p.hidden);
-                out.push_polygon(&[a, b, v[(index + 3) % 4]], p.group, p.hidden);
                 continue;
             }
             let mut corners = Vec::new();
@@ -291,103 +269,86 @@ impl Mesh {
             }
             out.push_model_polygon(&corners, p.group, p.hidden)?;
         }
-        if matches!(edit, TopologyEdit::Fill | TopologyEdit::Bridge) {
+        if edit == TopologyEdit::Bridge {
             let loops = self.selected_boundaries(&symmetry.edges(edges))?;
-            if edit == TopologyEdit::Fill {
-                for mut cycle in loops {
-                    cycle.reverse();
-                    let p = Polygon {
-                        vertices: cycle.clone(),
-                        group: 0,
-                        hidden: false,
-                        visible: true,
+            let keys: Vec<BTreeSet<_>> = loops
+                .iter()
+                .map(|cycle| cycle.iter().copied().collect())
+                .collect();
+            let mut choices = Vec::new();
+            for j in 1..loops.len() {
+                let mut pairs = BTreeSet::new();
+                let mut valid = true;
+                for map in &symmetry.vertices {
+                    let locate = |cycle: &Vec<usize>| {
+                        let key: BTreeSet<_> = cycle.iter().map(|&v| map[v]).collect();
+                        keys.iter().position(|k| *k == key)
                     };
-                    let n = normal(self, &p);
-                    let origin = self.vertices[cycle[0]];
-                    if n.len() < 0.9
-                        || cycle
-                            .iter()
-                            .any(|&v| (self.vertices[v] - origin).dot(n).abs() > 1e-5)
-                    {
-                        return Err("Fill requires a planar boundary".into());
-                    }
-                    out.push_model_polygon(&cycle, 0, false)?;
-                }
-            } else {
-                let keys: Vec<BTreeSet<_>> = loops
-                    .iter()
-                    .map(|cycle| cycle.iter().copied().collect())
-                    .collect();
-                let mut choices = Vec::new();
-                for j in 1..loops.len() {
-                    let mut pairs = BTreeSet::new();
-                    let mut valid = true;
-                    for map in &symmetry.vertices {
-                        let locate = |cycle: &Vec<usize>| {
-                            let key: BTreeSet<_> = cycle.iter().map(|&v| map[v]).collect();
-                            keys.iter().position(|k| *k == key)
-                        };
-                        if let (Some(a), Some(b)) = (locate(&loops[0]), locate(&loops[j])) {
-                            if a == b || loops[a].len() != loops[b].len() {
-                                valid = false;
-                                break;
-                            }
-                            pairs.insert(edge(a, b));
-                        } else {
+                    if let (Some(a), Some(b)) = (locate(&loops[0]), locate(&loops[j])) {
+                        if a == b || loops[a].len() != loops[b].len() {
                             valid = false;
                             break;
                         }
+                        pairs.insert(edge(a, b));
+                    } else {
+                        valid = false;
+                        break;
                     }
-                    let used: Vec<_> = pairs.iter().flatten().copied().collect();
-                    if !valid
-                        || used.len() != loops.len()
-                        || used.iter().copied().collect::<BTreeSet<_>>().len() != loops.len()
-                    {
-                        continue;
-                    }
-                    let center = |i: usize| {
-                        loops[i]
-                            .iter()
-                            .fold(Vec3::default(), |p, &v| p + self.vertices[v])
-                            * (1. / loops[i].len() as f32)
-                    };
-                    let cost = pairs
-                        .iter()
-                        .map(|&[a, b]| (center(a) - center(b)).len())
-                        .sum::<f32>();
-                    choices.push((cost, pairs));
                 }
-                let pairs=choices.into_iter().min_by(|a,b|a.0.total_cmp(&b.0)).ok_or("Bridge requires two equal-count boundaries and their matching symmetry copies")?.1;
-                for [first, second] in pairs {
-                    let a = &loops[first];
-                    let mut b = loops[second].clone();
-                    b.reverse();
-                    let count = a.len();
-                    let shift = (0..count)
-                        .min_by(|&i, &j| {
-                            let cost = |s: usize| {
-                                (0..count)
-                                    .map(|k| {
-                                        (self.vertices[a[k]] - self.vertices[b[(k + s) % count]])
-                                            .len()
-                                    })
-                                    .sum::<f32>()
-                            };
-                            cost(i).total_cmp(&cost(j))
-                        })
-                        .unwrap();
-                    for i in 0..count {
-                        out.push_polygon(
-                            &[
-                                a[(i + 1) % count],
-                                a[i],
-                                b[(i + shift) % count],
-                                b[(i + 1 + shift) % count],
-                            ],
-                            0,
-                            false,
-                        );
-                    }
+                let used: Vec<_> = pairs.iter().flatten().copied().collect();
+                if !valid
+                    || used.len() != loops.len()
+                    || used.iter().copied().collect::<BTreeSet<_>>().len() != loops.len()
+                {
+                    continue;
+                }
+                let center = |i: usize| {
+                    loops[i]
+                        .iter()
+                        .fold(Vec3::default(), |p, &v| p + self.vertices[v])
+                        * (1. / loops[i].len() as f32)
+                };
+                let cost = pairs
+                    .iter()
+                    .map(|&[a, b]| (center(a) - center(b)).len())
+                    .sum::<f32>();
+                choices.push((cost, pairs));
+            }
+            let pairs = choices
+                .into_iter()
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .ok_or(
+                    "Bridge requires two equal-count boundaries and their matching symmetry copies",
+                )?
+                .1;
+            for [first, second] in pairs {
+                let a = &loops[first];
+                let mut b = loops[second].clone();
+                b.reverse();
+                let count = a.len();
+                let shift = (0..count)
+                    .min_by(|&i, &j| {
+                        let cost = |s: usize| {
+                            (0..count)
+                                .map(|k| {
+                                    (self.vertices[a[k]] - self.vertices[b[(k + s) % count]]).len()
+                                })
+                                .sum::<f32>()
+                        };
+                        cost(i).total_cmp(&cost(j))
+                    })
+                    .unwrap();
+                for i in 0..count {
+                    out.push_polygon(
+                        &[
+                            a[(i + 1) % count],
+                            a[i],
+                            b[(i + shift) % count],
+                            b[(i + 1 + shift) % count],
+                        ],
+                        0,
+                        false,
+                    );
                 }
             }
         }

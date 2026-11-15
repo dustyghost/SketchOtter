@@ -464,6 +464,7 @@ impl Action {
         Self::ModelTopology(crate::sculpt::TopologyEdit::Fill),
         Self::ModelTopology(crate::sculpt::TopologyEdit::Bridge),
         Self::ModelTopology(crate::sculpt::TopologyEdit::Connect),
+        Self::ModelTopology(crate::sculpt::TopologyEdit::CreateFace),
         Self::ModelTopology(crate::sculpt::TopologyEdit::Split),
         Self::ModelTopology(crate::sculpt::TopologyEdit::Weld),
         Self::ModelTopology(crate::sculpt::TopologyEdit::Collapse),

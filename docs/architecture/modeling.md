@@ -106,3 +106,9 @@ Presets have stable `Action` identities shared by buttons, shelves and shortcuts
 ### Exact face group assignment
 
 Face-mode group assignment carries explicit polygon IDs into `Document::group_model_selection`. Symmetry expands faces and vertices separately: vertex weights receive selected corners, while categorical group labels update only triangles belonging to the selected polygons. Mask-based grouping remains available for vertex/edge selections; face selections never infer additional faces from shared corners.
+
+### Manual construction previews
+
+`sculpt/modeling/topology/manual.rs` extends the existing Connect/Fill actions and adds Create face. It preserves surviving vertex indices and triangle-corner attributes, derives cap winding from directed boundaries, rejects intersecting projected rims, and uses the existing fusion triangle index to reject new-patch intersections. Convex quadrilateral caps retain quad topology; other caps use earcut triangles. New UV faces are explicitly unmapped.
+
+`viewport/modeling/topology.rs` stores an immutable result bound to the document revision, exact selection, symmetry and mask-protection setting. Navigation does not rebuild it. Apply validates the captured context and commits once; cancellation never changes history. These persistent previews survive interrupted pointer gestures and participate in `app/tool_change.rs`'s Apply/Discard/Keep editing decision. The capability inventory and deferred operations are recorded in [the modelling audit](../research/modeling-capabilities-2026-11-15.md).

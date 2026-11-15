@@ -56,13 +56,35 @@ impl App {
                 self.ui.modeling.span = crate::viewport::SelectionSpan::Single;
                 Ok(())
             }
+            Command::ApplyModelTopology => self
+                .viewport
+                .modeling
+                .apply_topology(&mut self.document, self.ui.modeling.protect_mask),
+            Command::CancelModelTopology => {
+                self.viewport.modeling.cancel_topology();
+                Ok(())
+            }
             Command::ModelTopology(edit) => {
                 self.viewport.cancel(&mut self.document);
-                self.viewport.modeling.topology_edit(
-                    &mut self.document,
+                if matches!(
                     edit,
-                    self.ui.modeling.protect_mask,
-                )
+                    crate::sculpt::TopologyEdit::Connect
+                        | crate::sculpt::TopologyEdit::Fill
+                        | crate::sculpt::TopologyEdit::CreateFace
+                ) {
+                    self.viewport.modeling.preview_topology(
+                        &self.document,
+                        edit,
+                        self.ui.modeling.options(),
+                    )
+                } else {
+                    self.viewport.modeling.cancel_topology();
+                    self.viewport.modeling.topology_edit(
+                        &mut self.document,
+                        edit,
+                        self.ui.modeling.protect_mask,
+                    )
+                }
             }
             Command::ModelRepeat => {
                 self.viewport.cancel(&mut self.document);

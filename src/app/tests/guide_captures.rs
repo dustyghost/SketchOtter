@@ -5,6 +5,8 @@ mod array_layers;
 mod attached_array_capture;
 #[path = "cameras_capture.rs"]
 mod cameras_capture;
+#[path = "topology_capture.rs"]
+mod topology_capture;
 #[path = "guide_deformation_stack.rs"]
 mod deformation_stack_review;
 #[path = "grouped_path_capture.rs"]

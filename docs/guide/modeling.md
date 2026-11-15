@@ -413,6 +413,26 @@ This requires complete, noncrossing interior quad loops. An open loop must end a
 
 ![The selected loops removed, with larger connected quads remaining](../images/modeling-dissolve-after.png)
 
+### Connect vertices and create faces
+
+**Modeling → Topology** provides three construction actions:
+
+| Action | Selection | Result |
+| --- | --- | --- |
+| **Connect vertices** | In Vertex mode, select opposite corners of one quad | Split the quad along the chosen diagonal; existing edges are never duplicated |
+| **Create face** | In Vertex mode, select every vertex around an existing opening | Create a face or patch using the boundary's order |
+| **Fill boundary** | In Edge mode, choose Boundary and select a complete opening | Fill the selected loop; other holes remain open |
+
+Choose an action to preview it. Inspect the shaded surface and wireframe, orbit the view, then use **Apply topology** near the top of Modeling. **Cancel topology preview** or Escape discards it and keeps the selection. Apply creates one Undo step and clears the old component selection. Undo restores the geometry and subdivision levels; Redo restores the result. The applied result saves with the project; an uncommitted preview is session-only.
+
+Changing the selection or modelling tool cancels the preview. Switching to a sculpt brush offers **Apply and switch**, **Discard and switch**, or **Keep editing**. Hidden and masked boundary vertices remain protected; **Protect mask** can be turned off deliberately before generating a new preview. Changed targets or protection settings require a fresh preview.
+
+For example, orbit to expose the adjoining surfaces and select the vertices around a four-sided opening and choose **Create face**. A convex rim produces one quad. A triangular rim produces one triangle; concave four-sided and larger rims produce a triangulated patch with visible internal edges. Only the selected boundary is welded. The tool does not add loose edges or vertices. To extend an open surface instead, use **Extrude edge**.
+
+The new face follows the neighbouring winding. Crossed, branched, collapsed, obstructed or highly nonplanar openings are rejected before Apply. Basic filling supports up to 1,024 vertices per loop and mild nonplanarity within 5% of the rim span; it does not optimise quad flow or patch density. Advanced hole caps are tracked in [#125](https://github.com/dustyghost/clay-form/issues/125).
+
+Existing masks, materials, groups, creases and unaffected UV corners remain intact. New caps have no face group and start unmapped; unwrap them before texture painting. Connecting a quad preserves compatible corner UVs and UV masks. A seam or a mixture of mapped/unmapped triangles across its internal diagonal needs repair before connecting.
+
 ### Slide and repair topology
 
 Use **Edge → Select → Loop**, then **Slide loop**. Drag to preview, or enter a fraction between -1 and 1 and choose **Apply amount**. The chosen axis determines the positive rail on the reference side; symmetry mirrors that movement. Sliding keeps the same topology and selection. It requires a complete interior quad loop with unambiguous rails; selected loops must not share a face.
@@ -422,11 +442,12 @@ Expand **Topology** for operations on the current selection:
 | Mode | Action | Result and limits |
 | --- | --- | --- |
 | Face | Delete faces | Removes the selected faces and opens holes |
-| Edge | Fill boundary | Fills complete planar boundaries; concave outlines are triangulated |
+| Edge | Fill boundary | Previews complete planar or mildly nonplanar boundaries; concave outlines are triangulated |
 | Edge | Bridge boundaries | Connects two equal-count open boundaries and their symmetry copies with a strip of quads |
 | Edge | Split edges | Adds midpoint vertices; adjoining polygons may become triangles |
 | Edge | Collapse edges | Merges each connected set of selected edge endpoints at their average position |
-| Vertex | Connect vertices | Splits a quad between two opposite corners |
+| Vertex | Connect vertices | Previews a split between two opposite corners of a quad |
+| Vertex | Create face | Previews a patch from the vertices of a complete opening |
 | Vertex | Weld vertices | Merges two vertices at their midpoint, including corresponding symmetry pairs |
 
 Use **Target → Boundary** to select a complete hole. For two boundaries or vertices, use **Add** to select the second. These edits preserve surviving weights and creases, respect **Protect mask**, and reject invalid or ambiguous results as a whole. Bridge does not detect arbitrary intersections with other surfaces. Delete and collapse change the surface; **Dissolve selected loops** removes redundant loops while keeping it connected. Each completed edit is one Undo step.

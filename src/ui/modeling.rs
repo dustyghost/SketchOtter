@@ -18,6 +18,7 @@ pub(crate) struct ModelingControls {
     pub directions: std::collections::BTreeMap<ModelTool, crate::sculpt::Vec3>,
     pub amount: f32,
     pub preview_amount: Option<f32>,
+    pub topology_preview: Option<&'static str>,
     pub protect_mask: bool,
     pub individual: bool,
     pub snap: f32,
@@ -207,6 +208,18 @@ impl UiState {
         if !self.modeling.active {
             ui.weak("Enable Modeling to select faces, edges or vertices. Your component selection is kept when switching tools.");
             return;
+        }
+        if let Some(label) = self.modeling.topology_preview {
+            ui.label(format!("Preview: {label} · active model"));
+            ui.horizontal_wrapped(|ui| {
+                if ui.button("Apply topology").clicked() {
+                    commands.push(Command::ApplyModelTopology);
+                }
+                if ui.button("Cancel topology preview").clicked() {
+                    commands.push(Command::CancelModelTopology);
+                }
+            });
+            ui.weak("Orbit to inspect. Apply is one Undo step; Escape cancels. Changing the selection or modelling tool cancels this preview.");
         }
         ui.label(format!(
             "{:?} · {} · {} selected",
@@ -478,9 +491,10 @@ impl UiState {
             egui::CollapsingHeader::new("Topology").open(search::requested_section(ui.ctx(), "model_topology")).show(ui,|ui|{
                 for edit in crate::sculpt::TopologyEdit::ALL {
                     use crate::sculpt::TopologyEdit as T;
-                    let mode=match edit {T::DeleteFaces=>ComponentMode::Face,T::Connect|T::Weld=>ComponentMode::Vertex,_=>ComponentMode::Edge};
+                    let mode=match edit {T::DeleteFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace=>ComponentMode::Vertex,_=>ComponentMode::Edge};
                     if self.modeling.mode==mode && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
                 }
+                ui.weak("Connect vertices splits a quad. Create face uses every vertex around an opening; Fill boundary uses its complete edge loop. These actions preview before Apply. New caps follow the boundary winding and need unwrapping before texture painting. Loose edges are not supported.");
                 ui.weak("Delete opens holes; dissolve keeps the surface. Weld uses the midpoint.");
             });
             egui::CollapsingHeader::new("Selection to vertex group").open(search::requested_section(ui.ctx(), "model_groups")).show(ui, |ui| {

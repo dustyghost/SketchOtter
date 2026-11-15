@@ -90,6 +90,8 @@ pub(crate) enum Command {
     ModelPreviewFuse,
     ModelRepeat,
     ModelTopology(crate::sculpt::TopologyEdit),
+    ApplyModelTopology,
+    CancelModelTopology,
     ModelBoundary,
     GroupModelSelection(Option<usize>, bool),
     Undo,
