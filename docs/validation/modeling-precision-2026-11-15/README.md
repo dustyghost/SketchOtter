@@ -1,6 +1,6 @@
 # Modeling selection growth and snapping — 15 November 2026
 
-Tickets: #153 and #154. One independent PR based on main; existing lighting, topology, surface-array and camera PRs remain unmerged.
+Tickets: #153 and #154. PR #164 includes main through `d9c5d7c`, including the merged lighting (#152), surface-array (#162) and camera (#163) changes. Topology work remains in separate PRs.
 
 Grow/shrink follows logical polygon adjacency in all component modes. Open boundaries erode, closed fully selected islands remain selected, disconnected islands do not join, and hidden/protected vertices are barriers. Exact symmetry retains whole orbits. A bounded, revision-local selection history supplies explicit Undo/Redo selection actions without changing geometry history or tool choices.
 
@@ -8,6 +8,7 @@ Snapping uses an explicit selected source vertex and a visible vertex, edge or s
 
 Validation:
 
+- Integration with current main: all ten selection/snapping tests and the actual-control Vulkan walkthrough passed again. Both screenshot-index entries and both regeneration paths are retained after resolving the documentation/script conflicts. Formatting and shell syntax checks passed; no application-code conflict required a manual resolution.
 - Focused selection and snapping tests cover adjacency, boundaries/islands, protection, symmetry, selection history, transform constraints, picking in both projections, hidden/occluded/out-of-range targets, preset compatibility, cancellation, stale previews and geometry history.
 - All 46 modeling controller tests passed, including the two new controller tests. Existing selection gestures, free/gizmo transforms, symmetry, protection, topology edits, repeat and presets remain covered.
 - The existing `component_transforms_preserve_attributes_and_mirror_displacements` regression passed.

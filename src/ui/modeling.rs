@@ -172,7 +172,7 @@ impl UiState {
         search::mark_destination(ui, "section:modeling_options");
         if self.modeling.active && self.modeling.mode == ComponentMode::Face {
             if let Some(set) = document.instances().sets.iter().find(|s| document.surface_guide_editing(s.id)) {
-                if ui.add_enabled(self.modeling.count > 0, egui::Button::new("Use selected faces for surface array")).on_hover_text("Replaces the region and clears per-copy overrides. Preview before applying.").clicked() {
+                if ui.add_enabled(self.modeling.count > 0, egui::Button::new("Use selected faces for surface array")).on_hover_text("Keeps edits on retained faces while connectivity is unchanged. Removed faces lose their copy edits; topology changes reset all copy edits. Preview before applying.").clicked() {
                     commands.push(Command::Instances(crate::command::InstanceCommand::SurfaceSelection(set.id)));
                 }
                 if ui.button("Show surface array result").clicked() { commands.push(Command::Instances(crate::command::InstanceCommand::SurfaceGuide(set.id, false))); }
