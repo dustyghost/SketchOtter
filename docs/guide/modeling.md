@@ -433,6 +433,10 @@ The new face follows the neighbouring winding. Crossed, branched, collapsed, obs
 
 Existing masks, materials, groups, creases and unaffected UV corners remain intact. New caps have no face group and start unmapped; unwrap them before texture painting. Connecting a quad preserves compatible corner UVs and UV masks. A seam or a mixture of mapped/unmapped triangles across its internal diagonal needs repair before connecting.
 
+![A quad cap preview using the four selected boundary vertices](../images/create-face-preview.png)
+
+![An explicit diagonal preview between opposite quad vertices](../images/connect-vertices-preview.png)
+
 ### Slide and repair topology
 
 Use **Edge → Select → Loop**, then **Slide loop**. Drag to preview, or enter a fraction between -1 and 1 and choose **Apply amount**. The chosen axis determines the positive rail on the reference side; symmetry mirrors that movement. Sliding keeps the same topology and selection. It requires a complete interior quad loop with unambiguous rails; selected loops must not share a face.
