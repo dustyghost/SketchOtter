@@ -68,6 +68,8 @@ impl Geometry {
             let owned_hidden = matches!(&set.layout, Layout::Array(a) if a.owner.is_some_and(|owner| {
                 !set.visible || !std::iter::once(&self.scene.active_metadata).chain(self.submodels.iter().map(|m| &m.metadata)).any(|m| m.model_id == owner && m.visible)
             }));
+            let owned_hidden = owned_hidden
+                || matches!(&set.layout, Layout::Surface(a) if !set.visible || !std::iter::once(&self.scene.active_metadata).chain(self.submodels.iter().map(|m| &m.metadata)).any(|m| m.model_id == a.owner && m.visible));
             match request.scope {
                 BakeScope::Set(id) if id != set.id => continue,
                 BakeScope::All if !set.visible || owned_hidden => continue,
@@ -82,6 +84,16 @@ impl Geometry {
                 return Err("Operation cancelled".into());
             }
             let first = meshes.len();
+            if let Layout::Surface(a) = &set.layout {
+                let guide = self
+                    .instance_source(Source::Model(a.owner))
+                    .ok_or("Surface guide is missing")?;
+                let body = a.bake_guide(guide)?;
+                if !body.triangles.is_empty() {
+                    count_mesh(&body)?;
+                    meshes.push((format!("{} guide", set.name), body));
+                }
+            }
             if let Some(copies) = set.generated(&self.paths, |s| self.instance_source(s), cancel)? {
                 for copy in copies {
                     count_mesh(&copy.mesh)?;
@@ -121,7 +133,8 @@ impl Geometry {
         }
         drop(resolver);
         let replaces_owner = current && library.sets.iter().any(|s| baked.contains(&s.id)
-            && matches!(&s.layout, Layout::Array(a) if a.owner == Some(self.scene.active_metadata.model_id)));
+            && (matches!(&s.layout, Layout::Array(a) if a.owner == Some(self.scene.active_metadata.model_id))
+                || matches!(&s.layout, Layout::Surface(a) if a.owner == self.scene.active_metadata.model_id)));
         let new_models = match request.destination {
             PerCopy => meshes.len(),
             New => 1,

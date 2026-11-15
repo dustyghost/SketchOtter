@@ -44,7 +44,8 @@ impl Document {
             return Some(owner);
         }
         let copies = self.instance_placements().ok()?;
-        self.array_owner(copies.get(owner - self.model_count())?.0)
+        let id = copies.get(owner - self.model_count())?.0;
+        self.array_owner(id).or_else(|| self.surface_owner(id))
     }
     pub(crate) fn array_layer_extent(&self, set: &Set, layer: usize) -> Result<Vec3, String> {
         ArrayResolver::new(self.instances())

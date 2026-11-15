@@ -23,6 +23,8 @@ pub enum JoinMode {
 pub struct ResolvedCopies {
     pub placements: Vec<(u64, usize, Placement)>,
     pub meshes: HashMap<(u64, usize), Arc<Mesh>>,
+    pub source_meshes: HashMap<u64, Arc<Mesh>>,
+    pub notices: Vec<String>,
 }
 impl std::ops::Deref for ResolvedCopies {
     type Target = Vec<(u64, usize, Placement)>;

@@ -111,6 +111,16 @@ pub(super) fn editor(ui: &mut egui::Ui, a: &mut Array, active: &mut usize, docum
             ArraySpacing::Distance => "Spacing is the distance between placement origins.",
             ArraySpacing::Span => "Span is the distance from the first placement to the last.",
         }); }
+        ui.strong("Rotation per copy");
+        ui.horizontal_wrapped(|ui| {
+            for (axis, value) in [&mut layer.step_rotation.0, &mut layer.step_rotation.1, &mut layer.step_rotation.2].into_iter().enumerate() {
+                let response = ui.add(egui::DragValue::new(value).speed(0.5).prefix(format!("{} ", ["X", "Y", "Z"][axis])).suffix("°"));
+                #[cfg(test)]
+                ui.ctx().data_mut(|data| data.insert_temp(egui::Id::new(("rotation_per_copy", axis)), response.rect));
+                let _ = response;
+            }
+        });
+        ui.weak("Signed angles accumulate: 0°, θ, 2θ… Zero keeps the angle unchanged. Axes are in this layer before its whole-layer transform; pivot is each copy’s placement origin (the prior layer’s origin for layered arrays).");
         egui::CollapsingHeader::new("Whole layer transform").show(ui, |ui| {
             vector(ui,"Layer rotation (degrees)",&mut layer.rotation);
             vector(ui,"Layer size on X / Y / Z",&mut layer.size);
@@ -119,7 +129,6 @@ pub(super) fn editor(ui: &mut egui::Ui, a: &mut Array, active: &mut usize, docum
             if layer.kind!=ArrayKind::Linear || layer.step_offset!=Vec3::default() {
                 vector(ui,"Additional position step",&mut layer.step_offset);
             }
-            vector(ui,"Rotation step (degrees)",&mut layer.step_rotation);
             vector(ui,"Scale factor per step",&mut layer.step_scale);
             ui.weak("The first repeat keeps its size and angle. Later repeats add rotation and multiply size on each axis.");
         });

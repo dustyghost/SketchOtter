@@ -147,6 +147,7 @@ impl<'a> EditorPolicy<'a> {
         let intent = match action {
             Action::Search | Action::ToggleZen => Intent::Request,
             Action::CreateInstanceArray
+            | Action::CreateSurfaceArray
             | Action::CreatePathAssembly
             | Action::CaptureObjectBrush => Intent::Instances,
             Action::CancelMeshOperation => Intent::CancelJob,
@@ -402,6 +403,9 @@ impl<'a> EditorPolicy<'a> {
                 "Hide some faces, leaving some visible, before splitting the model"
             }
             Action::StrokeEntirePath => "Create a surface path on the active model first",
+            Action::CreateSurfaceArray => {
+                "Capture an Object brush part, then select guide faces in Modeling"
+            }
             Action::CreatePathAssembly if document.paths().is_empty() => {
                 "Create a path before adding a path assembly"
             }
@@ -453,6 +457,12 @@ impl<'a> EditorPolicy<'a> {
                                 .iter()
                                 .any(|texture| texture.channel == channel)
                     })
+            }
+            Action::CreateSurfaceArray => {
+                self.ui.modeling.active
+                    && self.ui.modeling.mode == crate::viewport::ComponentMode::Face
+                    && self.ui.modeling.count > 0
+                    && !document.instances().assets.is_empty()
             }
             Action::CreateInstanceArray | Action::CaptureObjectBrush => {
                 !document.mesh().triangles.is_empty()

@@ -8,6 +8,7 @@ mod arrays;
 mod attached;
 mod brushes;
 mod path_editor;
+mod surface;
 mod thickness;
 
 pub(crate) struct Controls {
@@ -269,6 +270,26 @@ impl UiState {
             }
             return;
         }
+        if let Ok(resolved) = document.instance_placements() {
+            for notice in &resolved.notices {
+                ui.colored_label(egui::Color32::YELLOW, notice);
+            }
+        }
+        // Use the same thumbnail cache as the object-brush library.
+        if let Some(mut set) = self.instances.editor.take() {
+            let before = set.clone();
+            if let Layout::Surface(a) = &mut set.layout
+                && !document
+                    .selected_instance
+                    .is_some_and(|(id, _)| id == set.id)
+            {
+                surface::part_picker(ui, &mut self.instances, document, a);
+            }
+            if before != set {
+                commands.push(Command::Instances(C::Preview(Box::new(set.clone()))));
+            }
+            self.instances.editor = Some(set);
+        }
         if let Err(error) = document.instance_placements() {
             ui.colored_label(egui::Color32::LIGHT_RED, error);
         }
@@ -299,6 +320,7 @@ impl UiState {
                 ui.label("Drag a coloured axis to move the copy, or drag its centre handle to move in the view plane. Drag elsewhere to orbit.");
             } else {
                 ui.label(match &set.layout {
+                    Layout::Surface(_) => "One captured part per guide face · Up follows the face normal; Forward follows its first edge.",
                     Layout::Array(_) => "Edit whole array · Change the count, spacing or layout of the blue-framed copies.",
                     Layout::Path(a) if a.regions.is_some() => "Grouped path object · Place Start and End once and repeat the Middle group.",
                     Layout::Path(_) => "Separate pieces · Repeat the whole Middle model along the path.",
@@ -391,6 +413,7 @@ impl UiState {
                             set.adjustments.clear();
                         }
                     }
+                    Layout::Surface(a) => surface::editor(ui, a),
                     Layout::Manual(p) => {
                         ui.label(format!("{} placed objects", p.len()));
                     }
@@ -493,7 +516,7 @@ fn bake_options(
     request: &mut BakeRequest,
     commands: &mut Vec<Command>,
 ) -> bool {
-    let replaces = matches!(request.scope, BakeScope::Set(id) if document.array_owner(id) == Some(document.active_model_index()));
+    let replaces = matches!(request.scope, BakeScope::Set(id) if document.array_owner(id).or_else(|| document.surface_owner(id)) == Some(document.active_model_index()));
     let name = match request.scope {
         BakeScope::Set(id) => {
             let Some(set) = document.instances().sets.iter().find(|s| s.id == id) else {
@@ -578,6 +601,7 @@ fn instance_set(
     ui.strong(set.target_name(None));
     ui.horizontal_wrapped(|ui| {
         let edit_label = match set.layout {
+            Layout::Surface(_) => "Edit surface array…",
             Layout::Array(_) => "Edit array…",
             Layout::Path(_) => "Edit path assembly…",
             Layout::Manual(_) => "Edit stroke…",
@@ -589,13 +613,41 @@ fn instance_set(
         {
             commands.push(Command::Instances(C::Edit(set.id)));
         }
-        if ui.button("Bake set…").clicked() {
+        if matches!(set.layout, Layout::Surface(_)) && ui.button("Make editable…").clicked() {
+            commands.push(Command::Instances(C::MakeArrayEditable(set.id)));
+        }
+        if !matches!(set.layout, Layout::Surface(_)) && ui.button("Bake set…").clicked() {
             *bake = Some(BakeRequest::new(BakeScope::Set(set.id)));
         }
         if ui.small_button("Remove set").clicked() {
             commands.push(Command::Instances(C::Remove(set.id)));
         }
     });
+    if let Layout::Surface(a) = &set.layout {
+        ui.label(format!(
+            "{} guide faces · {}",
+            a.faces.len(),
+            if a.replace {
+                "Replace faces"
+            } else {
+                "Keep faces"
+            }
+        ));
+        let editing = document.surface_guide_editing(set.id);
+        if ui
+            .button(if editing {
+                "Show result"
+            } else {
+                "Edit guide / select new region"
+            })
+            .clicked()
+        {
+            commands.push(Command::Instances(C::SurfaceGuide(set.id, !editing)));
+        }
+        if editing {
+            ui.weak("Copies are hidden while editing the guide. Select faces in Modeling and choose Use selected faces; this clears per-copy overrides.");
+        }
+    }
     if let Layout::Array(array) = &set.layout {
         ui.horizontal_wrapped(|ui| {
             if ui

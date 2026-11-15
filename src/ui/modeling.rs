@@ -159,6 +159,16 @@ impl UiState {
         commands: &mut Vec<Command>,
     ) {
         search::mark_destination(ui, "section:modeling_options");
+        if self.modeling.active && self.modeling.mode == ComponentMode::Face {
+            if let Some(set) = document.instances().sets.iter().find(|s| document.surface_guide_editing(s.id)) {
+                if ui.add_enabled(self.modeling.count > 0, egui::Button::new("Use selected faces for surface array")).on_hover_text("Replaces the region and clears per-copy overrides. Preview before applying.").clicked() {
+                    commands.push(Command::Instances(crate::command::InstanceCommand::SurfaceSelection(set.id)));
+                }
+                if ui.button("Show surface array result").clicked() { commands.push(Command::Instances(crate::command::InstanceCommand::SurfaceGuide(set.id, false))); }
+            } else if ui.add_enabled(self.modeling.count > 0, egui::Button::new("Surface array from selected faces…")).customize(Action::CreateSurfaceArray).on_hover_text("Place one captured Object brush part per polygon. Capture a part in Brush settings first.").clicked() {
+                commands.push(Command::Instances(crate::command::InstanceCommand::NewSurfaceArray));
+            }
+        }
         let unavailable = self.edge_unavailable(&Action::SelectEdges, document);
         let mut active = self.modeling.active;
         let response = ui

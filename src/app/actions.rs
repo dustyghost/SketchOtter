@@ -665,6 +665,9 @@ impl App {
             Action::Primitive => Some(Command::RequestPrimitive),
             Action::ConvertPrimitive => Some(Command::ConvertPrimitive),
             Action::DuplicateModel => Some(Command::DuplicateModel),
+            Action::CreateSurfaceArray => Some(Command::Instances(
+                crate::command::InstanceCommand::NewSurfaceArray,
+            )),
             Action::CreateInstanceArray => Some(Command::Instances(
                 crate::command::InstanceCommand::NewArray,
             )),

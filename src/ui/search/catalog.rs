@@ -395,6 +395,7 @@ fn action_destination(action: &Action) -> Destination {
         | RemoveMaskedFromGroup
         | DeleteGroup
         | RenameGroup
+        | CreateSurfaceArray
         | CreateInstanceArray
         | CreatePathAssembly
         | ApplyThickness

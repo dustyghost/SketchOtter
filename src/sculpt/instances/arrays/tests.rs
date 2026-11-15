@@ -145,3 +145,30 @@ fn layered_array_checks_limits_cycles_and_missing_sources_without_compacting_slo
     }
     assert_eq!(serde_json::from_value::<Array>(legacy).unwrap(), base);
 }
+
+#[test]
+fn progressive_rotation_signed_xyz_is_accumulated_in_layer_space() {
+    for direction in 0..3 {
+        for angle in [-30., 0., 30.] {
+            let mut a = Array::new(part());
+            a.piece.pivot = Vec3(4., -2., 3.);
+            a.center = Vec3(-3., 1., 2.);
+            a.count = 4;
+            a.spacing = Vec3(0.4, 0.2, 0.1);
+            a.step_rotation = axis(direction) * angle;
+            a.rotation = Vec3(12., -7., 9.);
+            let out = a.placements().unwrap();
+            let sample = a.piece.pivot + Vec3(0.2, 0.3, 0.4);
+            for (i, p) in out.iter().enumerate() {
+                let expected = rotate(
+                    rotate(sample - a.piece.pivot, axis(direction) * (angle * i as f32)),
+                    a.rotation,
+                );
+                near(p.point(sample) - p.transform.origin, expected);
+            }
+            let json = serde_json::to_string(&a).unwrap();
+            let restored: Array = serde_json::from_str(&json).unwrap();
+            assert_eq!(a, restored);
+        }
+    }
+}

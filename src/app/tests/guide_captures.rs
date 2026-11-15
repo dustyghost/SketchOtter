@@ -13,6 +13,8 @@ mod grouped_path_capture;
 mod object_kits;
 #[path = "path_assembly.rs"]
 mod path_assembly;
+#[path = "surface_array_capture.rs"]
+mod surface_array_capture;
 use super::*;
 use crate::{
     preferences::{BuiltinMenu, Dock, Tool},

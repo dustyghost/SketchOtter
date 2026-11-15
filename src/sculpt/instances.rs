@@ -7,6 +7,8 @@ mod bake;
 pub(crate) use bake::{BakeDestination, BakeRequest, BakeScope};
 mod path_output;
 pub use path_output::{GeneratedCopy, JoinMode, PathRegions, ResolvedCopies};
+mod surface;
+pub use surface::{SurfaceArray, SurfaceFit};
 mod arrays;
 pub use arrays::{
     Array, ArrayKind, ArrayLayer, ArrayResolver, ArraySpacing, Basis, MAX_ARRAY_LAYERS,
@@ -386,6 +388,7 @@ pub enum Layout {
     Manual(Vec<Placement>),
     Array(Array),
     Path(PathAssembly),
+    Surface(SurfaceArray),
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Adjustment {
@@ -434,14 +437,17 @@ impl Set {
         if let Layout::Array(a) = &self.layout {
             return Ok(arrays::numbered(self.adjust_slots(a.unlinked_slots()?)?));
         }
-        let base =
-            match &self.layout {
-                Layout::Manual(p) => p.clone(),
-                Layout::Path(a) => a.placements(paths.iter().find(|p| p.id == a.path).ok_or(
-                    "Assembly path is missing; undo its deletion or remove the assembly",
-                )?)?,
-                Layout::Array(_) => unreachable!(),
-            };
+        let base = match &self.layout {
+            Layout::Manual(p) => p.clone(),
+            Layout::Path(a) => a.placements(
+                paths
+                    .iter()
+                    .find(|p| p.id == a.path)
+                    .ok_or("Assembly path is missing; undo its deletion or remove the assembly")?,
+            )?,
+            Layout::Array(_) => unreachable!(),
+            Layout::Surface(_) => return Err("Surface arrays need guide and part geometry".into()),
+        };
         Ok(arrays::numbered(
             self.adjust_slots(base.into_iter().map(Some).collect())?,
         ))
@@ -500,6 +506,14 @@ impl Set {
             }
             Layout::Array(a) if a.source_array.is_none() => f(&mut a.piece.source),
             Layout::Array(_) => {}
+            Layout::Surface(a) => {
+                f(&mut a.piece.source);
+                let mut owner = Source::Model(a.owner);
+                f(&mut owner);
+                if let Source::Model(id) = owner {
+                    a.owner = id;
+                }
+            }
             Layout::Path(a) => {
                 f(&mut a.middle.source);
                 for p in [&mut a.start, &mut a.end].into_iter().flatten() {
@@ -602,6 +616,15 @@ impl Library {
             });
             if missing {
                 return Err("Instance source is missing".into());
+            }
+            if let Layout::Surface(a) = &set.layout {
+                a.validate()?;
+                if !owners.insert(a.owner) {
+                    return Err("Only one array can own a guide submodel".into());
+                }
+                set.adjust_slots(vec![None; a.faces.len()])?;
+                count += a.faces.len();
+                continue;
             }
             let placements = resolver.placements(set, paths)?;
             count += match &set.layout {
