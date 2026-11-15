@@ -5,8 +5,6 @@ mod array_layers;
 mod attached_array_capture;
 #[path = "cameras_capture.rs"]
 mod cameras_capture;
-#[path = "topology_capture.rs"]
-mod topology_capture;
 #[path = "guide_deformation_stack.rs"]
 mod deformation_stack_review;
 #[path = "grouped_path_capture.rs"]
@@ -17,6 +15,8 @@ mod object_kits;
 mod path_assembly;
 #[path = "surface_array_capture.rs"]
 mod surface_array_capture;
+#[path = "topology_capture.rs"]
+mod topology_capture;
 use super::*;
 use crate::{
     preferences::{BuiltinMenu, Dock, Tool},
