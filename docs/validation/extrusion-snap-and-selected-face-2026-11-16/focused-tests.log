@@ -1,0 +1,92 @@
+   Compiling clay-form v0.1.0-alpha.3 (/home/mark/Documents/ChatGPT/Clay From/clay-form-topology)
+    Finished `test` profile [unoptimized] target(s) in 4m 17s
+     Running unittests src/lib.rs (/tmp/clay-ui-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 5 tests
+test app::tests::guide_captures::region_selection_capture::extrusion_snap_join_offscreen_review ... ignored, requires Vulkan; pointer snapping, Shift override, real joins and Undo/Redo
+test sculpt::modeling::snap_join::tests::extrusion_snap_join_handles_mirrored_targets_once ... ok
+test sculpt::modeling::snap_join::tests::extrusion_snap_join_protects_targets_and_rejects_obstructions ... ok
+test sculpt::modeling::snap_join::tests::extrusion_snap_join_reuses_vertices_and_preserves_faces_and_uvs ... ok
+test viewport::modeling::extrude_snapping::tests::extrusion_snap_join_targets_respect_depth_radius_masks_and_toggle ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 1366 filtered out; finished in 7.43s
+
+    Finished `test` profile [unoptimized] target(s) in 1.08s
+     Running unittests src/lib.rs (/tmp/clay-ui-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 4 tests
+test app::tests::guide_captures::region_selection_capture::create_selected_face_offscreen_review ... ignored, requires Vulkan; clicks Create face for selected vertices and edge endpoints
+test sculpt::modeling::topology::points::tests::create_selected_face_fills_three_or_four_vertices_and_edge_endpoints ... ok
+test sculpt::modeling::topology::points::tests::create_selected_face_preserves_mirrored_wire_orientation ... ok
+test sculpt::modeling::topology::points::tests::create_selected_face_rejects_collapsed_stale_and_obstructed_points ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 1367 filtered out; finished in 0.01s
+
+    Finished `test` profile [unoptimized] target(s) in 0.40s
+     Running unittests src/lib.rs (/tmp/clay-ui-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 13 tests
+test app::tests::guide_captures::topology_capture::manual_topology_offscreen_review ... ignored, requires Vulkan; exercises immediate construction and one-step Undo/Redo
+test app::tests::modeling::modeling_manual_topology_actions_reopen_modeling_and_commit_from_other_tools ... ok
+test app::tests::modeling::modeling_manual_topology_caps_protect_masked_hidden_and_incomplete_boundaries ... ok
+test app::tests::modeling::modeling_manual_topology_connect_is_immediate_undoable_and_leaves_no_draft ... ok
+test app::tests::modeling::modeling_manual_topology_delete_create_and_fill_each_commit_one_history_step ... ok
+test app::tests::modeling::modeling_manual_topology_failed_connect_preserves_geometry_history_and_redo ... ok
+test app::tests::modeling::modeling_manual_topology_interacts_with_selection_history_and_snapping ... ok
+test sculpt::modeling::topology::manual::tests::manual_topology_caps_triangles_quads_concavity_and_mild_depth ... ok
+test sculpt::modeling::topology::manual::tests::manual_topology_connect_rejects_ambiguous_uv_corners_without_mutating_source ... ok
+test sculpt::modeling::topology::manual::tests::manual_topology_connects_either_quad_diagonal_with_uvs_and_rejects_existing_edges ... ok
+test sculpt::modeling::topology::manual::tests::manual_topology_fill_respects_exact_mirror_correspondence ... ok
+test sculpt::modeling::topology::manual::tests::manual_topology_preserves_attributes_and_marks_only_new_caps_unmapped ... ok
+test sculpt::modeling::topology::manual::tests::manual_topology_rejects_partial_branched_crossing_obstructed_and_stale_boundaries ... ok
+
+test result: ok. 12 passed; 0 failed; 1 ignored; 0 measured; 1358 filtered out; finished in 9.35s
+
+    Finished `test` profile [unoptimized] target(s) in 0.44s
+     Running unittests src/lib.rs (/tmp/clay-ui-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 9 tests
+test app::tests::guide_captures::region_selection_capture::point_extrude_offscreen_review ... ignored, requires Vulkan; point extrusion, endpoint picking and Undo/Redo
+test app::tests::modeling::point_extrude_keeps_tip_selected_moves_deletes_and_round_trips_with_undo ... ok
+test app::tests::modeling::point_extrude_protects_masked_roots_and_loose_tips ... ok
+test persistence::obj::tests::point_extrude_obj_lines_support_chains_and_negative_indices ... ok
+test sculpt::modeling::tests::point_extrude_adds_only_one_vertex_and_edge_and_continues_from_tip ... ok
+test sculpt::modeling::tests::point_extrude_displacement_preserves_faces_and_reflects_from_dragged_side ... ok
+test sculpt::modeling::tests::point_extrude_edges_survive_obj_merge_and_vertex_reindexing ... ok
+test sculpt::modeling::tests::point_extrude_symmetry_and_invalid_selection_are_atomic ... ok
+test viewport::modeling::wire_tests::point_extrude_wire_picking_and_region_depth_work_without_faces_at_the_tip ... ok
+
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 1362 filtered out; finished in 10.00s
+
+    Finished `test` profile [unoptimized] target(s) in 0.45s
+     Running unittests src/lib.rs (/tmp/clay-ui-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 1 test
+test app::tests::modeling::modeling_construction_presets_roundtrip_and_keep_older_preferences_compatible ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1370 filtered out; finished in 8.11s
+
+    Finished `test` profile [unoptimized] target(s) in 0.50s
+     Running unittests src/lib.rs (/tmp/clay-ui-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 1 test
+test app::tests::guide_captures::region_selection_capture::extrusion_snap_join_offscreen_review ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1370 filtered out; finished in 31.75s
+
+    Finished `test` profile [unoptimized] target(s) in 0.29s
+     Running unittests src/lib.rs (/tmp/clay-ui-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 1 test
+test app::tests::guide_captures::region_selection_capture::create_selected_face_offscreen_review ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1370 filtered out; finished in 29.81s
+
+    Finished `test` profile [unoptimized] target(s) in 0.46s
+     Running unittests src/lib.rs (/tmp/clay-ui-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 1 test
+test app::tests::guide_captures::region_selection_capture::point_extrude_offscreen_review ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1370 filtered out; finished in 68.45s
+
