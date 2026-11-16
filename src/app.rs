@@ -244,7 +244,9 @@ impl App {
                 }
             }
         }
-        let visibility = self.temporary_visibility_active(ctx) || self.temporary_slice_active(ctx);
+        let visibility = self.temporary_visibility_active(ctx)
+            || self.temporary_slice_active(ctx)
+            || self.temporary_component_selection_active(ctx);
         let masking = self.temporary_mask_requested(ctx);
         let mask_binding = self.temporary_mask_binding(ctx).clone();
         for action in [
@@ -289,7 +291,10 @@ impl App {
                 })
             });
         }
-        if masking || self.temporary_slice_active(ctx) {
+        if masking
+            || self.temporary_slice_active(ctx)
+            || self.temporary_component_selection_active(ctx)
+        {
             return;
         }
         for action in self.ui.preferences.actions(ctx) {
@@ -339,6 +344,31 @@ impl App {
         }
         let menu_was_open = self.ui.viewport_menu.context.is_some();
         self.show_viewport_menu(ui.ctx());
+        let mut temporary_components = self.temporary_component_selection_active(ui.ctx());
+        if !menu_was_open && temporary_components && ui.input(|i| i.key_pressed(egui::Key::Escape))
+        {
+            self.ui.viewport_menu.suppress_visibility = true;
+            temporary_components = false;
+            ui.input_mut(|i| {
+                i.events.retain(|event| {
+                    !matches!(
+                        event,
+                        egui::Event::Key {
+                            key: egui::Key::Escape,
+                            ..
+                        }
+                    )
+                })
+            });
+        }
+        if self.ui.viewport_menu.components_were_active != temporary_components {
+            let was_dragging = self.viewport.session.gesture.is_some();
+            self.viewport.cancel(&mut self.document);
+            if was_dragging || (!temporary_components && ui.input(|i| i.pointer.primary_down())) {
+                self.viewport.wait_for_release();
+            }
+        }
+        self.ui.viewport_menu.components_were_active = temporary_components;
         let mut temporary_visibility = self.temporary_visibility_active(ui.ctx());
         if !menu_was_open && temporary_visibility && ui.input(|i| i.key_pressed(egui::Key::Escape))
         {
@@ -633,7 +663,8 @@ impl App {
         self.viewport.session.guided.enabled = self.ui.guide_paths
             && !self.ui.mask_active
             && !temporary_visibility
-            && !temporary_slice;
+            && !temporary_slice
+            && !temporary_components;
         self.viewport.session.guided.path_starts_only = self.ui.path_starts_only;
         self.viewport.session.visibility_hold = Some(if !temporary_visibility {
             Default::default()
@@ -720,17 +751,24 @@ impl App {
             &mut self.document,
             &mut self.camera,
             ViewportOptions {
-                instance_editor: instance_editor.filter(|_| !temporary_slice),
+                instance_editor: instance_editor
+                    .filter(|_| !temporary_slice && !temporary_components),
                 edge_select: self.ui.edges.selecting
                     && !temporary_visibility
                     && !self.ui.mask_active
-                    && !temporary_slice,
+                    && !temporary_slice
+                    && !temporary_components,
                 modeling: self
                     .ui
                     .modeling
                     .active
                     .then_some(self.ui.modeling.options())
-                    .filter(|_| !temporary_visibility && !self.ui.mask_active && !temporary_slice),
+                    .filter(|_| {
+                        !temporary_visibility
+                            && !self.ui.mask_active
+                            && !temporary_slice
+                            && !temporary_components
+                    }),
                 arrange_references: self.ui.arrange_references,
                 references_visible: self.ui.references_visible,
                 slice: (self.ui.slice_active || temporary_slice)
@@ -742,11 +780,24 @@ impl App {
                     Some(self.ui.preferences.visibility_selection.tool())
                 } else if self.ui.mask_active {
                     self.ui.preferences.mask_preset.selection_tool()
+                } else if temporary_components {
+                    Some(crate::viewport::SelectionTool::Region(
+                        crate::viewport::RegionTool {
+                            shape: self.ui.preferences.component_region_shape,
+                            through: self.ui.preferences.component_select_through,
+                            flip: false,
+                            operation: crate::viewport::RegionOperation::Components {
+                                mode: self.ui.modeling.mode,
+                                change: self.ui.preferences.component_region_change,
+                                protect: self.ui.modeling.protect_mask,
+                            },
+                        },
+                    ))
                 } else {
                     self.ui.selection_tool
                 },
                 slice_path_mode: self.ui.slice_path_mode,
-                transform_mode: if temporary_visibility || temporary_slice {
+                transform_mode: if temporary_visibility || temporary_slice || temporary_components {
                     crate::viewport::TransformMode::Sculpt
                 } else {
                     self.ui.transform_mode
@@ -786,12 +837,12 @@ impl App {
                 } else {
                     self.ui.preferences.reverse
                 },
-                zoom_hold: if self.ui.mask_active || temporary_slice {
+                zoom_hold: if self.ui.mask_active || temporary_slice || temporary_components {
                     preferences::Hold::Disabled
                 } else {
                     self.ui.preferences.zoom_hold
                 },
-                pan_hold: if self.ui.mask_active || temporary_slice {
+                pan_hold: if self.ui.mask_active || temporary_slice || temporary_components {
                     preferences::Hold::Disabled
                 } else {
                     self.ui.preferences.pan_hold

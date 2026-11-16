@@ -2,6 +2,14 @@ use super::*;
 use crate::ui::context_menu::ViewportMenuContext;
 
 impl App {
+    pub(crate) fn temporary_component_selection_active(&self, ctx: &egui::Context) -> bool {
+        self.ui.modeling.active
+            && self.ui.preferences.selection_mode == preferences::SelectionMode::Components
+            && !self.ui.viewport_menu.suppress_visibility
+            && !ctx.wants_keyboard_input()
+            && ctx.input(|i| i.focused && self.ui.preferences.visibility_hold.active(i))
+            && self.temporary_mask_available()
+    }
     pub(crate) fn temporary_visibility_active(&self, ctx: &egui::Context) -> bool {
         self.ui.preferences.selection_mode == preferences::SelectionMode::Visibility
             && !self.ui.viewport_menu.suppress_visibility
@@ -56,6 +64,10 @@ impl App {
                     ViewportMenuContext::Slice
                 } else {
                     match self.ui.preferences.selection_mode {
+                        preferences::SelectionMode::Components if self.ui.modeling.active => {
+                            ViewportMenuContext::Components
+                        }
+                        preferences::SelectionMode::Components => ViewportMenuContext::Mask,
                         preferences::SelectionMode::Mask => ViewportMenuContext::Mask,
                         preferences::SelectionMode::Visibility => ViewportMenuContext::Visibility,
                         preferences::SelectionMode::Slice => ViewportMenuContext::Slice,
@@ -80,7 +92,9 @@ impl App {
             .unwrap_or(0);
         self.ui.viewport_menu.just_opened = true;
         self.ui.viewport_menu.hold = if action == Action::MaskVisibilityMenu
-            && (self.temporary_visibility_active(ctx) || self.temporary_slice_active(ctx))
+            && (self.temporary_visibility_active(ctx)
+                || self.temporary_slice_active(ctx)
+                || self.temporary_component_selection_active(ctx))
         {
             Some(self.ui.preferences.visibility_hold.clone())
         } else if context == ViewportMenuContext::Mask && self.temporary_mask_requested(ctx) {

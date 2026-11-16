@@ -22,8 +22,8 @@ Slice cuts through all depths and uses the existing [Slice rules](modeling.md#sl
 
 ## Hold to mask
 
-1. Press **Z** and choose **Mask**, **Visibility** or **Slice**. That tab determines what **Ctrl+Shift** does. The selected mode is remembered after restarting. Mask and Visibility also remember their shape and operation; Slice reuses the current Slice settings.
-2. For Mask, choose **Surface brush**, **Through-depth lasso**, or **Through-depth line**, then **Add** or **Erase**. Line also offers **Flip side**. Visibility offers Rectangle, Lasso, Line and Closed path with Hide/Isolate.
+1. Press **Z** and choose **Mask**, **Visibility** or **Slice**. While Modeling is enabled, **Select** also offers [component region selection](modeling.md#select-many-components-with-a-region). That tab determines what **Ctrl+Shift** does. The selected mode is remembered after restarting. Mask and Visibility also remember their shape and operation; Slice reuses the current Slice settings.
+2. For Mask, choose **Surface brush**, **Rectangle**, **Lasso** or **Line**, then **Add mask** or **Erase mask**. For region shapes, choose **Visible only** to affect the visible surface, or **Through mesh** to include the back and occluded parts. Line also offers **Flip side**. Visibility offers Rectangle, Lasso, Line and Closed path with Hide/Isolate.
 3. Hold **Ctrl+Shift** over the model. All brush highlights clear while the hold is active, and brush names stay unchanged. Mask painting still uses the remembered Mask brush preset. The viewport shows the active mode and shape.
 4. Paint or draw, release the pen to commit, then release Ctrl+Shift to restore the original brush highlight and sculpt or Modeling tool. **Alt** reverses the operation while held.
 
@@ -32,9 +32,9 @@ The operation strip names the temporary mode, shape and Add/Erase or Hide/Isolat
 Both tabs share a **Clear** section at the top: **Clear mask** removes the active model’s mask, and **Show all** restores its hidden faces. The popup stays open after either action.
 
 Change **Hold for selection (Mask / visibility)** in **Settings → Key settings** to rebind the shared hold. The optional **Dedicated mask hold** remains available for existing custom bindings.
-The **Mask → Hold to mask** section exposes the same choices and a Mask brush preset selector. Surface brushing uses that preset’s pressure, strength, alpha, spacing and stroke settings independently of the ordinary sculpt brush. Surface brushing respects brush symmetry; all three shapes protect hidden geometry. Through-depth lasso and line do not repeat with brush symmetry. Lasso and line select through every depth on the active model; they also work when the gesture begins in empty space.
+The **Mask → Hold to mask** section exposes the same choices and a Mask brush preset selector. Surface brushing uses that preset’s pressure, strength, alpha, spacing and stroke settings independently of the ordinary sculpt brush. Surface brushing respects brush symmetry; all shapes protect explicitly hidden geometry. Rectangle, Lasso and Line do not repeat with brush symmetry. These regions work when the gesture begins in empty space and use the chosen depth setting. Existing Lasso/Line presets default to Through mesh.
 
-If you release the hold midway through a freehand stroke, already-painted mask dabs remain as one Undo step. Unfinished lasso, line and stamp previews are discarded. Escape or focus loss restores the prior tool; a still-down pen cannot leak into a new sculpt or Modeling gesture. Merely holding, changing the mask mode or opening/dismissing the menu makes no edit.
+If you release the hold midway through a freehand stroke, already-painted mask dabs remain as one Undo step. Unfinished rectangle, lasso, line and stamp previews are discarded. Escape or focus loss restores the prior tool; a still-down pen cannot leak into a new sculpt or Modeling gesture. Merely holding, changing the mask mode or opening/dismissing the menu makes no edit.
 
 The shared selection hold follows the selection menu and wins when it overlaps the optional dedicated mask hold. Masking takes priority over Smooth, Reverse, primary-drag zoom/pan and Modeling selection subtraction; hold **Alt** to temporarily reverse Add/Erase; releasing Alt restores the saved operation. Right-drag orbit, middle-drag pan and wheel zoom remain available between gestures. Other action shortcuts pause while masking, except the configured Undo/Redo chords. Key settings reports overlapping assignments; use different keys for the hold and menu invocation. The mode is unavailable during path editing, projection, Slice, transforms, reference arrangement, modal editors or on an unconverted primitive.
 
@@ -198,6 +198,6 @@ You need both visible and hidden faces. Apply/remove thickness modifier first. B
 
 ### Quick menus
 
-**Q** always opens Modeling. **Z** opens Mask / Visibility / Slice choices; the selected tab decides whether the shared Ctrl+Shift hold masks, changes visibility or slices. **E** opens transform options for selected components in Modeling or the active object otherwise. All three bindings can be changed or cleared in Key settings.
+**Q** always opens Modeling. **Z** opens Select / Mask / Visibility / Slice choices; Select appears while Modeling is enabled. The selected tab decides whether the shared Ctrl+Shift hold selects components, masks, changes visibility or slices. **E** opens transform options for selected components in Modeling or the active object otherwise. All three bindings can be changed or cleared in Key settings.
 
 The chooser changes remembered choices without starting a gesture. Use the shared Ctrl+Shift hold to apply the selected tab’s choices. Surface brush, line and lasso masking support Add/Erase; visibility offers Rectangle, Lasso, Line and Closed path with Hide/Isolate. **Alt reverses the current operation**, including during a drag and when applying a closed path, without changing the shape, flipped side or saved preset. If Alt is itself part of a configured hold, it also reverses the operation; use a different hold to reserve Alt solely for reversal.

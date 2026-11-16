@@ -1,0 +1,11 @@
+# Q topology actions and shared-hold region selection — 16 November 2026
+
+PR [#158](https://github.com/dustyghost/clay-form/pull/158) exposes immediate topology edits in the shared Modeling menu/Q popup and places the Mesh panel’s Topology section beside Modeling functions. Z gains Select while Modeling is enabled. Rectangle, Lasso and Line select the current component mode with Replace/Add/Remove and Visible only/Through mesh. They use the configured shared selection hold (Ctrl+Shift by default), preserving the previous Modeling function/options. Selection history remains separate from geometry history.
+
+Mask gains Rectangle and depth choices for all region shapes. Existing through-depth presets retain that default; line-side flipping does not invert other shapes. Through mesh includes occluded/rear components but excludes explicitly hidden geometry and protected vertices. Region hit tests use vertices, edge midpoints or face centres; exact symmetry expands complete unprotected sets.
+
+Validation: 50 focused tests passed across Modeling menus, masking, immediate topology and selection/snapping. The five new region tests exercise all three shapes and component modes in orthographic/perspective views, both depth settings, selection history and Add/Remove, mask Undo/Redo, hidden/masked protection, Escape and early hold release, restoration of a Move tool without leaked geometry edits, preference compatibility, and visible bent quads with an occluded surface behind them. A final focused run also covers operation-status feedback.
+
+Three Vulkan walkthroughs passed: `region_selection_offscreen_review`, `manual_topology_offscreen_review` and `viewport_context_menu_offscreen_review`. The new walkthrough runs at 1100×900 and 760×720, clicks Q’s Connect vertices and undoes it, chooses Z’s through-mesh Rectangle, holds Ctrl+Shift while dragging and verifies all vertices are selected, then clicks Mask/Rectangle/Visible only. Screenshots were inspected for accessible controls and selection feedback; the [guide](../../guide/modeling.md#select-many-components-with-a-region) includes the Q/Z captures. The test is registered in GPU CI and the screenshot refresh script.
+
+Checks ran sequentially with one compiler job under the shared build lock. Full tests, lint and platform packages run in CI. Physical tablet feel remains a hands-on check.

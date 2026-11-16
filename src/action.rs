@@ -6,6 +6,8 @@ pub(crate) enum Action {
     Search,
     ToggleZen,
     TemporaryMaskBrush,
+    TemporaryMaskRectangle,
+    TemporaryMaskVisibleOnly(bool),
     TemporaryMaskLasso,
     TemporaryMaskLine,
     TemporaryMaskAdd,
@@ -66,6 +68,9 @@ pub(crate) enum Action {
 
     ModelTool(crate::viewport::ModelTool),
     ModelTarget(crate::viewport::SelectionSpan),
+    ModelRegionShape(crate::viewport::RegionShape),
+    ModelSelectThrough(bool),
+    ModelRegionChange(crate::viewport::SelectionChange),
     ModelInteraction(crate::viewport::ModelInteraction),
     ModelNewMesh,
     ModelApply,
@@ -519,6 +524,17 @@ impl Action {
         Self::ClearVisibilityPath,
         Self::DeleteVisibilityPoint,
         Self::TemporaryMaskBrush,
+        Self::TemporaryMaskRectangle,
+        Self::TemporaryMaskVisibleOnly(true),
+        Self::TemporaryMaskVisibleOnly(false),
+        Self::ModelRegionShape(crate::viewport::RegionShape::Rectangle),
+        Self::ModelRegionShape(crate::viewport::RegionShape::Lasso),
+        Self::ModelRegionShape(crate::viewport::RegionShape::Line),
+        Self::ModelRegionChange(crate::viewport::SelectionChange::Replace),
+        Self::ModelRegionChange(crate::viewport::SelectionChange::Add),
+        Self::ModelRegionChange(crate::viewport::SelectionChange::Remove),
+        Self::ModelSelectThrough(false),
+        Self::ModelSelectThrough(true),
         Self::TemporaryMaskLasso,
         Self::TemporaryMaskLine,
         Self::TemporaryMaskAdd,
@@ -619,9 +635,26 @@ impl Action {
         match self {
             Self::Search => "Search Clay Form",
             Self::ToggleZen => "Zen mode",
+            Self::TemporaryMaskRectangle => "Temporary mask: Rectangle",
+            Self::TemporaryMaskVisibleOnly(true) => "Mask visible surfaces only",
+            Self::TemporaryMaskVisibleOnly(false) => "Mask through mesh",
+            Self::ModelRegionShape(crate::viewport::RegionShape::Rectangle) => "Select rectangle",
+            Self::ModelRegionShape(crate::viewport::RegionShape::Lasso) => "Select lasso",
+            Self::ModelRegionShape(crate::viewport::RegionShape::Line) => "Select by line",
+            Self::ModelRegionChange(crate::viewport::SelectionChange::Replace) => {
+                "Region selection: Replace"
+            }
+            Self::ModelRegionChange(crate::viewport::SelectionChange::Add) => {
+                "Region selection: Add"
+            }
+            Self::ModelRegionChange(crate::viewport::SelectionChange::Remove) => {
+                "Region selection: Remove"
+            }
+            Self::ModelSelectThrough(false) => "Select visible components only",
+            Self::ModelSelectThrough(true) => "Select through mesh",
             Self::TemporaryMaskBrush => "Temporary mask: Surface brush",
-            Self::TemporaryMaskLasso => "Temporary mask: Through-depth lasso",
-            Self::TemporaryMaskLine => "Temporary mask: Through-depth line",
+            Self::TemporaryMaskLasso => "Temporary mask: Lasso",
+            Self::TemporaryMaskLine => "Temporary mask: Line",
             Self::TemporaryMaskAdd => "Temporary mask: Add",
             Self::TemporaryMaskErase => "Temporary mask: Erase",
             Self::TemporaryMaskFlip => "Temporary mask: Flip side",
@@ -635,7 +668,7 @@ impl Action {
             Self::OpenTextures => "Texture library…",
             Self::OpenUv => "UV layout…",
             Self::ViewportContextMenu => "Modeling quick menu",
-            Self::MaskVisibilityMenu => "Mask / visibility / slice quick menu",
+            Self::MaskVisibilityMenu => "Select / mask / visibility / slice quick menu",
             Self::TransformMenu => "Transform quick menu",
             Self::UniversalTransform => "Toggle universal transform gizmo",
             Self::ModelAxis(axis) => match axis {

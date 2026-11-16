@@ -5,6 +5,7 @@ use crate::viewport::{ComponentMode, ModelTool, SelectionSpan};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ViewportMenuContext {
     Modeling,
+    Components,
     Visibility,
     Mask,
     Transform,
@@ -21,6 +22,7 @@ pub(crate) struct ViewportMenuState {
     pub suppress_visibility: bool,
     pub visibility_was_active: bool,
     pub slice_was_active: bool,
+    pub components_were_active: bool,
 }
 fn consume_menu_key(input: &mut egui::InputState, key: egui::Key) -> bool {
     let pressed = input.key_pressed(key);
@@ -113,6 +115,17 @@ fn modeling_choices(
         }
     });
     ui.separator();
+    ui.strong("Topology");
+    for (i, entry) in entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| matches!(e.action, Action::ModelTopology(_)))
+    {
+        if menu_entry(ui, entry, highlighted(i, entry), false, reveal) {
+            chosen = Some((i, entry.action.clone()));
+        }
+    }
+    ui.separator();
     ui.strong("Function");
     for (i, entry) in entries
         .iter()
@@ -124,6 +137,41 @@ fn modeling_choices(
         }
     }
     chosen
+}
+
+fn component_selection_choices(
+    ui: &mut egui::Ui,
+    entries: &[ViewportMenuEntry],
+    index: usize,
+    reveal: bool,
+) -> Option<Action> {
+    let mut action = None;
+    for (section, title) in [
+        (0, "Shape"),
+        (1, "Operation"),
+        (2, "Depth"),
+        (3, "Selection history"),
+    ] {
+        ui.strong(title);
+        ui.horizontal_wrapped(|ui| {
+            for (i, e) in entries.iter().enumerate().filter(|(_, e)| match section {
+                0 => matches!(e.action, Action::ModelRegionShape(_)),
+                1 => matches!(e.action, Action::ModelRegionChange(_)),
+                2 => matches!(e.action, Action::ModelSelectThrough(_)),
+                _ => matches!(
+                    e.action,
+                    Action::ModelClearSelection
+                        | Action::ModelUndoSelection
+                        | Action::ModelRedoSelection
+                ),
+            }) {
+                if menu_entry(ui, e, i == index, true, reveal) {
+                    action = Some(e.action.clone());
+                }
+            }
+        });
+    }
+    action
 }
 
 /// Modifier-only chords and key-plus-modifier chords share one persisted representation.
@@ -175,7 +223,7 @@ impl UiState {
         let entries = self.viewport_menu_entries(ViewportMenuContext::Modeling, document);
         unavailable_menu_help(ui, &entries);
         if let Some((_, action)) = modeling_choices(ui, &entries, None, false) {
-            let function = matches!(action, Action::ModelTool(_));
+            let function = matches!(action, Action::ModelTool(_) | Action::ModelTopology(_));
             commands.push(Command::Action(action));
             if popup && function {
                 ui.close_kind(egui::UiKind::Menu);
@@ -222,6 +270,30 @@ impl UiState {
                             hint: "Choose what the next Modeling gesture targets. Keeps the current tool and selection.".into(),
                         }
                     }));
+                entries.extend(
+                    crate::sculpt::TopologyEdit::ALL
+                        .into_iter()
+                        .filter(|edit| {
+                            use crate::sculpt::TopologyEdit as T;
+                            self.modeling.mode
+                                == match edit {
+                                    T::DeleteFaces => ComponentMode::Face,
+                                    T::Connect | T::Weld | T::CreateFace => ComponentMode::Vertex,
+                                    _ => ComponentMode::Edge,
+                                }
+                        })
+                        .map(|edit| {
+                            let action = Action::ModelTopology(edit);
+                            ViewportMenuEntry {
+                                enabled: self.action_enabled(&action, document),
+                                action,
+                                label: edit.label().into(),
+                                selected: false,
+                                hint: "Applies immediately to the selection as one Undo/Redo step."
+                                    .into(),
+                            }
+                        }),
+                );
                 entries.extend([
                 ModelTool::Select,
                 ModelTool::Move,
@@ -268,6 +340,7 @@ impl UiState {
             );
                 entries
             }
+            ViewportMenuContext::Components => self.component_selection_entries(document),
             ViewportMenuContext::Visibility => {
                 use crate::preferences::VisibilityShape;
                 let settings = self.preferences.visibility_selection;
@@ -333,6 +406,60 @@ impl UiState {
             }
         }
         entries
+    }
+
+    fn component_selection_entries(&self, document: &Document) -> Vec<ViewportMenuEntry> {
+        use crate::viewport::{RegionShape, SelectionChange};
+        let mut choices = Vec::new();
+        for shape in RegionShape::ALL {
+            choices.push((
+                Action::ModelRegionShape(shape),
+                shape.label().into(),
+                self.preferences.component_region_shape == shape,
+            ));
+        }
+        choices.extend([
+            (
+                Action::ModelRegionChange(SelectionChange::Replace),
+                "Replace".into(),
+                self.preferences.component_region_change == SelectionChange::Replace,
+            ),
+            (
+                Action::ModelRegionChange(SelectionChange::Add),
+                "Add".into(),
+                self.preferences.component_region_change == SelectionChange::Add,
+            ),
+            (
+                Action::ModelRegionChange(SelectionChange::Remove),
+                "Remove".into(),
+                self.preferences.component_region_change == SelectionChange::Remove,
+            ),
+            (
+                Action::ModelSelectThrough(false),
+                "Visible only".into(),
+                !self.preferences.component_select_through,
+            ),
+            (
+                Action::ModelSelectThrough(true),
+                "Through mesh".into(),
+                self.preferences.component_select_through,
+            ),
+            (Action::ModelClearSelection, "Clear selection".into(), false),
+            (
+                Action::ModelUndoSelection,
+                "Undo selection change".into(),
+                false,
+            ),
+            (
+                Action::ModelRedoSelection,
+                "Redo selection change".into(),
+                false,
+            ),
+        ]);
+        choices.into_iter().map(|(action,label,selected)| ViewportMenuEntry {
+            enabled: self.modeling.active && self.action_enabled(&action, document), action, label, selected,
+            hint: "Select vertices, edge midpoints or face centres. Hidden and protected geometry stays excluded.".into(),
+        }).collect()
     }
 
     fn transform_menu_entries(&self, document: &Document) -> Vec<ViewportMenuEntry> {
@@ -471,23 +598,36 @@ impl UiState {
                 .min(ctx.content_rect().right() - 280.)
                 .max(ctx.content_rect().left()),
             pos.y
-                .min(ctx.content_rect().bottom() - 420.)
+                .min(
+                    ctx.content_rect().bottom()
+                        - if context == ViewportMenuContext::Components {
+                            (ctx.content_rect().height() - 90.).min(620.)
+                        } else {
+                            420.
+                        },
+                )
                 .max(ctx.content_rect().top()),
         );
         let mut open = true;
         let response = egui::Window::new(match context {
             ViewportMenuContext::Modeling => "Modeling functions",
-            ViewportMenuContext::Visibility => "Mask / visibility / slice",
-            ViewportMenuContext::Mask => "Mask / visibility / slice",
+            ViewportMenuContext::Components => "Select / mask / visibility / slice",
+            ViewportMenuContext::Visibility => "Select / mask / visibility / slice",
+            ViewportMenuContext::Mask => "Select / mask / visibility / slice",
             ViewportMenuContext::Transform => "Transform options",
-            ViewportMenuContext::Slice => "Mask / visibility / slice",
+            ViewportMenuContext::Slice => "Select / mask / visibility / slice",
         })
         .id(egui::Id::new("viewport_tool_menu"))
         .open(&mut open)
         .fixed_pos(position)
         .resizable(false)
         .collapsible(false)
-        .default_width(260.)
+        .default_width(280.)
+        .min_height(if context == ViewportMenuContext::Components {
+            (ctx.content_rect().height() - 90.).min(560.)
+        } else {
+            0.
+        })
         .max_height((ctx.content_rect().height() - 50.).max(120.))
         .vscroll(true)
         .order(egui::Order::Foreground)
@@ -499,11 +639,15 @@ impl UiState {
             unavailable_menu_help(ui, &entries);
             if matches!(
                 context,
-                ViewportMenuContext::Mask
+                ViewportMenuContext::Components
+                    | ViewportMenuContext::Mask
                     | ViewportMenuContext::Visibility
                     | ViewportMenuContext::Slice
             ) {
-                if context != ViewportMenuContext::Slice {
+                if !matches!(
+                    context,
+                    ViewportMenuContext::Slice | ViewportMenuContext::Components
+                ) {
                     ui.strong("Clear");
                     ui.horizontal(|ui| {
                         for (clear, label, hint) in [
@@ -533,14 +677,21 @@ impl UiState {
                     });
                     ui.separator();
                 }
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (choice, label) in [
+                        (ViewportMenuContext::Components, "Select"),
                         (ViewportMenuContext::Mask, "Mask"),
                         (ViewportMenuContext::Visibility, "Visibility"),
                         (ViewportMenuContext::Slice, "Slice"),
                     ] {
+                        if choice == ViewportMenuContext::Components && !self.modeling.active {
+                            continue;
+                        }
                         if ui.selectable_label(context == choice, label).clicked() {
                             self.preferences.selection_mode = match choice {
+                                ViewportMenuContext::Components => {
+                                    crate::preferences::SelectionMode::Components
+                                }
                                 ViewportMenuContext::Mask => {
                                     crate::preferences::SelectionMode::Mask
                                 }
@@ -583,6 +734,11 @@ impl UiState {
                 if self.modeling.tool == ModelTool::PointSplit && self.point_split_controls(ui) {
                     action = Some(Action::ModelApply);
                 }
+            } else if context == ViewportMenuContext::Components {
+                ui.label(format!("Active component: {:?}", self.modeling.mode));
+                if let Some(chosen) = component_selection_choices(ui, &entries, index, navigated) {
+                    action = Some(chosen);
+                }
             } else {
                 for (i, entry) in entries.iter().enumerate() {
                     if menu_entry(ui, entry, i == index, false, navigated) {
@@ -603,7 +759,13 @@ impl UiState {
         let selection_option = matches!(
             action,
             Some(
-                Action::ModelFaces
+                Action::ModelSelectThrough(_)
+                    | Action::ModelRegionChange(_)
+                    | Action::TemporaryMaskVisibleOnly(_)
+                    | Action::ModelClearSelection
+                    | Action::ModelUndoSelection
+                    | Action::ModelRedoSelection
+                    | Action::ModelFaces
                     | Action::ModelEdges
                     | Action::ModelVertices
                     | Action::ModelTarget(_)

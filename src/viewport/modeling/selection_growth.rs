@@ -175,9 +175,17 @@ impl ModelingState {
             grow,
             &symmetry,
         )?;
+        self.record_selection(document, result);
+        Ok(())
+    }
+    pub(in crate::viewport) fn record_selection(
+        &mut self,
+        document: &Document,
+        result: BTreeSet<Component>,
+    ) {
         if result == self.selected {
             self.notice = Some("Selection unchanged at its boundary");
-            return Ok(());
+            return;
         }
         if !self.can_restore_selection(document, false) {
             self.selection_history.undo.clear();
@@ -200,7 +208,6 @@ impl ModelingState {
             self.selection_history.undo.remove(0);
         }
         self.selected = result;
-        Ok(())
     }
     pub fn clear_selection_history(&mut self) {
         self.selection_history = Default::default();

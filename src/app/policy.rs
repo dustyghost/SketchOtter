@@ -450,7 +450,9 @@ impl<'a> EditorPolicy<'a> {
                         .iter()
                         .any(|brush| brush.kind == Kind::Mask && brush.identity() == *id)
             }
-            Action::TemporaryMaskBrush
+            Action::TemporaryMaskRectangle
+            | Action::TemporaryMaskVisibleOnly(_)
+            | Action::TemporaryMaskBrush
             | Action::TemporaryMaskLasso
             | Action::TemporaryMaskLine
             | Action::TemporaryMaskAdd
@@ -555,6 +557,11 @@ impl<'a> EditorPolicy<'a> {
                 .any(|p| p.id == *id),
             Action::ModelSmoothPreview | Action::ModelTapRepeat => {
                 self.edge_unavailable(action).is_none()
+            }
+            Action::ModelRegionShape(_)
+            | Action::ModelSelectThrough(_)
+            | Action::ModelRegionChange(_) => {
+                self.ui.modeling.active && self.edge_unavailable(action).is_none()
             }
             Action::ModelSnap => {
                 document.mesh_settings().levels() == 1

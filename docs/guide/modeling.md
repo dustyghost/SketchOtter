@@ -220,6 +220,18 @@ Loop selections can wrap around the model, including its far side. Face loops an
 
 **Keeping a selection:** navigation keeps it; topology, visibility, or model changes clear it. Drag the navigation frame or empty space to orbit, or use secondary-button navigation. Escape exits modeling when no preview is active.
 
+### Select many components with a region
+
+While Modeling is enabled, press **Z** and choose **Select**. Choose **Replace**, **Add** or **Remove**, then **Visible only** or **Through mesh**, and a **Rectangle**, **Lasso** or **Line** shape.
+
+Hold **Ctrl+Shift** while drawing in the viewport, then release the pen to keep the selection. Release Ctrl+Shift to restore the previous Modeling function and options. Releasing the hold before the pen, pressing Escape or losing focus cancels an unfinished region. **Alt** temporarily removes components (or adds when Remove is selected).
+
+**Visible only** selects the surface you can see. **Through mesh** also selects occluded and rear-facing components. A region tests vertex positions, edge midpoints or face centres. Explicitly hidden geometry and its boundary vertices remain excluded; **Protect mask** also excludes masked components. Exact symmetry adds matching components when the whole matching set is unprotected.
+
+The Select tab remembers its shape, operation and depth choice. It is available only in Modeling. **Undo selection change** and **Redo selection change** in Z restore region selections without changing geometry or consuming sculpt Undo/Redo.
+
+![Z menu with region shape, operation and depth controls](../images/modeling-selection-z-1100.png)
+
 ### Grow and shrink a component selection
 
 Select a face, edge, or vertex, then use **Grow selection** or **Shrink selection** in Modeling. Both actions are also in Search and can be assigned to a shelf or shortcut. They preserve the current component mode and tool.
@@ -228,7 +240,7 @@ Each click takes one step through the mesh's logical polygons. Faces cross share
 
 Hidden faces block growth through their vertices. With **Protect mask** enabled, any nonzero mask blocks growth through that vertex too. Grow retains existing protected selections without expanding through them; Shrink removes protected components. Exact symmetry applies to whole matching sets, including when protection blocks one side. As with other Modeling selections, mismatched hidden faces across symmetry require showing matching faces first.
 
-**Undo selection change** and **Redo selection change** restore these selection steps without consuming sculpt Undo/Redo. The selection history belongs to the current mesh and selection; changing geometry or choosing a different selection invalidates it. It is temporary and is not saved with a project. Geometry changes made afterwards keep their usual single Undo step.
+**Undo selection change** and **Redo selection change** restore growth and region-selection steps without consuming sculpt Undo/Redo. The selection history belongs to the current mesh and selection; changing geometry or choosing a different selection invalidates it. It is temporary and is not saved with a project. Geometry changes made afterwards keep their usual single Undo step.
 
 ![A centre face grown to its four polygon neighbours, with selection history controls](../images/precision-selection-growth.png)
 
@@ -825,11 +837,13 @@ Open **Modeling** in the toolbar, or press **Q** over the viewport for its quick
 
 The same controls are also in **Model → Modeling** on the top bar. Use its Panel controls to pin a movable window or dock a collapsible section on the left or right. These placements are saved with your workspace. Pinned and docked controls stay open when you choose a function; the drop-down and Q popup close after a function choice. Opening or moving the menu alone does not edit the model.
 
-The Q menu shows functions for the current component mode and marks the active choices. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu and keeps the current selection. Escape, an outside click or focus loss dismisses the menu without editing geometry. Finish the current drag before opening it.
+The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu and keeps the current selection. Escape, an outside click or focus loss dismisses the menu without editing geometry. Finish the current drag before opening it.
+
+![Q menu with topology actions beside Modeling functions](../images/modeling-topology-q-1100.png)
 
 Change or clear **Modeling quick menu** in **Settings → Key settings**. Its displayed tooltip follows the assigned shortcut; the default Q does not replace right-drag orbit or middle-drag pan. Existing custom bindings remain intact when preferences upgrade; if Q is already assigned, the new menu starts unbound.
 
-**Q** always opens Modeling. **Z** opens the Mask / Visibility / Slice chooser, whose selected tab decides whether Ctrl+Shift masks, changes visibility or slices. The shared hold and all three quick-menu bindings can be changed, cleared and reset in Key settings. Hold shortcuts support modifier-only and key-plus-modifier chords. Release the hold to restore the previous tool; unfinished gestures are cancelled. **Alt** temporarily reverses Add/Erase masking or Hide/Isolate visibility.
+**Q** always opens Modeling. **Z** opens the Select / Mask / Visibility / Slice chooser. **Select** is available while Modeling is enabled; the selected tab decides whether Ctrl+Shift selects components, masks, changes visibility or slices. The shared hold and all three quick-menu bindings can be changed, cleared and reset in Key settings. Hold shortcuts support modifier-only and key-plus-modifier chords. Release the hold to restore the previous tool; unfinished gestures are cancelled. **Alt** temporarily reverses Add/Erase masking or Hide/Isolate visibility, or removes components in Select (adds when Remove is chosen).
 
 **E** opens transform options. In Modeling it offers Move/Rotate/Scale, Free/Gizmo/Axis interaction and applicable axis choices. Otherwise it offers object transforms, World axes/Action Line, pivot controls and Respect mask. Opening the menu makes no geometry edit; choose options and then an operation to begin using it.
 

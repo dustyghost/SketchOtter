@@ -15,6 +15,8 @@ mod object_kits;
 mod path_assembly;
 #[path = "precision_capture.rs"]
 mod precision_capture;
+#[path = "region_selection_capture.rs"]
+mod region_selection_capture;
 #[path = "surface_array_capture.rs"]
 mod surface_array_capture;
 #[path = "topology_capture.rs"]

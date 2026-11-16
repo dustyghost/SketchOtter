@@ -280,6 +280,15 @@ impl UiState {
                     if tool.supports_mode(self.modeling.mode) && ui.selectable_label(self.modeling.tool==tool,tool.label()).customize(Action::ModelTool(tool)).clicked(){commands.push(Command::Action(Action::ModelTool(tool)));}
                 }
             });
+            egui::CollapsingHeader::new("Topology").open(search::requested_section(ui.ctx(), "model_topology")).show(ui,|ui|{
+                for edit in crate::sculpt::TopologyEdit::ALL {
+                    use crate::sculpt::TopologyEdit as T;
+                    let mode=match edit {T::DeleteFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace=>ComponentMode::Vertex,_=>ComponentMode::Edge};
+                    if self.modeling.mode==mode && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
+                }
+                ui.weak("Connect vertices splits a quad. Create face uses every vertex around an opening; Fill boundary uses its complete edge loop. Each action applies immediately as one Undo step. New caps follow the boundary winding and need unwrapping before texture painting. Loose edges are not supported.");
+                ui.weak("Delete opens holes; dissolve keeps the surface. Weld uses the midpoint.");
+            });
             if self.modeling.tool != ModelTool::CutCell {
             ui.label("Target");
             ui.horizontal_wrapped(|ui| {
@@ -524,15 +533,6 @@ impl UiState {
                     });
                 }
                 ui.weak("Saves action, target and options. Right-click a preset to add it to a shelf.");
-            });
-            egui::CollapsingHeader::new("Topology").open(search::requested_section(ui.ctx(), "model_topology")).show(ui,|ui|{
-                for edit in crate::sculpt::TopologyEdit::ALL {
-                    use crate::sculpt::TopologyEdit as T;
-                    let mode=match edit {T::DeleteFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace=>ComponentMode::Vertex,_=>ComponentMode::Edge};
-                    if self.modeling.mode==mode && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
-                }
-                ui.weak("Connect vertices splits a quad. Create face uses every vertex around an opening; Fill boundary uses its complete edge loop. Each action applies immediately as one Undo step. New caps follow the boundary winding and need unwrapping before texture painting. Loose edges are not supported.");
-                ui.weak("Delete opens holes; dissolve keeps the surface. Weld uses the midpoint.");
             });
             egui::CollapsingHeader::new("Selection to vertex group").open(search::requested_section(ui.ctx(), "model_groups")).show(ui, |ui| {
                 ui.text_edit_singleline(&mut self.modeling.group_name);

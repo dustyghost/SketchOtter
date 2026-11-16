@@ -263,7 +263,7 @@ Shifted numbers use the physical number-row key, so `!` can bind as Shift+1. Oth
 | Toggle symmetry / guides | Shift+X / G |
 | Toggle wireframe | W |
 | Modeling quick menu | Q |
-| Mask / visibility / slice quick menu | Z |
+| Select / mask / visibility / slice quick menu | Z |
 | Transform quick menu | E |
 | Universal transform / return to sculpting | T |
 | Smaller / larger brush | [ / ] |
@@ -274,7 +274,7 @@ Shifted numbers use the physical number-row key, so `!` can bind as Shift+1. Oth
 | Lower / higher subdivision level | Shift+D / D |
 | Remesh in dynamic mode | Ctrl+R |
 
-The default **X** swaps paint colours and **Z** opens the Mask / Visibility / Slice chooser. **Shift+X** still toggles symmetry, and the configured Undo/Redo chords take priority over the chooser. Open the chooser before holding Ctrl+Shift; Ctrl+Shift+Z remains Redo. On first load, an unchanged old pair (Z for colours, X for the chooser) moves together to the new defaults. If either action has been rebound or cleared, both saved choices remain intact. **Reset shortcuts** applies the new defaults deliberately. All bindings can be changed in Key settings.
+The default **X** swaps paint colours and **Z** opens the Select / Mask / Visibility / Slice chooser. Select appears while Modeling is enabled. **Shift+X** still toggles symmetry, and the configured Undo/Redo chords take priority over the chooser. Open the chooser before holding Ctrl+Shift; Ctrl+Shift+Z remains Redo. On first load, an unchanged old pair (Z for colours, X for the chooser) moves together to the new defaults. If either action has been rebound or cleared, both saved choices remain intact. **Reset shortcuts** applies the new defaults deliberately. All bindings can be changed in Key settings.
 
 ## Toolbar and brush previews
 

@@ -3660,6 +3660,7 @@ mod mirror;
 mod edges;
 
 mod modeling;
+mod region_selection;
 
 mod files;
 

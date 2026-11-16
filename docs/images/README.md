@@ -76,6 +76,8 @@ See [Development](../development.md#update-guide-screenshots) for prerequisites 
 
 | `create-face-applied.png`, `connect-vertices-applied.png` | [Manual face construction with Undo/Redo](../guide/modeling.md#connect-vertices-and-create-faces) | `manual_topology_offscreen_review` |
 
+| `modeling-topology-q-1100.png`, `modeling-selection-z-1100.png` | [Q topology shortcuts and Z component regions](../guide/modeling.md#select-many-components-with-a-region) | `region_selection_offscreen_review` |
+
 ## Example assets
 
 [pyramid.obj](../examples/pyramid.obj) contains the imported sample. [Front study](../examples/front-study.png) and [Side study](../examples/side-study.png) are original renders of a scaled UV sphere, exported by the same model-icon renderer used in the app. They are input assets, not screenshots of controls.
