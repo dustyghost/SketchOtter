@@ -678,8 +678,17 @@ mod tests {
         render(&mut app, vec![key(Key::M, true), key(Key::Z, true)]);
         let menu = render(&mut app, vec![]);
         assert!(app.ui.viewport_menu.context.is_some());
-        app.ui.viewport_menu.selected = 2;
+        app.ui.viewport_menu.selected = app
+            .ui
+            .viewport_menu_entries(
+                crate::ui::context_menu::ViewportMenuContext::Mask,
+                &app.document,
+            )
+            .iter()
+            .position(|entry| entry.action == Action::TemporaryMaskLine)
+            .unwrap();
         render(&mut app, vec![key(Key::Enter, true)]);
+        assert_eq!(app.ui.preferences.mask_preset.shape, MaskShape::Line);
         render(&mut app, vec![]);
         let start = Pos2::new(500., 120.);
         let end = Pos2::new(500., 680.);
