@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    sculpt::{Geometry, Primitive, PrimitiveKind},
+    sculpt::{Geometry, Primitive, PrimitiveKind, Vec3},
     viewport::{ComponentMode, ModelTool, SelectionChange},
 };
 fn setup() -> (App, egui::Context, egui::Rect) {
@@ -1134,7 +1134,11 @@ fn modeling_component_construction_taps_preview_cancel_and_undo() {
             tool.label(),
             app.ui.status
         );
-        app.document.mesh().validate_closed().unwrap();
+        if tool == ModelTool::PointExtrude {
+            assert!(app.document.mesh().validate_closed().is_err());
+        } else {
+            app.document.mesh().validate_closed().unwrap();
+        }
         assert_eq!(app.document.history_counts().0, history + 1);
         app.dispatch(Command::Undo, &ctx);
         navigation_frame(&mut app, &ctx, vec![]);
@@ -2617,5 +2621,105 @@ fn modeling_delete_vertices_protects_attached_masked_faces_and_redo_history() {
     assert_eq!(app.document.geometry_snapshot(), geometry);
     assert_eq!(app.document.history_counts(), history);
     assert_eq!(app.viewport.modeling.selected, selection);
+    assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
+}
+
+#[test]
+fn point_extrude_keeps_tip_selected_moves_deletes_and_round_trips_with_undo() {
+    let (mut app, ctx, rect) = setup();
+    app.execute_action(Action::ModelVertices, &ctx);
+    let scale = rect.width().min(rect.height()) * 0.35;
+    tap(
+        &mut app,
+        &ctx,
+        rect.center() + Vec2::new(scale / 3., scale / 3.),
+    );
+    app.execute_action(Action::ModelTool(ModelTool::PointExtrude), &ctx);
+    app.ui.modeling.amount = 0.4;
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts();
+    app.dispatch(Command::ModelApply, &ctx);
+    let after = app.document.geometry_snapshot();
+    assert_eq!(
+        after.mesh.vertices.len(),
+        before.mesh.vertices.len() + 1,
+        "{}",
+        app.ui.status
+    );
+    assert_eq!(after.mesh.triangles, before.mesh.triangles);
+    assert_eq!(after.mesh.loose_edges.len(), 1);
+    let tip = before.mesh.vertices.len();
+    assert_eq!(
+        app.viewport.modeling.selected,
+        [crate::viewport::Component::Vertex(tip)].into()
+    );
+    assert_eq!(app.document.history_counts().0, history.0 + 1);
+    app.dispatch(Command::ModelApply, &ctx);
+    assert_eq!(
+        app.document.mesh().loose_edges.len(),
+        2,
+        "{}",
+        app.ui.status
+    );
+    app.dispatch(Command::Undo, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), after);
+    app.dispatch(Command::Undo, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    app.dispatch(Command::Redo, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), after);
+    let json = crate::persistence::json_bytes(&app.document.project()).unwrap();
+    let restored: crate::sculpt::Project = serde_json::from_slice(&json).unwrap();
+    restored.validate().unwrap();
+    assert_eq!(restored.mesh, after.mesh);
+    navigation_frame(&mut app, &ctx, vec![]);
+    app.viewport.modeling.selected = [crate::viewport::Component::Vertex(tip)].into();
+    navigation_frame(&mut app, &ctx, vec![]);
+    app.execute_action(Action::ModelTool(ModelTool::Move), &ctx);
+    app.ui.modeling.axis = crate::viewport::ModelAxis::X;
+    app.ui.modeling.interaction = crate::viewport::ModelInteraction::Axis;
+    app.ui.modeling.amount = 0.2;
+    app.dispatch(Command::ModelApply, &ctx);
+    assert_eq!(app.document.mesh().loose_edges, after.mesh.loose_edges);
+    assert!(
+        (app.document.mesh().vertices[tip] - after.mesh.vertices[tip] - Vec3(0.2, 0., 0.)).len()
+            < 1e-6,
+        "{}",
+        app.ui.status
+    );
+    app.execute_action(
+        Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteVertices),
+        &ctx,
+    );
+    assert_eq!(app.document.mesh(), &before.mesh, "{}", app.ui.status);
+}
+
+#[test]
+fn point_extrude_protects_masked_roots_and_loose_tips() {
+    let (mut app, ctx, _) = setup();
+    let mut geometry = app.document.geometry_snapshot();
+    geometry.mesh.mask[0] = 1.;
+    app.document.replace_geometry(geometry.clone()).unwrap();
+    app.execute_action(Action::ModelTool(ModelTool::PointExtrude), &ctx);
+    navigation_frame(&mut app, &ctx, vec![]);
+    app.viewport.modeling.selected = [crate::viewport::Component::Vertex(0)].into();
+    let history = app.document.history_counts();
+    app.dispatch(Command::ModelApply, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), geometry);
+    assert_eq!(app.document.history_counts(), history);
+    assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
+    app.ui.modeling.protect_mask = false;
+    app.ui.modeling.amount = 0.4;
+    app.dispatch(Command::ModelApply, &ctx);
+    let after = app.document.geometry_snapshot();
+    assert_eq!(after.mesh.loose_edges.len(), 1, "{}", app.ui.status);
+    app.ui.modeling.protect_mask = true;
+    navigation_frame(&mut app, &ctx, vec![]);
+    let history = app.document.history_counts();
+    app.execute_action(
+        Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteVertices),
+        &ctx,
+    );
+    assert_eq!(app.document.geometry_snapshot(), after);
+    assert_eq!(app.document.history_counts(), history);
     assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
 }

@@ -253,6 +253,9 @@ pub fn export_obj(path: &str, mesh: &Mesh) -> Result<(), String> {
     for v in &mesh.vertices {
         text.push_str(&format!("v {} {} {}\n", v.0, v.1, v.2));
     }
+    for &[a, b] in &mesh.loose_edges {
+        text.push_str(&format!("l {} {}\n", a + 1, b + 1));
+    }
     let key = |mut t: [usize; 3]| {
         t.sort_unstable();
         t

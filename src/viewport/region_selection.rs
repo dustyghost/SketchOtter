@@ -81,6 +81,15 @@ impl Viewport {
         let editable = mesh.sculptable_vertices();
         let allowed_vertex = |v: usize| editable[v] && (!protect || mesh.mask[v] == 0.);
         let mut candidates = BTreeSet::new();
+        let wires: BTreeSet<_> = mesh.visible_loose_edges().into_iter().collect();
+        let wire_vertices: BTreeSet<_> = wires.iter().flatten().copied().collect();
+        match mode {
+            ComponentMode::Edge => candidates.extend(wires.iter().copied().map(Component::Edge)),
+            ComponentMode::Vertex => {
+                candidates.extend(wire_vertices.iter().copied().map(Component::Vertex))
+            }
+            ComponentMode::Face => (),
+        }
         for (f, poly) in polygons.iter().enumerate().filter(|(_, p)| p.visible) {
             match mode {
                 ComponentMode::Face => {
@@ -123,6 +132,14 @@ impl Viewport {
                                 .iter()
                                 .all(|v| polygons[f].vertices.contains(v))
                         }))
+            } else if match c {
+                Component::Vertex(v) => wire_vertices.contains(&v),
+                Component::Edge(e) => wires.contains(&e),
+                _ => false,
+            } {
+                scene.visible_depth(center)
+                    && contains(scene.project(center))
+                    && (tool.through || scene.point_unoccluded(center))
             } else {
                 point_in_region(scene, center, tool.through, &contains)
             };

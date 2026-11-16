@@ -3,8 +3,8 @@ use super::{Geometry, Mesh, Submodel};
 impl Geometry {
     pub(crate) fn import_mesh(&mut self, mesh: Mesh, name: &str) -> Result<(), String> {
         mesh.validate()?;
-        if mesh.triangles.is_empty() {
-            return Err("Imported mesh has no faces".into());
+        if mesh.triangles.is_empty() && mesh.loose_edges.is_empty() {
+            return Err("Imported mesh has no faces or edges".into());
         }
         if self.submodels.len() >= 63 {
             return Err("Submodels are limited to 64".into());

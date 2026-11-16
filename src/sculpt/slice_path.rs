@@ -246,6 +246,7 @@ impl Mesh {
         cancel: &impl Fn() -> bool,
     ) -> Result<(Self, Option<Self>), String> {
         self.validate()?;
+        self.require_surface_topology()?;
         let path = Path::new(path, self)?;
         let capped = options.cap && options.mode != SliceMode::Polygroups;
         if capped {

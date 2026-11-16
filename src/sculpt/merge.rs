@@ -21,6 +21,9 @@ impl Mesh {
         let group_offset = self.vertex_groups.len();
         let mut merged = self.clone();
         merged.vertices.extend_from_slice(&other.vertices);
+        merged
+            .loose_edges
+            .extend(other.loose_edges.iter().map(|e| e.map(|v| v + offset)));
         merged.mask.extend_from_slice(&other.mask);
         if !self.materials.is_empty() || !other.materials.is_empty() {
             merged.materials = (0..self.vertices.len())

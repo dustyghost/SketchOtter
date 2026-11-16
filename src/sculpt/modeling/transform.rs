@@ -42,6 +42,25 @@ impl Mesh {
                 .into());
             }
         }
+        let wire_key = |mesh: &Mesh, e: [usize; 2]| {
+            let mut points = e.map(|v| {
+                let p = mesh.vertices[v];
+                [p.0.to_bits(), p.1.to_bits(), p.2.to_bits()]
+            });
+            points.sort_unstable();
+            points
+        };
+        let remaining: BTreeSet<_> = out.loose_edges.iter().map(|&e| wire_key(out, e)).collect();
+        let visible: BTreeSet<_> = self.visible_loose_edges().into_iter().collect();
+        for &e in &self.loose_edges {
+            if (!visible.contains(&e) || (mask && e.iter().any(|&v| self.mask[v] > 0.)))
+                && !remaining.contains(&wire_key(self, e))
+            {
+                return Err(
+                    "This edit touches masked or hidden edges; clear their protection first".into(),
+                );
+            }
+        }
         Ok(())
     }
 

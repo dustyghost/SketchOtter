@@ -938,7 +938,11 @@ fn modeling_component_construction_preserves_closed_surfaces_and_attributes() {
                 &sym,
             )
             .unwrap_or_else(|e| panic!("{kind:?}: {e}"));
-        out.validate_closed().unwrap();
+        if kind == ComponentBuild::PointExtrude {
+            assert!(out.validate_closed().is_err());
+        } else {
+            out.validate_closed().unwrap();
+        }
         manifold(&out).unwrap();
         assert_ne!(out, mesh);
         assert!(out.mask.iter().all(|&w| (w - 0.3).abs() < 1e-6));
@@ -1018,9 +1022,18 @@ fn modeling_point_ring_and_surface_edge_construction_are_symmetric() {
             let out = mesh
                 .build_components(kind, &[], &[], &[v], mesh.vertices[v], options, &sym)
                 .unwrap();
-            out.validate_closed().unwrap();
+            if kind == ComponentBuild::PointExtrude {
+                assert!(out.validate_closed().is_err());
+            } else {
+                out.validate_closed().unwrap();
+            }
             sym.validate_result(&out).unwrap();
-            assert!(!out.creases.is_empty());
+            if kind == ComponentBuild::PointExtrude {
+                assert_eq!(out.creases, mesh.creases);
+                assert!(!out.loose_edges.is_empty());
+            } else {
+                assert!(!out.creases.is_empty());
+            }
         }
     }
     let w = mesh
@@ -2127,4 +2140,191 @@ fn modeling_delete_vertices_removes_attached_faces_and_rejects_invalid_targets()
             .unwrap_err()
             .contains("Show all faces")
     );
+}
+
+#[test]
+fn point_extrude_adds_only_one_vertex_and_edge_and_continues_from_tip() {
+    let mut primitive = Primitive::for_kind(PrimitiveKind::Grid);
+    primitive.divisions = [5, 5, 1];
+    let mut mesh = primitive.mesh().unwrap();
+    mesh.mask.fill(0.3);
+    mesh.create_vertex_group("Surface".into(), 0., true)
+        .unwrap();
+    mesh.creases = mesh.polygon_edges();
+    let v = mesh
+        .vertices
+        .iter()
+        .position(|p| (p.0 - 0.2).abs() < 1e-5 && (p.1 - 0.2).abs() < 1e-5)
+        .unwrap();
+    let sym = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+    let mut options = component_options(0.4);
+    options.width = 0.; // No radius or closed fan is needed for an edge.
+    options.round = true;
+    options.crease = true;
+    let out = mesh
+        .build_components(
+            ComponentBuild::PointExtrude,
+            &[],
+            &[],
+            &[v],
+            mesh.vertices[v],
+            options,
+            &sym,
+        )
+        .unwrap();
+    assert_eq!(out.vertices.len(), mesh.vertices.len() + 1);
+    assert_eq!(out.vertices[..mesh.vertices.len()], mesh.vertices);
+    assert_eq!(out.triangles, mesh.triangles);
+    assert_eq!(out.quads, mesh.quads);
+    assert_eq!(out.uv, mesh.uv);
+    assert_eq!(out.creases, mesh.creases);
+    let tip = mesh.vertices.len();
+    assert_eq!(out.loose_edges, vec![[v, tip]]);
+    assert!((out.vertices[tip] - mesh.vertices[v] - Vec3(0., 0., 0.4)).len() < 1e-6);
+    assert_eq!(out.mask[tip], mesh.mask[v]);
+    assert_eq!(out.vertex_groups[0].weights[tip], 1.);
+    let sym = ModelingSymmetry::new(&out, &Default::default()).unwrap();
+    let next = out
+        .build_components(
+            ComponentBuild::PointExtrude,
+            &[],
+            &[],
+            &[tip],
+            out.vertices[tip],
+            options,
+            &sym,
+        )
+        .unwrap();
+    assert_eq!(next.loose_edges, vec![[v, tip], [tip, tip + 1]]);
+    assert!((next.vertices[tip + 1] - mesh.vertices[v] - Vec3(0., 0., 0.8)).len() < 1e-6);
+    let deleted = next
+        .edit_model_topology(
+            TopologyEdit::DeleteVertices,
+            &[],
+            &[],
+            &[tip + 1],
+            &ModelingSymmetry::new(&next, &Default::default()).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(deleted, out);
+    assert_eq!(
+        serde_json::from_str::<Mesh>(&serde_json::to_string(&next).unwrap()).unwrap(),
+        next
+    );
+    assert_eq!(out.subdivide().unwrap().loose_edges, out.loose_edges);
+    assert_eq!(
+        out.smooth_subdivide(1., &|| false).unwrap().loose_edges,
+        out.loose_edges
+    );
+    let legacy = serde_json::to_value(&mesh).unwrap();
+    assert!(legacy.get("loose_edges").is_none());
+    assert_eq!(serde_json::from_value::<Mesh>(legacy).unwrap(), mesh);
+}
+
+#[test]
+fn point_extrude_symmetry_and_invalid_selection_are_atomic() {
+    let mesh = cube(4);
+    let v = mesh
+        .vertices
+        .iter()
+        .position(|p| (*p - Vec3(0.5, 0.5, 1.)).len() < 1e-6)
+        .unwrap();
+    let symmetry = ModelingSymmetry::new(&mesh, &mirror_x()).unwrap();
+    let out = mesh
+        .build_components(
+            ComponentBuild::PointExtrude,
+            &[],
+            &[],
+            &[v],
+            mesh.vertices[v],
+            component_options(0.3),
+            &symmetry,
+        )
+        .unwrap();
+    assert_eq!(out.loose_edges.len(), 2);
+    assert_eq!(out.vertices.len(), mesh.vertices.len() + 2);
+    assert_eq!(out.triangles, mesh.triangles);
+    symmetry.validate_result(&out).unwrap();
+    for selection in [&[][..], &[usize::MAX][..]] {
+        assert!(
+            mesh.build_components(
+                ComponentBuild::PointExtrude,
+                &[],
+                &[],
+                selection,
+                Vec3::default(),
+                component_options(0.3),
+                &symmetry
+            )
+            .is_err()
+        );
+    }
+    let mut hidden = mesh.clone();
+    hidden.hidden_faces = vec![false; hidden.triangles.len()];
+    let face = hidden
+        .triangles
+        .iter()
+        .position(|t| t.contains(&v))
+        .unwrap();
+    hidden.hidden_faces[face] = true;
+    assert!(
+        hidden
+            .build_components(
+                ComponentBuild::PointExtrude,
+                &[],
+                &[],
+                &[v],
+                mesh.vertices[v],
+                component_options(0.3),
+                &ModelingSymmetry::new(&hidden, &Default::default()).unwrap()
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn point_extrude_edges_survive_obj_merge_and_vertex_reindexing() {
+    let mut primitive = Primitive::for_kind(PrimitiveKind::Grid);
+    primitive.divisions = [5, 5, 1];
+    let source = primitive.mesh().unwrap();
+    let v = source
+        .vertices
+        .iter()
+        .position(|p| (p.0 - 0.2).abs() < 1e-5 && (p.1 - 0.2).abs() < 1e-5)
+        .unwrap();
+    let mut mesh = source
+        .build_components(
+            ComponentBuild::PointExtrude,
+            &[],
+            &[],
+            &[v],
+            source.vertices[v],
+            component_options(0.3),
+            &ModelingSymmetry::new(&source, &Default::default()).unwrap(),
+        )
+        .unwrap();
+    let original = mesh.clone();
+    let path = std::env::temp_dir().join(format!("clay-point-edge-{}.obj", std::process::id()));
+    crate::persistence::export_obj(path.to_str().unwrap(), &mesh).unwrap();
+    let loaded = crate::persistence::load_obj(path.to_str().unwrap()).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(loaded.vertices, mesh.vertices);
+    assert_eq!(loaded.loose_edges, mesh.loose_edges);
+    assert_eq!(loaded.quads, mesh.quads);
+    let merged = source.merged_with(&mesh).unwrap();
+    assert_eq!(
+        merged.loose_edges,
+        mesh.loose_edges
+            .iter()
+            .map(|e| e.map(|v| v + source.vertices.len()))
+            .collect::<Vec<_>>()
+    );
+    mesh.apply_edge_collapses(&[(1, 0)].into());
+    mesh.validate().unwrap();
+    assert_eq!(mesh.loose_edges.len(), 1);
+    assert_eq!(
+        mesh.loose_edges[0].map(|v| mesh.vertices[v]),
+        original.loose_edges[0].map(|v| original.vertices[v])
+    );
+    assert!(original.require_surface_topology().is_err());
 }

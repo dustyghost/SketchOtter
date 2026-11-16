@@ -213,8 +213,18 @@ impl Mesh {
                         p.vertices.iter().any(|v| selected.contains(v)).then_some(f)
                     })
                     .collect();
+                out.loose_edges
+                    .retain(|e| e.iter().all(|v| !selected.contains(v)));
+                if removed.is_empty() && out.loose_edges == self.loose_edges {
+                    return Err("Select vertices belonging to faces or edges".into());
+                }
                 if removed.is_empty() {
-                    return Err("Select vertices belonging to faces".into());
+                    let mut result = self.clone();
+                    result.loose_edges = out.loose_edges;
+                    result.compact_model_vertices();
+                    result.validate()?;
+                    symmetry.validate_result(&result)?;
+                    return Ok(result);
                 }
                 if removed.iter().any(|&f| !polygons[f].visible) {
                     return Err("Show all faces attached to the selected vertices first".into());
@@ -386,7 +396,20 @@ impl Mesh {
                 }
             }
         }
-        if out.triangles.is_empty() {
+        out.loose_edges = out
+            .loose_edges
+            .iter()
+            .filter_map(|&[a, b]| {
+                let a = *mapping.get(&a).unwrap_or(&a);
+                let b = *mapping.get(&b).unwrap_or(&b);
+                (a != b).then_some(edge(a, b))
+            })
+            .collect();
+        out.loose_edges.sort_unstable();
+        out.loose_edges.dedup();
+        let surface_edges: BTreeSet<_> = out.polygon_edges().into_iter().collect();
+        out.loose_edges.retain(|e| !surface_edges.contains(e));
+        if out.triangles.is_empty() && out.loose_edges.is_empty() {
             return Err("This would remove the entire mesh".into());
         }
         out.creases = self

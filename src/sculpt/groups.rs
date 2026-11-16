@@ -439,6 +439,15 @@ impl Mesh {
         for (new, &old) in old_vertices.iter().enumerate() {
             indices[old] = new;
         }
+        result.loose_edges = self
+            .loose_edges
+            .iter()
+            .filter_map(|&[a, b]| {
+                let (a, b) = (indices[a], indices[b]);
+                (a != usize::MAX && b != usize::MAX).then_some([a.min(b), a.max(b)])
+            })
+            .collect();
+        result.loose_edges.sort_unstable();
         self.reindex_creases(result, &indices);
         result.canonicalize_polygroups();
     }

@@ -423,6 +423,9 @@ impl Mesh {
         o: ComponentBuildOptions,
         symmetry: &ModelingSymmetry,
     ) -> Result<Mesh, String> {
+        if kind == ComponentBuild::PointExtrude {
+            return self.extrude_point_edges(vertices, o.amount, symmetry);
+        }
         let selected: BTreeSet<_> = vertices
             .iter()
             .flat_map(|&v| symmetry.vertex_copies(v))
@@ -430,16 +433,9 @@ impl Mesh {
         if selected.is_empty() || selected.iter().any(|&v| v >= self.vertices.len()) {
             return Err("Select current vertices".into());
         }
-        let width = if kind == ComponentBuild::PointSplit {
-            o.amount
-        } else {
-            o.width
-        };
+        let width = o.amount;
         if width <= 1e-7 {
             return Err("Use a positive radius".into());
-        }
-        if kind == ComponentBuild::PointExtrude && o.amount.abs() < 1e-7 {
-            return Ok(self.clone());
         }
         let polygons = self.polygons();
         let mut out = self.empty_topology();
@@ -562,18 +558,7 @@ impl Mesh {
                 cap_source.group = 0;
             }
             cap_source.vertices = vec![v];
-            if kind == ComponentBuild::PointExtrude {
-                let tip = out.append_blend(self, &[(v, 1.)], self.vertices[v] + n * o.amount);
-                for i in 0..cap.len() {
-                    out.push_polygon(
-                        &[cap[i], cap[(i + 1) % cap.len()], tip],
-                        cap_source.group,
-                        false,
-                    );
-                }
-            } else {
-                self.component_polygon(&mut out, &cap, &cap_source, o.triangulate);
-            }
+            self.component_polygon(&mut out, &cap, &cap_source, o.triangulate);
             if o.crease {
                 for i in 0..cap.len() {
                     out.creases.push(edge(cap[i], cap[(i + 1) % cap.len()]));
@@ -604,5 +589,64 @@ impl Mesh {
             out.creases.push(edge(aa, bb));
         }
         self.finish_components(out, symmetry)
+    }
+
+    fn extrude_point_edges(
+        &self,
+        vertices: &[usize],
+        amount: f32,
+        symmetry: &ModelingSymmetry,
+    ) -> Result<Mesh, String> {
+        if vertices.is_empty() || vertices.iter().any(|&v| v >= self.vertices.len()) {
+            return Err("Select current vertices".into());
+        }
+        let selected: BTreeSet<_> = vertices
+            .iter()
+            .flat_map(|&v| symmetry.vertex_copies(v))
+            .collect();
+        self.protect_model_vertices(&selected.iter().copied().collect::<Vec<_>>(), false)?;
+        if amount.abs() < 1e-7 {
+            return Ok(self.clone());
+        }
+        if self.vertices.len() + selected.len() > max_vertices() {
+            return Err("Point extrusion exceeds the vertex limit".into());
+        }
+        let mut normals = vec![Vec3::default(); self.vertices.len()];
+        for p in self.polygons() {
+            let n = normal(self, &p);
+            for v in p.vertices {
+                normals[v] = normals[v] + n;
+            }
+        }
+        let mut out = self.clone();
+        for v in selected {
+            let mut direction = normals[v];
+            if direction.len() < 1e-7 {
+                // A newly extruded endpoint continues its incoming edge.
+                for &[a, b] in &self.loose_edges {
+                    if a == v {
+                        direction = direction + self.vertices[a] - self.vertices[b];
+                    }
+                    if b == v {
+                        direction = direction + self.vertices[b] - self.vertices[a];
+                    }
+                }
+            }
+            if direction.len() < 1e-7 {
+                return Err(
+                    "Choose a point with a surface normal or a single incoming edge".into(),
+                );
+            }
+            let tip = out.append_blend(
+                self,
+                &[(v, 1.)],
+                self.vertices[v] + direction.norm() * amount,
+            );
+            out.loose_edges.push(edge(v, tip));
+        }
+        out.loose_edges.sort_unstable();
+        out.validate()?;
+        symmetry.validate_result(&out)?;
+        Ok(out)
     }
 }

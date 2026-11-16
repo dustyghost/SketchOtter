@@ -1243,6 +1243,7 @@ mod mask_edit_tests {
     #[test]
     fn delete_masked_cuts_and_compacts_preserving_remaining_quads_and_masks() {
         let mesh = Mesh {
+            loose_edges: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,

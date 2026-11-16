@@ -82,6 +82,8 @@ See [Development](../development.md#update-guide-screenshots) for prerequisites 
 
 | `delete-vertices-options-1100.png` | [Delete selected vertices or faces](../guide/modeling.md#slide-and-repair-topology) | `component_delete_offscreen_review` |
 
+| `point-extrude-orthographic.png` | [Extrude a vertex connected by an edge](../guide/modeling.md#construct-from-edges-points-and-face-centers) | `point_extrude_offscreen_review` |
+
 ## Example assets
 
 [pyramid.obj](../examples/pyramid.obj) contains the imported sample. [Front study](../examples/front-study.png) and [Side study](../examples/side-study.png) are original renders of a scaled UV sphere, exported by the same model-icon renderer used in the app. They are input assets, not screenshots of controls.

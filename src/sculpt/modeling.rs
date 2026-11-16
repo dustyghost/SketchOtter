@@ -327,7 +327,14 @@ impl Mesh {
     }
 
     fn compact_model_vertices(&mut self) {
-        let used: BTreeSet<_> = self.triangles.iter().flatten().copied().collect();
+        let uv_current = self.uv.current(self);
+        let used: BTreeSet<_> = self
+            .triangles
+            .iter()
+            .flatten()
+            .chain(self.loose_edges.iter().flatten())
+            .copied()
+            .collect();
         let mut mapping = vec![usize::MAX; self.vertices.len()];
         let mut vertices = Vec::with_capacity(used.len());
         let mut mask = Vec::with_capacity(used.len());
@@ -346,6 +353,9 @@ impl Mesh {
         for q in &mut self.quads {
             *q = q.map(|v| mapping[v]);
         }
+        for e in &mut self.loose_edges {
+            *e = e.map(|v| mapping[v]);
+        }
         self.creases = self
             .creases
             .iter()
@@ -354,6 +364,19 @@ impl Mesh {
         self.creases.sort_unstable();
         self.vertices = vertices;
         self.mask = mask;
+        if uv_current {
+            self.uv.topology = self.triangles.clone();
+            self.uv.seams = self
+                .uv
+                .seams
+                .iter()
+                .filter_map(|&[a, b]| {
+                    (mapping[a] != usize::MAX && mapping[b] != usize::MAX)
+                        .then_some(edge(mapping[a], mapping[b]))
+                })
+                .collect();
+            self.uv.seams.sort_unstable();
+        }
     }
 }
 

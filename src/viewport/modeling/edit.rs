@@ -6,6 +6,7 @@ pub(super) struct EditOutcome {
     pub amount: f32,
     pub retain_caps: bool,
     moved_faces: std::collections::BTreeMap<usize, usize>,
+    point_tips: BTreeSet<Component>,
     pub fuse: crate::sculpt::FusePreview,
     pub notice: &'static str,
 }
@@ -16,11 +17,15 @@ impl EditOutcome {
             amount,
             retain_caps,
             moved_faces: Default::default(),
+            point_tips: Default::default(),
             fuse: Default::default(),
             notice: "",
         }
     }
     pub(super) fn moved_selection(&self, source: &BTreeSet<Component>) -> BTreeSet<Component> {
+        if !self.point_tips.is_empty() {
+            return self.point_tips.clone();
+        }
         source
             .iter()
             .map(|&c| match c {
@@ -248,6 +253,14 @@ impl ModelingState {
                 })
                 .collect();
             let c = options.construction;
+            if options.tool == ModelTool::PointExtrude {
+                let symmetry = ModelingSymmetry::new(mesh, document.symmetry())?;
+                let touched: Vec<_> = points
+                    .iter()
+                    .flat_map(|&v| symmetry.vertex_copies(v))
+                    .collect();
+                mesh.protect_model_vertices(&touched, options.protect_mask)?;
+            }
             let result = mesh.build_components(
                 kind,
                 &faces,
@@ -266,7 +279,17 @@ impl ModelingState {
                 &ModelingSymmetry::new(mesh, document.symmetry())?,
             )?;
             mesh.check_model_protection(&result, options.protect_mask)?;
-            return Ok(EditOutcome::new(result, amount, false));
+            let tips = if options.tool == ModelTool::PointExtrude {
+                (mesh.vertices.len()..result.vertices.len())
+                    .map(Component::Vertex)
+                    .collect()
+            } else {
+                BTreeSet::new()
+            };
+            return Ok(EditOutcome {
+                point_tips: tips,
+                ..EditOutcome::new(result, amount, false)
+            });
         }
         if matches!(
             options.tool,
@@ -302,6 +325,7 @@ impl ModelingState {
                     mesh: r.mesh,
                     amount: r.distance,
                     moved_faces: Default::default(),
+                    point_tips: Default::default(),
                     retain_caps: !r.joined && !r.collapsed,
                     fuse: r.preview,
                     notice: if r.partial_contact {
@@ -468,8 +492,10 @@ impl ModelingState {
             return Ok(());
         }
         let selection = if options.tool.is_transform()
-            || matches!(options.tool, ModelTool::Slide | ModelTool::CutCell)
-        {
+            || matches!(
+                options.tool,
+                ModelTool::Slide | ModelTool::CutCell | ModelTool::PointExtrude
+            ) {
             result.moved_selection(&drag.components)
         } else if result.retain_caps
             && matches!(
@@ -547,8 +573,10 @@ impl ModelingState {
             return Ok(());
         }
         let selection = if options.tool.is_transform()
-            || matches!(options.tool, ModelTool::Slide | ModelTool::CutCell)
-        {
+            || matches!(
+                options.tool,
+                ModelTool::Slide | ModelTool::CutCell | ModelTool::PointExtrude
+            ) {
             result.moved_selection(&self.selected)
         } else if result.retain_caps
             && matches!(
@@ -606,7 +634,22 @@ impl Viewport {
         };
         match targets {
             Ok(targets) => {
-                let anchor = scene.pick(point).map_or(Vec3::default(), |h| h.0);
+                let mesh = document.mesh();
+                let anchor = match component {
+                    Component::Vertex(v) if mesh.loose_edges.iter().any(|e| e.contains(&v)) => {
+                        mesh.vertices[v]
+                    }
+                    Component::Edge(edge) if mesh.loose_edges.contains(&edge) => {
+                        let start = mesh.vertices[edge[0]];
+                        let delta = mesh.vertices[edge[1]] - start;
+                        let distance = scene
+                            .axis_parameter(point, start, delta.norm())
+                            .unwrap_or(delta.len() * 0.5)
+                            .clamp(0., delta.len());
+                        start + delta.norm() * distance
+                    }
+                    _ => scene.pick(point).map_or(Vec3::default(), |h| h.0),
+                };
                 if model.tool.is_transform() && model.interaction == ModelInteraction::Gizmo {
                     self.modeling.selected = targets.into_iter().collect();
                     self.modeling.selection_anchor = Some(anchor);
@@ -641,7 +684,6 @@ impl Viewport {
                     direct: None,
                     start: point,
                     rail: if let Component::Edge([a, b]) = component {
-                        let anchor = scene.pick(point).map_or(Vec3::default(), |h| h.0);
                         let delta = scene.project(document.mesh().vertices[b])
                             - scene.project(document.mesh().vertices[a]);
                         Some(
@@ -659,9 +701,9 @@ impl Viewport {
                     initial_amount: model.amount,
                     preview_options: model,
                     moved: false,
-                    scale: scene.scale_at(scene.pick(point).map_or(Vec3::default(), |h| h.0)),
+                    scale: scene.scale_at(anchor),
                     components,
-                    anchor: scene.pick(point).map_or(Vec3::default(), |h| h.0),
+                    anchor,
                     revision: document.display_revision(),
                     amount: model.amount,
                     result,

@@ -173,7 +173,8 @@ fn invalid_faces_and_unsupported_geometry_are_rejected_with_context() {
         "f 1/ 2/ 3/",
         "f 1///1 2 3",
         "f 1 3 2 4",
-        "l 1 2",
+        "l 1",
+        "l 1 1",
         "curv 0 1 1 2",
         "csh echo test",
         "call other.obj",
@@ -282,4 +283,12 @@ fn file_size_limit_is_checked_before_reading() {
     );
     drop(file);
     std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn point_extrude_obj_lines_support_chains_and_negative_indices() {
+    let mesh = read("v 0 0 0\nv 1 0 0\nv 1 1 0\nl -3 -2 -1\nl 2 1\n");
+    assert_eq!(mesh.loose_edges, vec![[0, 1], [1, 2]]);
+    assert!(mesh.triangles.is_empty());
+    assert!(parse("v 0 0 0\nl 1 8\n", &|| false).is_err());
 }

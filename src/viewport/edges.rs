@@ -45,8 +45,9 @@ impl Viewport {
                 ]
             })
             .collect();
-        for edge in mesh.polygon_edges() {
-            if !visible.contains(&edge) {
+        let wires: std::collections::BTreeSet<_> = mesh.visible_loose_edges().into_iter().collect();
+        for edge in mesh.model_edges() {
+            if !visible.contains(&edge) && !wires.contains(&edge) {
                 continue;
             }
             let [a, b] = edge;
@@ -67,6 +68,16 @@ impl Viewport {
             // exact silhouette, sample slightly toward the pointer as well.
             let [a, b] = edge;
             let delta = mesh.vertices[b] - mesh.vertices[a];
+            if wires.contains(&edge) {
+                let length = delta.len();
+                let t = scene
+                    .axis_parameter(p, mesh.vertices[a], delta.norm())
+                    .unwrap_or(length * 0.5)
+                    .clamp(0., length);
+                return scene
+                    .point_unoccluded(mesh.vertices[a] + delta.norm() * t)
+                    .then_some(edge);
+            }
             let hit = scene.pick(p).or_else(|| scene.pick(p.lerp(point, 0.05)))?;
             let t =
                 ((hit.0 - mesh.vertices[a]).dot(delta) / delta.dot(delta).max(1e-12)).clamp(0., 1.);

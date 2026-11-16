@@ -79,10 +79,12 @@ impl Mesh {
     /// Extract a face set without welding or capping its boundary. Both halves
     /// retain masks, weights, categories, and only complete surviving quads.
     pub fn visibility_part(&self, visible: bool) -> Result<Self, String> {
+        self.require_surface_topology()?;
         let old_faces: Vec<_> = (0..self.triangles.len())
             .filter(|&i| self.face_visible(i) == visible)
             .collect();
         let mut result = Self {
+            loose_edges: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,

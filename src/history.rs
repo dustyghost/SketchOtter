@@ -190,6 +190,7 @@ fn geometry_bytes(geometry: &Geometry) -> usize {
                 + mesh.quads.len() * std::mem::size_of::<[usize; 4]>()
                 + mesh.shading_seams.as_ref().map_or(0, |seams| seams.retained_bytes())
                 + mesh.creases.len() * std::mem::size_of::<[usize; 2]>()
+                + mesh.loose_edges.len() * std::mem::size_of::<[usize; 2]>()
                 + mesh.hidden_faces.len()
                 + mesh.polygroups.len() * std::mem::size_of::<usize>()
                 + mesh
@@ -216,6 +217,7 @@ mod tests {
     fn oldest_snapshots_are_evicted_at_the_limit() {
         let mut history = History::default();
         let mut mesh = Geometry::new(Mesh {
+            loose_edges: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,

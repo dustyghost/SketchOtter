@@ -6,6 +6,8 @@ mod edit;
 mod selection;
 mod selection_growth;
 mod snapping;
+#[cfg(test)]
+mod wire_tests;
 pub(crate) use snapping::SnapTarget;
 mod transform;
 use edit::EditDrag;
@@ -570,12 +572,14 @@ impl Viewport {
                     .map(Component::Face)
             }
             ComponentMode::Vertex => {
+                let wires: BTreeSet<_> = mesh.visible_loose_edges().into_iter().flatten().collect();
                 let visible: BTreeSet<_> = mesh
                     .triangles
                     .iter()
                     .enumerate()
                     .filter(|(i, _)| mesh.face_visible(*i))
                     .flat_map(|(_, t)| t.iter().copied())
+                    .chain(wires.iter().copied())
                     .collect();
                 visible
                     .into_iter()
@@ -584,6 +588,11 @@ impl Viewport {
                         let distance = p.distance(point);
                         if distance > 12. {
                             return None;
+                        }
+                        if wires.contains(&v) {
+                            return scene
+                                .point_unoccluded(mesh.vertices[v])
+                                .then_some((distance, v));
                         }
                         // Sample just inside the incident surface at silhouettes.
                         let hit = scene.pick(p).or_else(|| scene.pick(p.lerp(point, 0.1)))?;
@@ -714,7 +723,7 @@ impl Viewport {
         }
         let hover = eligible.and_then(|p| Self::component_at(p, model.mode, document, scene));
         if model.smooth_preview && options.wire && !self.modeling.dragging() {
-            for [a, b] in document.mesh().polygon_edges() {
+            for [a, b] in document.mesh().model_edges() {
                 if let Some(points) =
                     scene.clip_segment([document.mesh().vertices[a], document.mesh().vertices[b]])
                 {
@@ -739,6 +748,7 @@ impl Viewport {
                         | ModelTool::Scale
                         | ModelTool::Slide
                         | ModelTool::CutCell
+                        | ModelTool::PointExtrude
                 ) {
                     result.moved_selection(&drag.components)
                 } else if result.retain_caps {
@@ -759,11 +769,11 @@ impl Viewport {
                     };
                     let old: BTreeSet<_> = document
                         .mesh()
-                        .polygon_edges()
+                        .model_edges()
                         .into_iter()
                         .map(|e| key(document.mesh(), e))
                         .collect();
-                    for edge in result.mesh.polygon_edges() {
+                    for edge in result.mesh.model_edges() {
                         if !old.contains(&key(&result.mesh, edge))
                             && let Some(points) =
                                 scene.clip_segment(edge.map(|v| result.mesh.vertices[v]))

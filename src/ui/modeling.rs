@@ -293,7 +293,7 @@ impl UiState {
                     let mode=match edit {T::DeleteFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace|T::DeleteVertices=>ComponentMode::Vertex,_=>ComponentMode::Edge};
                     if self.modeling.mode==mode && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
                 }
-                ui.weak("Connect vertices splits a quad. Create face uses every vertex around an opening; Fill boundary uses its complete edge loop. Each action applies immediately as one Undo step. New caps follow the boundary winding and need unwrapping before texture painting. Loose edges are not supported.");
+                ui.weak("Connect vertices splits a quad. Create face uses every vertex around an opening; Fill boundary uses its complete edge loop. Each action applies immediately as one Undo step. New caps follow the boundary winding and need unwrapping before texture painting. Create face needs a complete surface boundary.");
                 ui.weak("Delete loop: Keep surface joins the adjoining faces; Leave gap removes the faces touching the loop. Select complete interior quad loops. Weld uses the midpoint.");
                 if self.modeling.mode == ComponentMode::Vertex {
                     ui.weak("Delete vertices also removes every face attached to them.");
@@ -335,9 +335,9 @@ impl UiState {
                         ui.weak("Border: extend outward · surface: extrude the highlighted side");
                     }
                     if tool==ModelTool::PointExtrude {
-                        search::setting_response(ui.add(egui::DragValue::new(&mut self.modeling.construction.width).prefix("Base radius ").range(0.0001..=1000.).speed(0.01)), "Point base radius");
+                        ui.weak("Creates one vertex joined to the original by an edge. Follows the surface normal, or continues an existing loose edge. The new endpoint stays selected.");
                     }
-                    if matches!(tool,ModelTool::PointSplit|ModelTool::PointExtrude) {
+                    if tool==ModelTool::PointSplit {
                         search::setting_response(design::checkbox(ui, &mut self.modeling.construction.round,"Circularize ring"), "Circularize ring");
                         search::setting_response(design::checkbox(ui, &mut self.modeling.construction.crease,"Crease ring"), "Crease ring");
                         ui.weak("Closed point fan · radius below half the shortest edge");

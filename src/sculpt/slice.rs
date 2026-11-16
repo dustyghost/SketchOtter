@@ -137,6 +137,7 @@ impl Mesh {
         cancel: &impl Fn() -> bool,
     ) -> Result<(Self, Option<Self>), String> {
         self.validate()?;
+        self.require_surface_topology()?;
         let finite = |v: Vec3| v.0.is_finite() && v.1.is_finite() && v.2.is_finite();
         if !finite(plane.origin)
             || !finite(plane.normal)

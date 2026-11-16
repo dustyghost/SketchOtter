@@ -14,6 +14,7 @@ pub mod material;
 mod math;
 mod mesh;
 pub(crate) mod object_stamp;
+mod wire;
 pub use material::{Material, PaintChannels};
 mod overlap;
 mod polish;

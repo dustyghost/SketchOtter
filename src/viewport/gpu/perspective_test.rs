@@ -154,6 +154,7 @@ fn gpu_perspective_picking_alpha_wireframe_and_clipping() {
         ],
     ] {
         let mesh = Mesh {
+            loose_edges: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,

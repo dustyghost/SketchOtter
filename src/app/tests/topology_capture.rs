@@ -53,6 +53,7 @@ fn manual_topology_offscreen_review() {
     g.app.camera.pitch = -0.15;
     reach_sidebar_control(&mut g, "Vertex");
     click_guide_label(&mut g, "Vertex");
+    reach_sidebar_control(&mut g, "Add");
     click_guide_label(&mut g, "Add");
     for p in &corners {
         // Orbit to expose each adjoining wall: back-facing surfaces do not

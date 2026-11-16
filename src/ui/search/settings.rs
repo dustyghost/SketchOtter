@@ -471,16 +471,10 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
         "Inspect the amount for the current Modeling edit. Choose an edit tool to expose its amount control.",
     ),
     (
-        "Point base radius",
-        "point extrude construction width modeling",
-        Destination::Panel(Tool::Mesh),
-        "Set the starting radius for Point extrude. Choose Point extrude in Vertex mode first.",
-    ),
-    (
         "Circularize ring",
-        "circularise round point split extrude",
+        "circularise round point split",
         Destination::Panel(Tool::Mesh),
-        "Make the ring circular when using Point split or Point extrude.",
+        "Make the ring circular when using Point split.",
     ),
     (
         "Double ring sides",
@@ -490,9 +484,9 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
     ),
     (
         "Crease ring",
-        "point split extrude sharp boundary construction",
+        "point split sharp boundary construction",
         Destination::Panel(Tool::Mesh),
-        "Crease the generated ring in Point split or Point extrude.",
+        "Crease the generated ring in Point split.",
     ),
     (
         "Triangulate centre",
@@ -1009,7 +1003,6 @@ pub(super) fn setting_section(name: &str) -> Option<&'static str> {
         "Individual faces" => Some("modeling_options"),
         "Snap range" => Some("modeling_options"),
         "Modeling amount" => Some("modeling_options"),
-        "Point base radius" => Some("modeling_options"),
         "Circularize ring" => Some("modeling_options"),
         "Double ring sides" => Some("modeling_options"),
         "Crease ring" => Some("modeling_options"),
