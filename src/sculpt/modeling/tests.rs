@@ -2339,9 +2339,11 @@ fn point_extrude_displacement_preserves_faces_and_reflects_from_dragged_side() {
         .iter()
         .position(|p| p.0 > 0. && p.0 < 0.5 && p.1 > 0. && p.1 < 0.5)
         .unwrap();
-    let mut settings = crate::sculpt::Symmetry::default();
-    settings.enabled = true;
-    settings.mirror = [true, false, false];
+    let settings = crate::sculpt::Symmetry {
+        enabled: true,
+        mirror: [true, false, false],
+        ..Default::default()
+    };
     let symmetry = ModelingSymmetry::new(&mesh, &settings).unwrap();
     let delta = Vec3(0.13, 0.27, 0.19);
     let out = mesh
