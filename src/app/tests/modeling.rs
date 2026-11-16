@@ -1194,10 +1194,12 @@ fn modeling_construction_presets_roundtrip_and_keep_older_preferences_compatible
     let mut old = serde_json::to_value(app.ui.modeling.options()).unwrap();
     old.as_object_mut().unwrap().remove("construction");
     old.as_object_mut().unwrap().remove("flat_angle");
+    old.as_object_mut().unwrap().remove("extrude_snap");
     let options: crate::viewport::ModelingOptions = serde_json::from_value(old).unwrap();
     options.validate().unwrap();
     assert_eq!(options.construction.width, 0.1);
     assert_eq!(options.flat_angle, 0.);
+    assert!(options.extrude_snap);
     app.dispatch(
         Command::Action(Action::ModelTool(ModelTool::PointSplit)),
         &ctx,
@@ -2268,6 +2270,9 @@ fn modeling_manual_topology_caps_protect_masked_hidden_and_incomplete_boundaries
         app.document.replace_geometry(open.clone()).unwrap();
         select(&mut app);
         app.viewport.modeling.selected.pop_first();
+        if edit == TopologyEdit::CreateFace {
+            app.viewport.modeling.selected.pop_first();
+        }
         let history = app.document.history_counts();
         app.dispatch(Command::ModelTopology(edit), &ctx);
         assert_eq!(app.document.geometry_snapshot(), open);

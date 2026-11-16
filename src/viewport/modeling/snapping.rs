@@ -366,7 +366,7 @@ fn visible_point(scene: &Scene, point: Vec3) -> bool {
     scene.point_unoccluded(point)
 }
 
-fn nearest_edge_point(scene: &Scene, pointer: Pos2, a: Vec3, b: Vec3) -> Vec3 {
+pub(super) fn nearest_edge_point(scene: &Scene, pointer: Pos2, a: Vec3, b: Vec3) -> Vec3 {
     let (origin, ray) = scene.ray(pointer);
     let d = b - a;
     let w = a - origin;

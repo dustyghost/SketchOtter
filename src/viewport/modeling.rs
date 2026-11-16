@@ -3,6 +3,7 @@ use super::*;
 use crate::sculpt::{Extrusion, LoopCut, Mesh, ModelingSymmetry, Symmetry};
 use std::collections::BTreeSet;
 mod edit;
+mod extrude_snapping;
 mod selection;
 mod selection_growth;
 mod snapping;
@@ -239,6 +240,8 @@ pub(crate) struct ModelingOptions {
     pub snap_target: SnapTarget,
     #[serde(default = "snapping::snap_radius_default")]
     pub snap_radius: f32,
+    #[serde(default = "tap_repeat_default")]
+    pub extrude_snap: bool,
     #[serde(default)]
     pub construction: ModelConstruction,
     #[serde(default = "tap_repeat_default")]
@@ -715,6 +718,13 @@ impl Viewport {
         }
         self.modeling
             .advance_direct_transform(document, scene, point, model);
+        self.modeling.advance_extrude_snap(
+            document,
+            scene,
+            point,
+            model,
+            ui.input(|i| i.modifiers.shift),
+        );
         if model.tool == ModelTool::Select
             && model.erase_radius > 0.
             && let Some(p) = eligible
@@ -741,15 +751,16 @@ impl Viewport {
         let highlighted = Color32::from_rgb(255, 205, 95);
         if let Some(drag) = &self.modeling.edit_drag {
             if let Some(Ok(result)) = &drag.result {
-                let components = if matches!(
-                    model.tool,
-                    ModelTool::Move
-                        | ModelTool::Rotate
-                        | ModelTool::Scale
-                        | ModelTool::Slide
-                        | ModelTool::CutCell
-                        | ModelTool::PointExtrude
-                ) {
+                let components = if result.snap_target.is_some()
+                    || matches!(
+                        model.tool,
+                        ModelTool::Move
+                            | ModelTool::Rotate
+                            | ModelTool::Scale
+                            | ModelTool::Slide
+                            | ModelTool::CutCell
+                            | ModelTool::PointExtrude
+                    ) {
                     result.moved_selection(&drag.components)
                 } else if result.retain_caps {
                     ModelingState::cap_selection(document.mesh(), &result.mesh, &drag.components)
@@ -757,6 +768,25 @@ impl Viewport {
                     BTreeSet::new()
                 };
                 Self::paint_components(components, &result.mesh, scene, painter, highlighted);
+                if let Some(target) = result.snap_target {
+                    let (position, label) = match target {
+                        Component::Vertex(v) => (document.mesh().vertices[v], "Join vertex"),
+                        Component::Edge([a, b]) => (
+                            (document.mesh().vertices[a] + document.mesh().vertices[b]) * 0.5,
+                            "Join edge",
+                        ),
+                        Component::Face(_) => unreachable!(),
+                    };
+                    let at = scene.project(position);
+                    painter.circle_stroke(at, 8., (2., highlighted));
+                    painter.text(
+                        at + Vec2::new(12., -12.),
+                        egui::Align2::LEFT_BOTTOM,
+                        label,
+                        egui::FontId::proportional(13.),
+                        highlighted,
+                    );
+                }
                 if model.tool.construction_kind().is_some() {
                     let key = |mesh: &Mesh, [a, b]: [usize; 2]| {
                         let p = |v: usize| {

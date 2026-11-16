@@ -1,6 +1,7 @@
 //! Explicit topology operations. Each builds a separate mesh and validates before return.
 use super::*;
 mod manual;
+mod points;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TopologyEdit {
     DeleteFaces,

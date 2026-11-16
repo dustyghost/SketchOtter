@@ -34,6 +34,8 @@ cargo test --locked --lib region_selection_offscreen_review -- --ignored --test-
 cargo test --locked --lib delete_loop_offscreen_review -- --ignored --test-threads=1
 cargo test --locked --lib component_delete_offscreen_review -- --ignored --test-threads=1
 cargo test --locked --lib point_extrude_offscreen_review -- --ignored --test-threads=1
+cargo test --locked --lib extrusion_snap_join_offscreen_review -- --ignored --test-threads=1
+cargo test --locked --lib create_selected_face_offscreen_review -- --ignored --test-threads=1
 cargo test --locked --lib modeling_boundary_join_offscreen_review -- --ignored --test-threads=1
 env -u CLAY_REVIEW_PROJECT -u CLAY_REVIEW_MANIFEST -u CLAY_REVIEW_SWEEP -u CLAY_REVIEW_STRENGTH cargo test --locked --lib smooth_decimate_offscreen_review -- --ignored --test-threads=1
 cargo test --locked --lib surface_array_controls_offscreen_review -- --ignored --test-threads=1

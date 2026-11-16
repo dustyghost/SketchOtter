@@ -239,6 +239,7 @@ fn point_extrude_offscreen_review() {
         g.app.dispatch(Command::ModelingMode(true), &g.ctx);
         g.app
             .execute_action(Action::ModelTool(ModelTool::PointExtrude), &g.ctx);
+        g.app.ui.modeling.extrude_snap = Some(false);
         let rect = g.frame(vec![]).0;
         let project = |camera: &crate::camera::Camera, p: Vec3| {
             let (right, up, _) = camera.basis();
@@ -340,5 +341,224 @@ fn point_extrude_offscreen_review() {
             g.app.viewport.modeling.selected,
             [Component::Edge([root, tip])].into()
         );
+    }
+}
+
+#[test]
+#[ignore = "requires Vulkan; pointer snapping, Shift override, real joins and Undo/Redo"]
+fn extrusion_snap_join_offscreen_review() {
+    use crate::sculpt::{Geometry, Mesh};
+    let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    for perspective in [false, true] {
+        let mut g = Guide::new(&directory, [1100, 900]);
+        g.interactive = true;
+        g.toolbar = false;
+        let mesh = Mesh {
+            vertices: vec![
+                Vec3(-1., -0.5, 0.),
+                Vec3(-0.3, -0.5, 0.),
+                Vec3(-0.3, 0.5, 0.),
+                Vec3(-1., 0.5, 0.),
+                Vec3(0.3, -0.5, 0.),
+                Vec3(1., -0.5, 0.),
+                Vec3(1., 0.5, 0.),
+                Vec3(0.3, 0.5, 0.),
+            ],
+            triangles: vec![[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]],
+            quads: vec![[0, 1, 2, 3], [4, 5, 6, 7]],
+            mask: vec![0.; 8],
+            ..Default::default()
+        };
+        g.app
+            .document
+            .replace_geometry(Geometry::new(mesh.clone()))
+            .unwrap();
+        g.app.camera.yaw = 0.;
+        g.app.camera.pitch = 0.;
+        g.app.camera.roll = 0.15;
+        g.app.camera.zoom = 0.8;
+        g.app.camera.perspective = perspective;
+        g.app.dispatch(Command::ModelingMode(true), &g.ctx);
+        g.app
+            .execute_action(Action::ModelTool(ModelTool::PointExtrude), &g.ctx);
+        let rect = g.frame(vec![]).0;
+        let project = |p: Vec3| {
+            let (right, up, _) = g.app.camera.basis();
+            rect.center()
+                + g.app.camera.pan
+                + Vec2::new(p.dot(right), -p.dot(up)) * g.app.camera.scale_at(rect.size(), p)
+        };
+        let start = project(mesh.vertices[1]);
+        let target = project(mesh.vertices[4]) + Vec2::new(-4., -3.);
+        let edge_start = project((mesh.vertices[1] + mesh.vertices[2]) * 0.5);
+        let edge_target = project((mesh.vertices[4] + mesh.vertices[7]) * 0.5) + Vec2::new(-4., 0.);
+        let before = g.app.document.geometry_snapshot();
+        let history = g.app.document.history_counts().0;
+        g.frame(vec![
+            egui::Event::PointerMoved(start),
+            primary_event(start, true),
+        ]);
+        g.frame(vec![egui::Event::PointerMoved(target)]);
+        assert_eq!(g.app.document.geometry_snapshot(), before);
+        assert_eq!(
+            g.app.viewport.modeling.preview().unwrap().loose_edges,
+            vec![[1, 4]]
+        );
+        assert_eq!(g.app.viewport.modeling.preview().unwrap().vertices.len(), 8);
+        g.save(&format!("extrusion-snap-vertex-{perspective}"));
+        g.modifiers = egui::Modifiers::SHIFT;
+        g.frame(vec![]);
+        assert_eq!(
+            g.app.viewport.modeling.preview().unwrap().vertices.len(),
+            9,
+            "Shift must restore free extrusion"
+        );
+        g.modifiers = egui::Modifiers::NONE;
+        g.frame(vec![]);
+        assert_eq!(g.app.viewport.modeling.preview().unwrap().vertices.len(), 8);
+        g.frame(vec![primary_event(target, false)]);
+        let point_joined = g.app.document.geometry_snapshot();
+        assert_eq!(point_joined.mesh.vertices, mesh.vertices);
+        assert_eq!(point_joined.mesh.loose_edges, vec![[1, 4]]);
+        assert_eq!(g.app.document.history_counts().0, history + 1);
+        assert_eq!(
+            g.app.viewport.modeling.selected,
+            [Component::Vertex(4)].into()
+        );
+        g.app.dispatch(Command::Undo, &g.ctx);
+        assert_eq!(g.app.document.geometry_snapshot(), before);
+        g.app.dispatch(Command::Redo, &g.ctx);
+        assert_eq!(g.app.document.geometry_snapshot(), point_joined);
+        g.app.dispatch(Command::Undo, &g.ctx);
+        g.app
+            .execute_action(Action::ModelTool(ModelTool::EdgeExtrude), &g.ctx);
+        g.frame(vec![]);
+        let history = g.app.document.history_counts().0;
+        g.frame(vec![
+            egui::Event::PointerMoved(edge_start),
+            primary_event(edge_start, true),
+        ]);
+        g.frame(vec![egui::Event::PointerMoved(edge_target)]);
+        assert_eq!(g.app.document.geometry_snapshot(), before);
+        assert_eq!(g.app.viewport.modeling.preview().unwrap().quads.len(), 3);
+        assert_eq!(g.app.viewport.modeling.preview().unwrap().vertices.len(), 8);
+        g.save(&format!("extrusion-snap-edge-{perspective}"));
+        g.modifiers = egui::Modifiers::SHIFT;
+        g.frame(vec![]);
+        assert_ne!(g.app.viewport.modeling.preview().unwrap().vertices.len(), 8);
+        g.modifiers = egui::Modifiers::NONE;
+        g.frame(vec![]);
+        assert_eq!(g.app.viewport.modeling.preview().unwrap().vertices.len(), 8);
+        g.frame(vec![primary_event(edge_target, false)]);
+        let joined = g.app.document.geometry_snapshot();
+        assert_eq!(joined.mesh.quads.len(), 3);
+        assert_eq!(joined.mesh.vertices, mesh.vertices);
+        assert_eq!(g.app.document.history_counts().0, history + 1);
+        g.app.dispatch(Command::Undo, &g.ctx);
+        assert_eq!(g.app.document.geometry_snapshot(), before);
+        g.app.dispatch(Command::Redo, &g.ctx);
+        assert_eq!(g.app.document.geometry_snapshot(), joined);
+        let saved = crate::persistence::json_bytes(&g.app.document.project()).unwrap();
+        let restored: crate::sculpt::Project = serde_json::from_slice(&saved).unwrap();
+        restored.validate().unwrap();
+        assert_eq!(restored.mesh, joined.mesh);
+    }
+}
+
+#[test]
+#[ignore = "requires Vulkan; clicks Create face for selected vertices and edge endpoints"]
+fn create_selected_face_offscreen_review() {
+    use crate::sculpt::{Geometry, Mesh};
+    let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    for (name, selection) in [
+        (
+            "triangle",
+            vec![
+                Component::Vertex(0),
+                Component::Vertex(1),
+                Component::Vertex(2),
+            ],
+        ),
+        (
+            "quad",
+            vec![
+                Component::Vertex(0),
+                Component::Vertex(1),
+                Component::Vertex(2),
+                Component::Vertex(3),
+            ],
+        ),
+        (
+            "edges",
+            vec![Component::Edge([0, 1]), Component::Edge([2, 3])],
+        ),
+    ] {
+        let mut g = Guide::new(&directory, [1100, 900]);
+        g.interactive = true;
+        g.toolbar = false;
+        let mesh = Mesh {
+            vertices: vec![
+                Vec3(-0.5, -0.5, 0.),
+                Vec3(0.5, -0.5, 0.),
+                Vec3(0.5, 0.5, 0.),
+                Vec3(-0.5, 0.5, 0.),
+            ],
+            mask: vec![0.; 4],
+            loose_edges: vec![[0, 1], [1, 2], [2, 3]],
+            ..Default::default()
+        };
+        g.app
+            .document
+            .replace_geometry(Geometry::new(mesh))
+            .unwrap();
+        g.app.camera.yaw = 0.;
+        g.app.camera.pitch = 0.;
+        g.app.camera.zoom = 0.8;
+        g.app.dispatch(Command::ModelingMode(true), &g.ctx);
+        g.app.dispatch(
+            Command::ModelingComponent(if name == "edges" {
+                ComponentMode::Edge
+            } else {
+                ComponentMode::Vertex
+            }),
+            &g.ctx,
+        );
+        let rect = g.frame(vec![]).0;
+        g.app.viewport.modeling.selected = selection.into_iter().collect();
+        g.frame(vec![]);
+        let before = g.app.document.geometry_snapshot();
+        let history = g.app.document.history_counts();
+        g.app.open_quick_menu(&g.ctx, Action::ViewportContextMenu);
+        g.app.ui.viewport_menu.position = Some(rect.min + egui::vec2(15., 15.));
+        g.save(&format!("create-selected-face-{name}-q"));
+        click_guide_label(&mut g, "Create face");
+        assert!(g.app.viewport.modeling.preview().is_none());
+        assert_eq!(
+            g.app.document.mesh().triangles.len(),
+            if name == "triangle" { 1 } else { 2 },
+            "{}",
+            g.app.ui.status
+        );
+        assert_eq!(
+            g.app.document.mesh().quads.len(),
+            usize::from(name != "triangle")
+        );
+        assert_eq!(
+            g.app.document.mesh().loose_edges.len(),
+            usize::from(name == "triangle")
+        );
+        assert_eq!(g.app.document.history_counts().0, history.0 + 1);
+        let after = g.app.document.geometry_snapshot();
+        g.save(&format!("create-selected-face-{name}-applied"));
+        g.app.dispatch(Command::Undo, &g.ctx);
+        assert_eq!(g.app.document.geometry_snapshot(), before);
+        g.app.dispatch(Command::Redo, &g.ctx);
+        assert_eq!(g.app.document.geometry_snapshot(), after);
+        let saved = crate::persistence::json_bytes(&g.app.document.project()).unwrap();
+        let restored: crate::sculpt::Project = serde_json::from_slice(&saved).unwrap();
+        restored.validate().unwrap();
+        assert_eq!(restored.mesh, after.mesh);
     }
 }

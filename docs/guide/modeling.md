@@ -378,13 +378,21 @@ Choose a component mode to reveal its construction tools. Measured tools support
 | Face | Insert center point | Tap a face to insert its center and connect it to every corner with triangles. |
 | Face | Split face | Tap to connect a new center to shared edge midpoints, producing quads inside each selected face. |
 
-**Insert center point** and **Split face** act on a tap even when Tap to repeat is disabled. Both also offer **Apply to selection**. **Extrude point** keeps its new endpoints selected for the next extrusion or move. Other construction tools clear the component selection after committing; hover or select the new geometry for the next operation. Their buttons can be added to custom menus, shelves and shortcuts, and their settings save in tool presets.
+**Insert center point** and **Split face** act on a tap even when Tap to repeat is disabled. Both also offer **Apply to selection**. **Extrude point** keeps its new endpoints selected for the next extrusion or move. A snap join keeps its target selected; other construction tools clear the component selection after committing; hover or select the new geometry for the next operation. Their buttons can be added to custom menus, shelves and shortcuts, and their settings save in tool presets.
 
 Point extrusion works on surface borders as well as interior vertices. It has no base radius or ring settings. Use **Select**, **Move**, **Delete vertices**, or the Z region tools on the new endpoint; each extrusion is one Undo/Redo step. Each new drag sets a fresh direction, including when extending a loose endpoint. Orbiting changes the drawing plane; perspective and camera roll are respected. Drag once before using Apply amount.
 
 ![One new vertex connected to the original by a single edge](../images/point-extrude-orthographic.png)
 
-Loose edges save in `.clay` projects and OBJ line records. Surface-only operations such as remeshing, slicing and solidifying require those edges to be removed first. Other exchange formats currently require faces only. Create face still requires an existing surface boundary; it does not yet fill an arbitrary loose-edge outline.
+Loose edges save in `.clay` projects and OBJ line records. Surface-only operations such as remeshing, slicing and solidifying require those edges to be removed first. Other exchange formats currently require faces only. Use **Create face** to fill three or four selected vertices or the endpoints of selected edges, including a loose-edge outline. Edges that become part of the face are reused.
+
+**Snap and join** is on by default for point and edge extrusion. Drag a point near a visible vertex on the active mesh, or an open edge near a compatible open edge. A gold marker shows **Join vertex** or **Join edge** before release. Release connects to the existing target without duplicating its vertices. Hold **Shift** at any time during the drag for free extrusion; releasing Shift restores snapping. Move away from the target to continue freely, or press Escape to cancel.
+
+The pixel radius controls how near the target must be. Snapping uses one source component and its exact symmetry copies. Independent multiple selections extrude normally. Hidden, obstructed, or protected targets are skipped. Edge joins require separate endpoints and a valid connecting face. Each join is one Undo/Redo step and clears the measured repeat to avoid replaying the connection. Numeric Apply and tap repeat remain ordinary extrusion.
+
+![A point attracted to an existing vertex before release](../images/extrusion-snap-vertex-false.png)
+
+![An open edge joining another open edge without a duplicate seam](../images/extrusion-snap-edge-false.png)
 
 To make an eight-sided patch at a four-quad junction:
 
@@ -480,20 +488,22 @@ Both require complete, noncrossing interior quad loops. An open loop must end at
 | Action | Selection | Result |
 | --- | --- | --- |
 | **Connect vertices** | In Vertex mode, select opposite corners of one quad | Split the quad along the chosen diagonal; existing edges are never duplicated |
-| **Create face** | In Vertex mode, select every vertex around an existing opening | Create a face or patch using the boundary's order |
+| **Create face** | Select three or four vertices, or edges with three or four distinct endpoints; for larger openings select the complete boundary | Create a triangle, quad or triangulated patch, reusing existing vertices |
 | **Fill boundary** | In Edge mode, choose Boundary and select a complete opening | Fill the selected loop; other holes remain open |
 
 Choose an action to apply it immediately. Each successful action creates one Undo step and clears the old component selection; Modeling returns to **Select** ready for the next edit. **Delete faces** also applies immediately as one Undo step. Undo restores the previous geometry and subdivision levels; Redo restores the result. Save the project to keep the edits.
 
 Invalid selections or protected geometry leave the mesh and history unchanged. Hidden and masked boundary vertices remain protected; **Protect mask** can be turned off deliberately before running an action. Switching to a sculpt brush after construction needs no additional confirmation.
 
-For example, orbit to expose the adjoining surfaces and select the vertices around a four-sided opening and choose **Create face**. A convex rim produces one quad. A triangular rim produces one triangle; concave four-sided and larger rims produce a triangulated patch with visible internal edges. Only the selected boundary is welded. The tool does not add loose edges or vertices. To extend an open surface instead, use **Extrude edge**.
+For example, select four vertices around an opening or a loose outline and choose **Q → Create face**. You can also select two opposite edges to use their four endpoints. A convex rim produces one quad. A triangular rim produces one triangle; concave four-sided and larger rims produce a triangulated patch with visible internal edges. Only the selected boundary is welded. The tool does not add loose edges or vertices. To extend an open surface instead, use **Extrude edge**.
 
-The new face follows the neighbouring winding. Crossed, branched, collapsed, obstructed or highly nonplanar openings are rejected before Apply. Basic filling supports up to 1,024 vertices per loop and mild nonplanarity within 5% of the rim span; it does not optimise quad flow or patch density. Advanced hole caps are tracked in [#125](https://github.com/dustyghost/clay-form/issues/125).
+Existing edges determine the new face order, and adjoining faces determine its winding. A standalone outline uses a consistent orientation. Crossed, branched, collapsed, obstructed or highly nonplanar openings are rejected without changing the mesh. Basic filling supports up to 1,024 vertices per loop and mild nonplanarity within 5% of the rim span; it does not optimise quad flow or patch density. Advanced hole caps are tracked in [#125](https://github.com/dustyghost/clay-form/issues/125).
 
 Existing masks, materials, groups, creases and unaffected UV corners remain intact. New caps have no face group and start unmapped; unwrap them before texture painting. Connecting a quad preserves compatible corner UVs and UV masks. A seam or a mixture of mapped/unmapped triangles across its internal diagonal needs repair before connecting.
 
 ![A quad cap created from the four boundary vertices](../images/create-face-applied.png)
+
+![A face filled from the endpoints of two selected loose edges](../images/create-selected-face-edges-applied.png)
 
 ![An explicit diagonal connecting opposite quad vertices](../images/connect-vertices-applied.png)
 
@@ -514,7 +524,7 @@ Expand **Topology** for operations on the current selection:
 | Edge | Split edges | Adds midpoint vertices; adjoining polygons may become triangles |
 | Edge | Collapse edges | Merges each connected set of selected edge endpoints at their average position |
 | Vertex | Connect vertices | Immediately splits a quad between two opposite corners |
-| Vertex | Create face | Immediately creates a patch from the vertices of a complete opening |
+| Vertex or Edge | Create face | Immediately fills three or four vertices or edge endpoints; larger selections require a complete opening |
 | Vertex | Weld vertices | Merges two vertices at their midpoint, including corresponding symmetry pairs |
 
 Use **Target → Boundary** to select a complete hole. For two boundaries or vertices, use **Add** to select the second. These edits preserve surviving weights and creases, respect **Protect mask**, and reject invalid or ambiguous results as a whole. Bridge does not detect arbitrary intersections with other surfaces. Delete and collapse change the surface; **Delete loop (keep surface)** removes redundant loops while keeping it connected; **Delete loop (leave gap)** removes their adjoining face strips. Each completed edit is one Undo step.
@@ -859,7 +869,7 @@ Open **Modeling** in the toolbar, or press **Q** over the viewport for its quick
 
 The same controls are also in **Model → Modeling** on the top bar. Use its Panel controls to pin a movable window or dock a collapsible section on the left or right. These placements are saved with your workspace. Pinned and docked controls stay open when you choose a function; the drop-down and Q popup close after a function choice. Opening or moving the menu alone does not edit the model.
 
-The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Delete vertices**, **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes both **Delete loop** options, **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu and keeps the current selection. Escape, an outside click or focus loss dismisses the menu without editing geometry. Finish the current drag before opening it.
+The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Delete vertices**, **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes **Create face**, both **Delete loop** options, **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu and keeps the current selection. Escape, an outside click or focus loss dismisses the menu without editing geometry. Finish the current drag before opening it.
 
 ![Q menu with topology actions beside Modeling functions](../images/modeling-topology-q-1100.png)
 

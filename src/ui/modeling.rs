@@ -25,6 +25,7 @@ pub(crate) struct ModelingControls {
     pub snap: f32,
     pub snap_target: crate::viewport::SnapTarget,
     pub snap_radius: Option<f32>,
+    pub extrude_snap: Option<bool>,
     pub snap_active: bool,
     pub snap_ready: bool,
     pub snap_hint: Option<String>,
@@ -78,6 +79,7 @@ impl ModelingControls {
         self.snap = o.snap;
         self.snap_target = o.snap_target;
         self.snap_radius = Some(o.snap_radius);
+        self.extrude_snap = Some(o.extrude_snap);
         self.construction = o.construction;
         self.tap_repeat = o.tap_repeat;
         self.smooth_preview = o.smooth_preview;
@@ -102,6 +104,7 @@ impl ModelingControls {
             snap: self.snap,
             snap_target: self.snap_target,
             snap_radius: self.snap_radius.unwrap_or(12.),
+            extrude_snap: self.extrude_snap.unwrap_or(true),
             construction: self.construction,
             tap_repeat: self.tap_repeat,
             smooth_preview: self.smooth_preview,
@@ -291,9 +294,9 @@ impl UiState {
                 for edit in crate::sculpt::TopologyEdit::ALL {
                     use crate::sculpt::TopologyEdit as T;
                     let mode=match edit {T::DeleteFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace|T::DeleteVertices=>ComponentMode::Vertex,_=>ComponentMode::Edge};
-                    if self.modeling.mode==mode && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
+                    if (self.modeling.mode==mode || (edit==T::CreateFace && self.modeling.mode==ComponentMode::Edge)) && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
                 }
-                ui.weak("Connect vertices splits a quad. Create face uses every vertex around an opening; Fill boundary uses its complete edge loop. Each action applies immediately as one Undo step. New caps follow the boundary winding and need unwrapping before texture painting. Create face needs a complete surface boundary.");
+                ui.weak("Create face fills three or four selected vertices, including endpoints of selected edges and loose outlines. For larger openings, select the complete boundary. Fill boundary uses its complete edge loop. Connect vertices splits a quad. These actions apply immediately as one Undo step. New faces need unwrapping before texture painting.");
                 ui.weak("Delete loop: Keep surface joins the adjoining faces; Leave gap removes the faces touching the loop. Select complete interior quad loops. Weld uses the midpoint.");
                 if self.modeling.mode == ComponentMode::Vertex {
                     ui.weak("Delete vertices also removes every face attached to them.");
@@ -337,6 +340,12 @@ impl UiState {
                     if tool==ModelTool::PointExtrude {
                         ui.weak("Creates one vertex joined to the original by an edge. The new endpoint follows your drag in the screen plane and stays selected.");
                         ui.weak("Drag first to set the direction for Apply amount and tap to repeat.");
+                    }
+                    if matches!(tool, ModelTool::PointExtrude | ModelTool::EdgeExtrude) {
+                        search::setting_response(ui.checkbox(self.modeling.extrude_snap.get_or_insert(true), "Snap and join"), "Extrusion snap and join");
+                        search::setting_response(ui.add(egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.)).range(4. ..=40.).prefix("Snap radius ").suffix(" px")), "Snap pick radius");
+                        ui.weak("Nearby visible targets on this mesh · hold Shift for free extrusion");
+                        ui.weak(if tool == ModelTool::PointExtrude { "One point (plus symmetry copies) connects to an existing vertex. Gold marks the join before release." } else { "One open edge (plus symmetry copies) joins another open edge. Gold marks the join before release." });
                     }
                     if tool==ModelTool::PointSplit {
                         search::setting_response(design::checkbox(ui, &mut self.modeling.construction.round,"Circularize ring"), "Circularize ring");

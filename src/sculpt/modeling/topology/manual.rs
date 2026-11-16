@@ -22,10 +22,19 @@ impl Mesh {
         if !self.uv.is_empty() && !self.uv.current(self) {
             return Err("Restore or clear the inactive UV map before constructing faces".into());
         }
+        let points: Vec<_> = vertices
+            .iter()
+            .chain(edges.iter().flatten())
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
         let mut out = if edit == TopologyEdit::Connect {
             self.connect_quad(vertices, symmetry)?
+        } else if edit == TopologyEdit::CreateFace && (3..=4).contains(&points.len()) {
+            self.create_selected_face(&points, symmetry)?
         } else {
-            self.fill_selected_boundary(edit, edges, vertices, symmetry)?
+            self.fill_selected_boundary(edit, edges, &points, symmetry)?
         };
         // Surviving vertex indices and hard edges are unchanged. Refresh the
         // topology key so the new faces do not disable shading on unrelated edges.
@@ -229,7 +238,10 @@ impl Mesh {
     }
 }
 
-fn triangulate_boundary(mesh: &Mesh, cycle: &[usize]) -> Result<(Vec<[usize; 3]>, bool), String> {
+pub(super) fn triangulate_boundary(
+    mesh: &Mesh,
+    cycle: &[usize],
+) -> Result<(Vec<[usize; 3]>, bool), String> {
     if !(3..=MAX_BOUNDARY).contains(&cycle.len()) {
         return Err(format!(
             "Basic filling supports 3–{MAX_BOUNDARY} boundary vertices"
@@ -470,7 +482,8 @@ mod tests {
     #[test]
     fn manual_topology_rejects_partial_branched_crossing_obstructed_and_stale_boundaries() {
         let mut mesh = square();
-        assert!(apply(&mesh, TopologyEdit::CreateFace, &[0, 1, 2]).is_err());
+        assert!(apply(&mesh, TopologyEdit::CreateFace, &[0, 1]).is_err());
+        assert!(apply(&mesh, TopologyEdit::CreateFace, &[0, 1, 2]).is_ok());
         assert!(apply(&mesh, TopologyEdit::CreateFace, &[0, 1, 2, usize::MAX]).is_err());
         let symmetry = ModelingSymmetry::new(&mesh, &Symmetry::default()).unwrap();
         assert!(

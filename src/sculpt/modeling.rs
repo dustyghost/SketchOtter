@@ -6,6 +6,7 @@ use super::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 mod components;
+mod snap_join;
 pub use components::{ComponentBuild, ComponentBuildOptions};
 mod construction;
 mod contact;

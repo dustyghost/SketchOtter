@@ -465,6 +465,18 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
         "Set the contact snapping distance for the Modeling Fuse tool.",
     ),
     (
+        "Extrusion snap and join",
+        "extrude point vertex edge connect weld snap nearby",
+        Destination::Panel(Tool::Mesh),
+        "Join a nearby vertex or open edge while extruding. Choose Extrude point or Extrude edge. Hold Shift to bypass snapping.",
+    ),
+    (
+        "Snap pick radius",
+        "snap distance pixels range extrusion modeling",
+        Destination::Panel(Tool::Mesh),
+        "Set the screen distance for choosing snap targets in Modeling.",
+    ),
+    (
         "Modeling amount",
         "modelling distance width angle scale fraction radius",
         Destination::Panel(Tool::Mesh),
@@ -1002,6 +1014,7 @@ pub(super) fn setting_section(name: &str) -> Option<&'static str> {
         "Paint away selection" => Some("modeling_options"),
         "Individual faces" => Some("modeling_options"),
         "Snap range" => Some("modeling_options"),
+        "Extrusion snap and join" | "Snap pick radius" => Some("modeling_options"),
         "Modeling amount" => Some("modeling_options"),
         "Circularize ring" => Some("modeling_options"),
         "Double ring sides" => Some("modeling_options"),

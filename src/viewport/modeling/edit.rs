@@ -7,6 +7,7 @@ pub(super) struct EditOutcome {
     pub retain_caps: bool,
     moved_faces: std::collections::BTreeMap<usize, usize>,
     point_tips: BTreeSet<Component>,
+    pub snap_target: Option<Component>,
     pub fuse: crate::sculpt::FusePreview,
     pub notice: &'static str,
 }
@@ -18,8 +19,26 @@ impl EditOutcome {
             retain_caps,
             moved_faces: Default::default(),
             point_tips: Default::default(),
+            snap_target: None,
             fuse: Default::default(),
             notice: "",
+        }
+    }
+    pub(super) fn snap_join(
+        mesh: Mesh,
+        selection: BTreeSet<Component>,
+        target: Component,
+        amount: f32,
+    ) -> Self {
+        Self {
+            point_tips: selection,
+            snap_target: Some(target),
+            notice: if matches!(target, Component::Vertex(_)) {
+                "Connected to existing vertex"
+            } else {
+                "Joined open edges"
+            },
+            ..Self::new(mesh, amount, false)
         }
     }
     pub(super) fn moved_selection(&self, source: &BTreeSet<Component>) -> BTreeSet<Component> {
@@ -338,6 +357,7 @@ impl ModelingState {
                     amount: r.distance,
                     moved_faces: Default::default(),
                     point_tips: Default::default(),
+                    snap_target: None,
                     retain_caps: !r.joined && !r.collapsed,
                     fuse: r.preview,
                     notice: if r.partial_contact {
@@ -503,7 +523,9 @@ impl ModelingState {
         if result.mesh == *document.mesh() {
             return Ok(());
         }
-        let selection = if options.tool.is_transform()
+        let snapped = result.snap_target.is_some();
+        let selection = if snapped
+            || options.tool.is_transform()
             || matches!(
                 options.tool,
                 ModelTool::Slide | ModelTool::CutCell | ModelTool::PointExtrude
@@ -525,7 +547,7 @@ impl ModelingState {
         let mut last = options;
         last.amount = amount;
         self.notice = (!result.notice.is_empty()).then_some(result.notice);
-        self.last_edit = Some(last);
+        self.last_edit = (!snapped).then_some(last);
         self.requested_amount = Some(amount);
         if options.tool.is_transform() || options.tool == ModelTool::PointExtrude {
             self.requested_direction = Some(options.transform_direction);
