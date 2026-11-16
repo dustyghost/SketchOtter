@@ -2010,3 +2010,73 @@ fn face_cell_notch_uses_grid_depth_and_respects_contacts_masks_and_symmetry() {
             .contains("occupies this grid cell")
     );
 }
+
+#[test]
+fn modeling_delete_loop_gap_handles_closed_and_border_ending_loops() {
+    let mut primitive = Primitive::for_kind(PrimitiveKind::Grid);
+    primitive.divisions = [5, 5, 1];
+    for (mut mesh, x, removed) in [
+        (primitive.mesh().unwrap(), 0.2, 10),
+        (cube(3), -1. / 3., 24),
+    ] {
+        mesh.mask.fill(0.4);
+        mesh.create_vertex_group("All".into(), 0., true).unwrap();
+        mesh.creases = mesh.polygon_edges();
+        let selected: Vec<_> = mesh
+            .polygon_edges()
+            .into_iter()
+            .filter(|e| e.iter().all(|&v| (mesh.vertices[v].0 - x).abs() < 1e-5))
+            .collect();
+        let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+        let apply = |edges: &[[usize; 2]]| {
+            mesh.edit_model_topology(TopologyEdit::DeleteLoop, &[], edges, &[], &symmetry)
+        };
+        let before = mesh.clone();
+        let gap = apply(&selected).unwrap();
+        assert_eq!(gap.quads.len(), mesh.quads.len() - removed);
+        assert!(gap.validate_closed().is_err());
+        manifold(&gap).unwrap();
+        assert!(gap.mask.iter().all(|&m| m == 0.4));
+        assert!(gap.vertex_groups[0].weights.iter().all(|&w| w == 1.));
+        assert_eq!(gap.creases, gap.polygon_edges());
+        assert!(apply(&selected[..1]).is_err());
+        assert!(apply(&[]).is_err());
+        assert!(apply(&[[usize::MAX - 1, usize::MAX]]).is_err());
+        assert_eq!(mesh, before);
+    }
+}
+
+#[test]
+fn modeling_delete_loop_gap_rejects_crossings_and_hidden_neighbors() {
+    let mut primitive = Primitive::for_kind(PrimitiveKind::Grid);
+    primitive.divisions = [5, 5, 1];
+    let mut mesh = primitive.mesh().unwrap();
+    let vertical: Vec<_> = mesh
+        .polygon_edges()
+        .into_iter()
+        .filter(|e| e.iter().all(|&v| (mesh.vertices[v].0 - 0.2).abs() < 1e-5))
+        .collect();
+    let mut crossed = vertical.clone();
+    crossed.extend(
+        mesh.polygon_edges()
+            .into_iter()
+            .filter(|e| e.iter().all(|&v| (mesh.vertices[v].1 - 0.2).abs() < 1e-5)),
+    );
+    let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+    assert!(
+        mesh.edit_model_topology(TopologyEdit::DeleteLoop, &[], &crossed, &[], &symmetry)
+            .is_err()
+    );
+    let f = mesh
+        .triangles
+        .iter()
+        .position(|t| vertical[0].iter().all(|v| t.contains(v)))
+        .unwrap();
+    mesh.hidden_faces = vec![false; mesh.triangles.len()];
+    mesh.hidden_faces[f] = true;
+    let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+    assert!(
+        mesh.edit_model_topology(TopologyEdit::DeleteLoop, &[], &vertical, &[], &symmetry)
+            .is_err()
+    );
+}

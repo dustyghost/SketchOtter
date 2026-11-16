@@ -446,17 +446,26 @@ The cuts share vertices across faces and preserve masks, group weights, and crea
 
 For loops around a hole or selected region, use the existing [support-loop controls](edges.md).
 
-### Dissolve selected loops
+<a id="dissolve-selected-loops"></a>
 
-1. Choose **Edge → Select → Loop**, then select the loop to remove. Use **Add** to select several separate loops.
-2. Click **Dissolve selected loops**. The loop edges and redundant vertices disappear; the surrounding faces merge into quads without opening holes.
-3. Use **Undo** to restore the entire operation, including stored subdivision levels.
+### Delete loops
 
-This requires complete, noncrossing interior quad loops. An open loop must end at the mesh border. Partial loops, selected border edges, hidden adjoining faces, and intersections are rejected without changing the mesh. Merging across different face-group labels is also rejected. Remaining vertex masks/group weights and boundary creases are preserved. Removing a curved loop can simplify the shape.
+Choose **Edge → Select → Loop**, then select the complete loop to remove. Use **Add** for several separate loops. Open **Q → Topology**, the toolbar **Modeling** menu, or **Mesh → Modeling → Topology** and choose:
 
-![Two mirrored edge loops selected for removal](../images/modeling-dissolve-before.png)
+| Option | Result |
+| --- | --- |
+| **Delete loop (keep surface)** | Dissolves the selected edges and redundant vertices, joining surrounding faces into quads without opening holes |
+| **Delete loop (leave gap)** | Deletes the adjoining face strip on both sides of the selected edges, leaving an opening |
 
-![The selected loops removed, with larger connected quads remaining](../images/modeling-dissolve-after.png)
+Both apply immediately as one normal **Undo/Redo** step. **Protect mask**, hidden-face protection and exact symmetry apply to both. Use Undo to restore the operation, including stored subdivision levels.
+
+Both require complete, noncrossing interior quad loops. An open loop must end at the mesh border. Partial loops, selected boundary edges, hidden adjoining faces and intersections are rejected without changing the mesh. Keep surface also rejects merging different face-group labels. Remaining vertex masks/group weights and boundary creases are preserved. Removing a curved loop with Keep surface can simplify the shape.
+
+![Both Delete loop options in Q's Edge topology section](../images/delete-loop-options-1100.png)
+
+| Keep surface | Leave gap |
+| --- | --- |
+| ![Larger connected quads after dissolving the loop](../images/delete-loop-keep-surface-1100.png) | ![The adjoining face strip removed to leave a gap](../images/delete-loop-leave-gap-1100.png) |
 
 ### Connect vertices and create faces
 
@@ -491,6 +500,8 @@ Expand **Topology** for operations on the current selection:
 | Mode | Action | Result and limits |
 | --- | --- | --- |
 | Face | Delete faces | Removes the selected faces and opens holes |
+| Edge | Delete loop (keep surface) | Dissolves complete interior quad loops and joins the surrounding faces |
+| Edge | Delete loop (leave gap) | Removes the faces touching complete interior quad loops and leaves an opening |
 | Edge | Fill boundary | Immediately fills complete planar or mildly nonplanar boundaries; concave outlines are triangulated |
 | Edge | Bridge boundaries | Connects two equal-count open boundaries and their symmetry copies with a strip of quads |
 | Edge | Split edges | Adds midpoint vertices; adjoining polygons may become triangles |
@@ -499,7 +510,7 @@ Expand **Topology** for operations on the current selection:
 | Vertex | Create face | Immediately creates a patch from the vertices of a complete opening |
 | Vertex | Weld vertices | Merges two vertices at their midpoint, including corresponding symmetry pairs |
 
-Use **Target → Boundary** to select a complete hole. For two boundaries or vertices, use **Add** to select the second. These edits preserve surviving weights and creases, respect **Protect mask**, and reject invalid or ambiguous results as a whole. Bridge does not detect arbitrary intersections with other surfaces. Delete and collapse change the surface; **Dissolve selected loops** removes redundant loops while keeping it connected. Each completed edit is one Undo step.
+Use **Target → Boundary** to select a complete hole. For two boundaries or vertices, use **Add** to select the second. These edits preserve surviving weights and creases, respect **Protect mask**, and reject invalid or ambiguous results as a whole. Bridge does not detect arbitrary intersections with other surfaces. Delete and collapse change the surface; **Delete loop (keep surface)** removes redundant loops while keeping it connected; **Delete loop (leave gap)** removes their adjoining face strips. Each completed edit is one Undo step.
 
 ### Model with symmetry
 
@@ -837,7 +848,7 @@ Open **Modeling** in the toolbar, or press **Q** over the viewport for its quick
 
 The same controls are also in **Model → Modeling** on the top bar. Use its Panel controls to pin a movable window or dock a collapsible section on the left or right. These placements are saved with your workspace. Pinned and docked controls stay open when you choose a function; the drop-down and Q popup close after a function choice. Opening or moving the menu alone does not edit the model.
 
-The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu and keeps the current selection. Escape, an outside click or focus loss dismisses the menu without editing geometry. Finish the current drag before opening it.
+The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes both **Delete loop** options, **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu and keeps the current selection. Escape, an outside click or focus loss dismisses the menu without editing geometry. Finish the current drag before opening it.
 
 ![Q menu with topology actions beside Modeling functions](../images/modeling-topology-q-1100.png)
 

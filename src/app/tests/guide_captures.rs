@@ -2551,7 +2551,13 @@ fn modeling_symmetry_dissolve_offscreen_review() {
     g.app.camera.pitch = 0.;
     g.app.camera.zoom = 0.65;
     click_guide_modeling_checkbox(&mut g);
-    click_guide_label(&mut g, "Symmetry");
+    g.app.dispatch(
+        Command::SetSymmetry(Symmetry {
+            enabled: true,
+            ..Default::default()
+        }),
+        &g.ctx,
+    );
     assert!(g.app.document.symmetry().enabled);
     let (rect, _) = g.frame(vec![]);
     let scale = rect.width().min(rect.height()) * 0.35 * g.app.camera.zoom;
@@ -2597,7 +2603,10 @@ fn modeling_symmetry_dissolve_offscreen_review() {
         rect.left_top() + Vec2::new(5., 5.),
     )]);
     g.save("modeling-dissolve-before");
-    click_guide_label(&mut g, "Dissolve selected loops");
+    reach_sidebar_control(&mut g, "Topology");
+    click_guide_label(&mut g, "Topology");
+    reach_sidebar_control(&mut g, "Delete loop (keep surface)");
+    click_guide_label(&mut g, "Delete loop (keep surface)");
     assert_eq!(
         (
             g.app.document.mesh().vertices.len(),

@@ -2435,3 +2435,99 @@ fn precision_snap_pointer_preview_navigation_cancel_apply_and_switch() {
         assert_eq!(restored.mesh, preview);
     }
 }
+
+#[test]
+fn modeling_delete_loop_gap_symmetry_undo_redo_and_failed_action_history() {
+    use crate::sculpt::TopologyEdit;
+    for mirror in [false, true] {
+        let (mut app, ctx, rect) = selection_grid();
+        app.dispatch(
+            Command::SetSymmetry(crate::sculpt::Symmetry {
+                enabled: mirror,
+                ..Default::default()
+            }),
+            &ctx,
+        );
+        app.execute_action(Action::ModelEdges, &ctx);
+        app.execute_action(Action::ModelSelectLoops, &ctx);
+        let scale = rect.width().min(rect.height()) * 0.35;
+        tap(&mut app, &ctx, rect.center() + Vec2::new(scale * 0.2, 0.));
+        let edges = app.viewport.selected_edges(&app.document).to_vec();
+        assert_eq!(edges.len(), if mirror { 10 } else { 5 });
+        let entries = app.ui.viewport_menu_entries(
+            crate::ui::context_menu::ViewportMenuContext::Modeling,
+            &app.document,
+        );
+        for action in [
+            Action::ModelDissolveLoops,
+            Action::ModelTopology(TopologyEdit::DeleteLoop),
+        ] {
+            assert!(entries.iter().any(|e| e.action == action && e.enabled));
+        }
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        app.execute_action(Action::ModelTopology(TopologyEdit::DeleteLoop), &ctx);
+        let after = app.document.geometry_snapshot();
+        assert_eq!(
+            after.mesh.quads.len(),
+            if mirror { 10 } else { 15 },
+            "{}",
+            app.ui.status
+        );
+        assert_eq!(app.document.history_counts().0, history.0 + 1);
+        assert_eq!(app.document.undo_label(), Some("Delete loop (leave gap)"));
+        assert!(app.viewport.modeling.selected.is_empty());
+        assert!(app.viewport.modeling.preview().is_none());
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.dispatch(Command::Redo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), after);
+        app.document.project().validate().unwrap();
+        app.dispatch(Command::Undo, &ctx);
+        navigation_frame(&mut app, &ctx, vec![]);
+        app.viewport.modeling.selected = [crate::viewport::Component::Edge(edges[0])].into();
+        navigation_frame(&mut app, &ctx, vec![]);
+        let history = app.document.history_counts();
+        let selection = app.viewport.modeling.selected.clone();
+        app.execute_action(Action::ModelTopology(TopologyEdit::DeleteLoop), &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        assert_eq!(app.document.history_counts(), history);
+        assert_eq!(app.viewport.modeling.selected, selection);
+        assert!(app.ui.status.contains("complete"), "{}", app.ui.status);
+    }
+}
+
+#[test]
+fn modeling_delete_loop_options_preserve_masked_geometry() {
+    use crate::sculpt::TopologyEdit;
+    for action in [
+        Action::ModelDissolveLoops,
+        Action::ModelTopology(TopologyEdit::DeleteLoop),
+    ] {
+        let (mut app, ctx, _) = selection_grid();
+        app.execute_action(Action::ModelEdges, &ctx);
+        let mut geometry = app.document.geometry_snapshot();
+        let edges: Vec<_> = geometry
+            .mesh
+            .polygon_edges()
+            .into_iter()
+            .filter(|e| {
+                e.iter()
+                    .all(|&v| (geometry.mesh.vertices[v].0 - 0.2).abs() < 1e-5)
+            })
+            .collect();
+        geometry.mesh.mask[edges[0][0]] = 1.;
+        app.document.replace_geometry(geometry.clone()).unwrap();
+        navigation_frame(&mut app, &ctx, vec![]);
+        app.viewport.modeling.selected = edges
+            .into_iter()
+            .map(crate::viewport::Component::Edge)
+            .collect();
+        navigation_frame(&mut app, &ctx, vec![]);
+        let history = app.document.history_counts();
+        app.execute_action(action, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), geometry);
+        assert_eq!(app.document.history_counts(), history);
+        assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
+    }
+}

@@ -84,3 +84,69 @@ fn region_selection_offscreen_review() {
         assert_eq!(g.app.document.geometry_snapshot(), before);
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan; clicks both Delete loop choices and checks Undo/Redo"]
+fn delete_loop_offscreen_review() {
+    let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    for size in [[1100, 900], [760, 720]] {
+        let mut g = Guide::new(&directory, size);
+        g.interactive = true;
+        g.toolbar = false;
+        let mut grid = Primitive::for_kind(PrimitiveKind::Grid);
+        grid.divisions = [5, 5, 1];
+        g.app
+            .document
+            .replace_geometry(crate::sculpt::Geometry::new(grid.mesh().unwrap()))
+            .unwrap();
+        g.app.camera.yaw = 0.;
+        g.app.camera.pitch = 0.;
+        g.app.camera.zoom = 0.6;
+        g.app.dispatch(Command::ModelingMode(true), &g.ctx);
+        g.app
+            .dispatch(Command::ModelingComponent(ComponentMode::Edge), &g.ctx);
+        let edges: Vec<_> = g
+            .app
+            .document
+            .mesh()
+            .polygon_edges()
+            .into_iter()
+            .filter(|e| {
+                e.iter()
+                    .all(|&v| (g.app.document.mesh().vertices[v].0 - 0.2).abs() < 1e-5)
+            })
+            .collect();
+        let before = g.app.document.geometry_snapshot();
+        for (label, remaining, name) in [
+            ("Delete loop (keep surface)", 20, "keep-surface"),
+            ("Delete loop (leave gap)", 15, "leave-gap"),
+        ] {
+            let rect = g.frame(vec![]).0;
+            g.app.viewport.modeling.selected = edges.iter().copied().map(Component::Edge).collect();
+            g.frame(vec![]);
+            let history = g.app.document.history_counts().0;
+            g.app.open_quick_menu(&g.ctx, Action::ViewportContextMenu);
+            g.app.ui.viewport_menu.position = Some(rect.min + egui::vec2(10., 10.));
+            if name == "keep-surface" {
+                g.save(&format!("delete-loop-options-{}", size[0]));
+            }
+            click_guide_label(&mut g, label);
+            assert!(g.app.ui.viewport_menu.context.is_none());
+            assert_eq!(
+                g.app.document.mesh().quads.len(),
+                remaining,
+                "{}",
+                g.app.ui.status
+            );
+            assert_eq!(g.app.document.history_counts().0, history + 1);
+            let after = g.app.document.geometry_snapshot();
+            g.save(&format!("delete-loop-{name}-{}", size[0]));
+            g.app.dispatch(Command::Undo, &g.ctx);
+            assert_eq!(g.app.document.geometry_snapshot(), before);
+            g.app.dispatch(Command::Redo, &g.ctx);
+            assert_eq!(g.app.document.geometry_snapshot(), after);
+            g.app.dispatch(Command::Undo, &g.ctx);
+        }
+    }
+}

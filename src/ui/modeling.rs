@@ -281,13 +281,20 @@ impl UiState {
                 }
             });
             egui::CollapsingHeader::new("Topology").open(search::requested_section(ui.ctx(), "model_topology")).show(ui,|ui|{
+                if self.modeling.mode == ComponentMode::Edge {
+                    let action = Action::ModelDissolveLoops;
+                    if ui.add_enabled(self.modeling.count > 0, egui::Button::new(action.label())).customize(action)
+                        .on_hover_text("Remove complete interior quad loops and merge the surrounding faces. Keeps the surface joined. One Undo step.").clicked() {
+                        commands.push(Command::ModelDissolveLoops);
+                    }
+                }
                 for edit in crate::sculpt::TopologyEdit::ALL {
                     use crate::sculpt::TopologyEdit as T;
                     let mode=match edit {T::DeleteFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace=>ComponentMode::Vertex,_=>ComponentMode::Edge};
                     if self.modeling.mode==mode && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
                 }
                 ui.weak("Connect vertices splits a quad. Create face uses every vertex around an opening; Fill boundary uses its complete edge loop. Each action applies immediately as one Undo step. New caps follow the boundary winding and need unwrapping before texture painting. Loose edges are not supported.");
-                ui.weak("Delete opens holes; dissolve keeps the surface. Weld uses the midpoint.");
+                ui.weak("Delete loop: Keep surface joins the adjoining faces; Leave gap removes the faces touching the loop. Select complete interior quad loops. Weld uses the midpoint.");
             });
             if self.modeling.tool != ModelTool::CutCell {
             ui.label("Target");
@@ -512,11 +519,6 @@ impl UiState {
                     if ui.add_enabled(self.modeling.count>0,egui::Button::new("Clear UV seams")).clicked() { commands.push(Command::UvSeams(false)); }
                 });
                 ui.weak("Select edges, then mark or clear seams. Unwrap uses the marked seams.");
-                let response=ui.add_enabled(self.modeling.count>0,egui::Button::new("Dissolve selected loops"))
-                    .customize(Action::ModelDissolveLoops);
-                if design::help(response,"Remove complete interior quad loops and merge the surrounding faces. Keeps the surface connected; replaces stored levels. Undo restores the mesh.").clicked() {
-                    commands.push(Command::ModelDissolveLoops);
-                }
             }
             ui.horizontal_wrapped(|ui|{
                 if ui.add_enabled(self.modeling.can_repeat && self.modeling.count>0,egui::Button::new("Repeat last edit")).customize(Action::ModelRepeat).on_hover_text(&self.modeling.repeat_label).clicked(){commands.push(Command::ModelRepeat);}

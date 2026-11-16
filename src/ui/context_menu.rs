@@ -116,11 +116,12 @@ fn modeling_choices(
     });
     ui.separator();
     ui.strong("Topology");
-    for (i, entry) in entries
-        .iter()
-        .enumerate()
-        .filter(|(_, e)| matches!(e.action, Action::ModelTopology(_)))
-    {
+    for (i, entry) in entries.iter().enumerate().filter(|(_, e)| {
+        matches!(
+            e.action,
+            Action::ModelTopology(_) | Action::ModelDissolveLoops
+        )
+    }) {
         if menu_entry(ui, entry, highlighted(i, entry), false, reveal) {
             chosen = Some((i, entry.action.clone()));
         }
@@ -223,7 +224,10 @@ impl UiState {
         let entries = self.viewport_menu_entries(ViewportMenuContext::Modeling, document);
         unavailable_menu_help(ui, &entries);
         if let Some((_, action)) = modeling_choices(ui, &entries, None, false) {
-            let function = matches!(action, Action::ModelTool(_) | Action::ModelTopology(_));
+            let function = matches!(
+                action,
+                Action::ModelTool(_) | Action::ModelTopology(_) | Action::ModelDissolveLoops
+            );
             commands.push(Command::Action(action));
             if popup && function {
                 ui.close_kind(egui::UiKind::Menu);
@@ -270,6 +274,14 @@ impl UiState {
                             hint: "Choose what the next Modeling gesture targets. Keeps the current tool and selection.".into(),
                         }
                     }));
+                if self.modeling.mode == ComponentMode::Edge {
+                    let action = Action::ModelDissolveLoops;
+                    entries.push(ViewportMenuEntry {
+                        enabled: self.action_enabled(&action, document),
+                        label: action.label().into(), action, selected: false,
+                        hint: "Remove complete interior quad loops and merge the surrounding faces. Applies immediately as one Undo/Redo step.".into(),
+                    });
+                }
                 entries.extend(
                     crate::sculpt::TopologyEdit::ALL
                         .into_iter()
@@ -289,8 +301,11 @@ impl UiState {
                                 action,
                                 label: edit.label().into(),
                                 selected: false,
-                                hint: "Applies immediately to the selection as one Undo/Redo step."
-                                    .into(),
+                                hint: if edit == crate::sculpt::TopologyEdit::DeleteLoop {
+                                    "Remove the faces touching the selected complete edge loops, opening a gap. Applies immediately as one Undo/Redo step."
+                                } else {
+                                    "Applies immediately to the selection as one Undo/Redo step."
+                                }.into(),
                             }
                         }),
                 );

@@ -330,6 +330,7 @@ impl<'a> EditorPolicy<'a> {
                 "Apply a modelling edit first, then select components to repeat it"
             }
             Action::ModelDissolveLoops
+            | Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteLoop)
                 if self.ui.modeling.mode != crate::viewport::ComponentMode::Edge =>
             {
                 "Switch to Edge mode and select a loop first"
@@ -594,6 +595,8 @@ impl<'a> EditorPolicy<'a> {
                                 | crate::sculpt::TopologyEdit::CreateFace
                         ))
                     && self.ui.modeling.count > 0
+                    && (*edit != crate::sculpt::TopologyEdit::DeleteLoop
+                        || self.ui.modeling.mode == crate::viewport::ComponentMode::Edge)
             }
             Action::ModelApply => {
                 self.edge_unavailable(action).is_none()

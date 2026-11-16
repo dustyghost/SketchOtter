@@ -4,6 +4,7 @@ mod manual;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TopologyEdit {
     DeleteFaces,
+    DeleteLoop,
     Fill,
     Bridge,
     Connect,
@@ -13,8 +14,9 @@ pub enum TopologyEdit {
     Collapse,
 }
 impl TopologyEdit {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::DeleteFaces,
+        Self::DeleteLoop,
         Self::Fill,
         Self::Bridge,
         Self::Connect,
@@ -26,6 +28,7 @@ impl TopologyEdit {
     pub fn label(self) -> &'static str {
         match self {
             Self::DeleteFaces => "Delete faces",
+            Self::DeleteLoop => "Delete loop (leave gap)",
             Self::Fill => "Fill boundary",
             Self::Bridge => "Bridge boundaries",
             Self::Connect => "Connect vertices",
@@ -188,6 +191,9 @@ impl Mesh {
                 {
                     return Err("Select visible faces".into());
                 }
+            }
+            TopologyEdit::DeleteLoop => {
+                removed = self.faces_along_loops(&symmetry.edges(edges))?;
             }
             TopologyEdit::Split => {
                 let edges = symmetry.edges(edges);
