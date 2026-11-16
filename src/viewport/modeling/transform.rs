@@ -108,6 +108,11 @@ impl ModelingState {
             anchor,
             &symmetry,
         );
+        let pivot = if options.tool == ModelTool::PointExtrude {
+            anchor
+        } else {
+            pivot
+        };
         self.edit_drag = Some(EditDrag {
             start: point,
             direct: Some(DirectDrag {
@@ -161,7 +166,7 @@ impl ModelingState {
         let delta = point - drag.start;
         let pivot = direct.pivot;
         let (direction, amount) = match options.tool {
-            ModelTool::Move => {
+            ModelTool::Move | ModelTool::PointExtrude => {
                 let displacement = match direct.handle {
                     Handle::Axis(axis) => {
                         let amount = scene

@@ -328,14 +328,15 @@ impl UiState {
                     } else if !tool.instant() {
                         ui.label(if tool==ModelTool::PointSplit {"Radius"}else{"Distance"});
                         search::setting_response(ui.add(egui::DragValue::new(&mut self.modeling.amount).speed(0.01)), "Modeling amount");
-                        ui.weak("Drag up/down to adjust · release applies · Esc cancels");
+                        ui.weak(if tool == ModelTool::PointExtrude {"Drag in the screen plane · release applies · Esc cancels"} else {"Drag up/down to adjust · release applies · Esc cancels"});
                     }
                     if tool==ModelTool::EdgeExtrude {
                         design::checkbox(ui, &mut self.modeling.construction.other_side,"Other adjacent side");
                         ui.weak("Border: extend outward · surface: extrude the highlighted side");
                     }
                     if tool==ModelTool::PointExtrude {
-                        ui.weak("Creates one vertex joined to the original by an edge. Follows the surface normal, or continues an existing loose edge. The new endpoint stays selected.");
+                        ui.weak("Creates one vertex joined to the original by an edge. The new endpoint follows your drag in the screen plane and stays selected.");
+                        ui.weak("Drag first to set the direction for Apply amount and tap to repeat.");
                     }
                     if tool==ModelTool::PointSplit {
                         search::setting_response(design::checkbox(ui, &mut self.modeling.construction.round,"Circularize ring"), "Circularize ring");
@@ -343,7 +344,7 @@ impl UiState {
                         ui.weak("Closed point fan · radius below half the shortest edge");
                     }
                     if tool.instant(){ui.weak(if tool==ModelTool::FacePoint {"Tap: connect a center point to each corner"}else{"Tap: split into quads and connect neighboring edges"});}
-                    if ui.add_enabled(self.modeling.count>0,egui::Button::new(if tool.instant(){"Apply to selection"}else{"Apply amount"})).customize(Action::ModelApply).clicked(){commands.push(Command::ModelApply);}
+                    if ui.add_enabled(self.modeling.count>0 && (tool != ModelTool::PointExtrude || self.modeling.transform_direction.len()>1e-6),egui::Button::new(if tool.instant(){"Apply to selection"}else{"Apply amount"})).customize(Action::ModelApply).clicked(){commands.push(Command::ModelApply);}
                 }
 
                 ModelTool::Select => {

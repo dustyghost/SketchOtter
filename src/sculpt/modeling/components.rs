@@ -591,6 +591,62 @@ impl Mesh {
         self.finish_components(out, symmetry)
     }
 
+    /// Add endpoints using a view-derived displacement, reflected for symmetry copies.
+    pub(crate) fn extrude_points_by(
+        &self,
+        vertices: &[usize],
+        anchor: Vec3,
+        displacement: Vec3,
+        symmetry: &ModelingSymmetry,
+    ) -> Result<Mesh, String> {
+        manifold(self)?;
+        self.protect_model_vertices(vertices, false)?;
+        if ![displacement.0, displacement.1, displacement.2]
+            .into_iter()
+            .all(f32::is_finite)
+        {
+            return Err("Use a finite extrusion distance".into());
+        }
+        if displacement.len() < 1e-7 {
+            return Ok(self.clone());
+        }
+        let (seeds, _) = self.component_transform_frame(vertices, anchor, symmetry);
+        let mut positions = BTreeMap::new();
+        for seed in seeds {
+            let mut offsets = BTreeMap::<usize, (Vec3, usize)>::new();
+            for (mapping, basis) in symmetry.vertices.iter().zip(&symmetry.bases) {
+                let delta = basis[0] * displacement.0
+                    + basis[1] * displacement.1
+                    + basis[2] * displacement.2;
+                let value = offsets.entry(mapping[seed]).or_default();
+                value.0 = value.0 + delta;
+                value.1 += 1;
+            }
+            for (v, (delta, count)) in offsets {
+                let delta = delta * (1. / count as f32);
+                if delta.len() > 1e-7 {
+                    positions.insert(v, self.vertices[v] + delta);
+                }
+            }
+        }
+        if positions.is_empty() {
+            return Ok(self.clone());
+        }
+        self.protect_model_vertices(&positions.keys().copied().collect::<Vec<_>>(), false)?;
+        if self.vertices.len() + positions.len() > max_vertices() {
+            return Err("Point extrusion exceeds the vertex limit".into());
+        }
+        let mut out = self.clone();
+        for (v, position) in positions {
+            let tip = out.append_blend(self, &[(v, 1.)], position);
+            out.loose_edges.push(edge(v, tip));
+        }
+        out.loose_edges.sort_unstable();
+        out.validate()?;
+        symmetry.validate_result(&out)?;
+        Ok(out)
+    }
+
     fn extrude_point_edges(
         &self,
         vertices: &[usize],

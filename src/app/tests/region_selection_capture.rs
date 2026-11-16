@@ -233,6 +233,7 @@ fn point_extrude_offscreen_review() {
             .unwrap();
         g.app.camera.yaw = 0.6;
         g.app.camera.pitch = -0.25;
+        g.app.camera.roll = 0.2;
         g.app.camera.zoom = 0.65;
         g.app.camera.perspective = perspective;
         g.app.dispatch(Command::ModelingMode(true), &g.ctx);
@@ -255,7 +256,8 @@ fn point_extrude_offscreen_review() {
             .unwrap();
         let before = g.app.document.geometry_snapshot();
         let start = project(&g.app.camera, before.mesh.vertices[root]);
-        g.stroke(start, start + Vec2::new(0., -100.));
+        let destination = start + Vec2::new(-85., -45.);
+        g.stroke(start, destination);
         let after = g.app.document.geometry_snapshot();
         assert_eq!(
             after.mesh.vertices.len(),
@@ -269,6 +271,14 @@ fn point_extrude_offscreen_review() {
         );
         assert_eq!(after.mesh.triangles, before.mesh.triangles);
         let tip = before.mesh.vertices.len();
+        assert!(project(&g.app.camera, after.mesh.vertices[tip]).distance(destination) < 1.);
+        let (_, _, view) = g.app.camera.basis();
+        assert!(
+            (after.mesh.vertices[tip] - before.mesh.vertices[root])
+                .dot(view)
+                .abs()
+                < 1e-5
+        );
         assert_eq!(
             g.app.viewport.modeling.selected,
             [Component::Vertex(tip)].into()
@@ -279,6 +289,15 @@ fn point_extrude_offscreen_review() {
             "orthographic"
         };
         g.save(&format!("point-extrude-{name}"));
+        let next = destination + Vec2::new(-45., 35.);
+        g.stroke(destination, next);
+        let second_tip = after.mesh.vertices.len();
+        assert!(
+            project(&g.app.camera, g.app.document.mesh().vertices[second_tip]).distance(next) < 1.
+        );
+        assert_eq!(g.app.document.mesh().loose_edges.len(), 2);
+        g.app.dispatch(Command::Undo, &g.ctx);
+        assert_eq!(g.app.document.geometry_snapshot(), after);
         g.app.execute_action(Action::ModelSelect, &g.ctx);
         g.app.execute_action(Action::ModelClearSelection, &g.ctx);
         let point = project(&g.app.camera, after.mesh.vertices[tip]);

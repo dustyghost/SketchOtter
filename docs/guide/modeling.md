@@ -374,13 +374,13 @@ Choose a component mode to reveal its construction tools. Measured tools support
 | Edge | Split edge | Drag along the edge to place a new vertex. **Position** runs from 0 to 1, starting at the circled endpoint nearest the initial press; insertion stays just inside the endpoints. |
 | Edge | Collapse edge | Drag along the edge or choose **Marked end**, **Midpoint**, or **Other end**. This merges both endpoints at the chosen position. |
 | Vertex | Split point | Set Radius or drag up/down to replace a vertex with a ring and center patch. **Double ring sides (4 to 8)** adds one corner inside each adjacent face. **Circularize ring**, **Triangulate center**, and **Crease ring** control the patch. |
-| Vertex | Extrude point | Set Distance or drag up/down to add one vertex joined to the original by one edge. Existing faces stay intact. The edge follows the averaged surface normal; extruding a loose endpoint continues its incoming edge. |
+| Vertex | Extrude point | Drag to add one vertex joined to the original by one edge. The new endpoint follows the cursor in the screen plane at the original vertex’s depth. Existing faces stay intact. Distance and tap-to-repeat reuse the last drag direction. |
 | Face | Insert center point | Tap a face to insert its center and connect it to every corner with triangles. |
 | Face | Split face | Tap to connect a new center to shared edge midpoints, producing quads inside each selected face. |
 
 **Insert center point** and **Split face** act on a tap even when Tap to repeat is disabled. Both also offer **Apply to selection**. **Extrude point** keeps its new endpoints selected for the next extrusion or move. Other construction tools clear the component selection after committing; hover or select the new geometry for the next operation. Their buttons can be added to custom menus, shelves and shortcuts, and their settings save in tool presets.
 
-Point extrusion works on surface borders as well as interior vertices. It has no base radius or ring settings. Use **Select**, **Move**, **Delete vertices**, or the Z region tools on the new endpoint; each extrusion is one Undo/Redo step. Orbit slightly to see an edge that points straight toward the camera.
+Point extrusion works on surface borders as well as interior vertices. It has no base radius or ring settings. Use **Select**, **Move**, **Delete vertices**, or the Z region tools on the new endpoint; each extrusion is one Undo/Redo step. Each new drag sets a fresh direction, including when extending a loose endpoint. Orbiting changes the drawing plane; perspective and camera roll are respected. Drag once before using Apply amount.
 
 ![One new vertex connected to the original by a single edge](../images/point-extrude-orthographic.png)
 

@@ -2328,3 +2328,50 @@ fn point_extrude_edges_survive_obj_merge_and_vertex_reindexing() {
     );
     assert!(original.require_surface_topology().is_err());
 }
+
+#[test]
+fn point_extrude_displacement_preserves_faces_and_reflects_from_dragged_side() {
+    let mut primitive = Primitive::for_kind(PrimitiveKind::Grid);
+    primitive.divisions = [3, 3, 1];
+    let mesh = primitive.mesh().unwrap();
+    let root = mesh
+        .vertices
+        .iter()
+        .position(|p| p.0 > 0. && p.0 < 0.5 && p.1 > 0. && p.1 < 0.5)
+        .unwrap();
+    let mut settings = crate::sculpt::Symmetry::default();
+    settings.enabled = true;
+    settings.mirror = [true, false, false];
+    let symmetry = ModelingSymmetry::new(&mesh, &settings).unwrap();
+    let delta = Vec3(0.13, 0.27, 0.19);
+    let out = mesh
+        .extrude_points_by(&[root], mesh.vertices[root], delta, &symmetry)
+        .unwrap();
+    assert_eq!(out.loose_edges.len(), 2);
+    assert_eq!(out.triangles, mesh.triangles);
+    assert_eq!(out.quads, mesh.quads);
+    assert_eq!(&out.vertices[..mesh.vertices.len()], mesh.vertices);
+    for [source, tip] in &out.loose_edges {
+        let expected = if mesh.vertices[*source].0 > 0. {
+            delta
+        } else {
+            Vec3(-delta.0, delta.1, delta.2)
+        };
+        assert!((out.vertices[*tip] - mesh.vertices[*source] - expected).len() < 1e-6);
+    }
+    symmetry.validate_result(&out).unwrap();
+    assert_eq!(
+        mesh.extrude_points_by(&[root], mesh.vertices[root], Vec3::default(), &symmetry)
+            .unwrap(),
+        mesh
+    );
+    assert!(
+        mesh.extrude_points_by(
+            &[root],
+            mesh.vertices[root],
+            Vec3(f32::NAN, 0., 0.),
+            &symmetry
+        )
+        .is_err()
+    );
+}

@@ -1123,6 +1123,9 @@ fn modeling_component_construction_taps_preview_cancel_and_undo() {
         };
         app.ui.modeling.construction.width = 0.08;
         app.ui.modeling.construction.double_ring = tool == ModelTool::PointSplit;
+        if tool == ModelTool::PointExtrude {
+            app.ui.modeling.transform_direction = Vec3(1., 0., 0.);
+        }
         app.ui.modeling.options().validate().unwrap();
         let before = app.document.geometry_snapshot();
         let history = app.document.history_counts().0;
@@ -2635,6 +2638,7 @@ fn point_extrude_keeps_tip_selected_moves_deletes_and_round_trips_with_undo() {
         rect.center() + Vec2::new(scale / 3., scale / 3.),
     );
     app.execute_action(Action::ModelTool(ModelTool::PointExtrude), &ctx);
+    app.ui.modeling.transform_direction = Vec3(1., 0., 0.);
     app.ui.modeling.amount = 0.4;
     let before = app.document.geometry_snapshot();
     let history = app.document.history_counts();
@@ -2700,6 +2704,7 @@ fn point_extrude_protects_masked_roots_and_loose_tips() {
     geometry.mesh.mask[0] = 1.;
     app.document.replace_geometry(geometry.clone()).unwrap();
     app.execute_action(Action::ModelTool(ModelTool::PointExtrude), &ctx);
+    app.ui.modeling.transform_direction = Vec3(1., 0., 0.);
     navigation_frame(&mut app, &ctx, vec![]);
     app.viewport.modeling.selected = [crate::viewport::Component::Vertex(0)].into();
     let history = app.document.history_counts();

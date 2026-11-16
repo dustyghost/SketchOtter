@@ -261,23 +261,35 @@ impl ModelingState {
                     .collect();
                 mesh.protect_model_vertices(&touched, options.protect_mask)?;
             }
-            let result = mesh.build_components(
-                kind,
-                &faces,
-                &edges,
-                &points,
-                anchor,
-                crate::sculpt::ComponentBuildOptions {
-                    amount,
-                    width: c.width,
-                    round: c.round,
-                    double_ring: c.double_ring,
-                    triangulate: c.triangulate,
-                    crease: c.crease,
-                    other_side: c.other_side,
-                },
-                &ModelingSymmetry::new(mesh, document.symmetry())?,
-            )?;
+            let result = if options.tool == ModelTool::PointExtrude {
+                if options.transform_direction.len() < 1e-7 {
+                    return Err("Drag first to set the extrusion direction".into());
+                }
+                mesh.extrude_points_by(
+                    &points,
+                    anchor,
+                    options.transform_direction * amount,
+                    &ModelingSymmetry::new(mesh, document.symmetry())?,
+                )?
+            } else {
+                mesh.build_components(
+                    kind,
+                    &faces,
+                    &edges,
+                    &points,
+                    anchor,
+                    crate::sculpt::ComponentBuildOptions {
+                        amount,
+                        width: c.width,
+                        round: c.round,
+                        double_ring: c.double_ring,
+                        triangulate: c.triangulate,
+                        crease: c.crease,
+                        other_side: c.other_side,
+                    },
+                    &ModelingSymmetry::new(mesh, document.symmetry())?,
+                )?
+            };
             mesh.check_model_protection(&result, options.protect_mask)?;
             let tips = if options.tool == ModelTool::PointExtrude {
                 (mesh.vertices.len()..result.vertices.len())
@@ -515,11 +527,13 @@ impl ModelingState {
         self.notice = (!result.notice.is_empty()).then_some(result.notice);
         self.last_edit = Some(last);
         self.requested_amount = Some(amount);
-        if options.tool.is_transform() {
+        if options.tool.is_transform() || options.tool == ModelTool::PointExtrude {
             self.requested_direction = Some(options.transform_direction);
         }
         self.selection_anchor = Some(
-            if drag.direct.is_some() && options.tool == ModelTool::Move {
+            if drag.direct.is_some()
+                && matches!(options.tool, ModelTool::Move | ModelTool::PointExtrude)
+            {
                 drag.anchor + options.transform_direction * amount
             } else {
                 drag.anchor
@@ -636,7 +650,10 @@ impl Viewport {
             Ok(targets) => {
                 let mesh = document.mesh();
                 let anchor = match component {
-                    Component::Vertex(v) if mesh.loose_edges.iter().any(|e| e.contains(&v)) => {
+                    Component::Vertex(v)
+                        if model.tool == ModelTool::PointExtrude
+                            || mesh.loose_edges.iter().any(|e| e.contains(&v)) =>
+                    {
                         mesh.vertices[v]
                     }
                     Component::Edge(edge) if mesh.loose_edges.contains(&edge) => {
@@ -657,7 +674,9 @@ impl Viewport {
                     self.session.gesture = Some(Gesture::Modeling);
                     return;
                 }
-                if model.tool.is_transform() && model.interaction == ModelInteraction::Free {
+                if model.tool == ModelTool::PointExtrude
+                    || (model.tool.is_transform() && model.interaction == ModelInteraction::Free)
+                {
                     match self.modeling.begin_direct(
                         document,
                         scene,
