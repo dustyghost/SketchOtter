@@ -82,7 +82,12 @@ impl Viewport {
         let allowed_vertex = |v: usize| editable[v] && (!protect || mesh.mask[v] == 0.);
         let mut candidates = BTreeSet::new();
         let wires: BTreeSet<_> = mesh.visible_loose_edges().into_iter().collect();
-        let wire_vertices: BTreeSet<_> = wires.iter().flatten().copied().collect();
+        let wire_vertices: BTreeSet<_> = wires
+            .iter()
+            .flatten()
+            .copied()
+            .chain(mesh.loose_vertices.iter().copied())
+            .collect();
         match mode {
             ComponentMode::Edge => candidates.extend(wires.iter().copied().map(Component::Edge)),
             ComponentMode::Vertex => {

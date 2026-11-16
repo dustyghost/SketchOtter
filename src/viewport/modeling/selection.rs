@@ -84,7 +84,10 @@ impl Viewport {
                                 .iter()
                                 .all(|v| polygons[f].vertices.contains(v))
                         }),
-                        Component::Vertex(v) if mesh.loose_edges.iter().any(|e| e.contains(&v)) => {
+                        Component::Vertex(v)
+                            if mesh.loose_vertices.contains(&v)
+                                || mesh.loose_edges.iter().any(|e| e.contains(&v)) =>
+                        {
                             scene.point_unoccluded(mesh.vertices[v])
                         }
                         Component::Edge(edge) if mesh.loose_edges.contains(&edge) => {
@@ -401,7 +404,7 @@ impl Viewport {
         let faces = mesh.polygons();
         if span == SelectionSpan::Connected
             && !matches!(seed, Component::Face(_))
-            && !mesh.loose_edges.is_empty()
+            && (!mesh.loose_edges.is_empty() || !mesh.loose_vertices.is_empty())
         {
             let edges: BTreeSet<_> = faces
                 .iter()
@@ -541,6 +544,7 @@ mod angle_tests {
             quads: vec![],
             mask: vec![],
             loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: vec![],
             shading_seams: None,

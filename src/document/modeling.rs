@@ -14,9 +14,10 @@ impl Document {
     }
     pub(crate) fn commit_modeling(
         &mut self,
-        mesh: Mesh,
+        mut mesh: Mesh,
         label: &'static str,
         revision: u64,
+        new_group: bool,
     ) -> Result<(), String> {
         self.require_modeling()?;
         if revision != self.display_revision() {
@@ -25,6 +26,9 @@ impl Document {
         mesh.validate()?;
         if mesh == self.geometry.mesh {
             return Ok(());
+        }
+        if new_group {
+            super::modeling_groups::group_model_edit(&self.geometry.mesh, &mut mesh, label)?;
         }
         let mut geometry = self.geometry.clone();
         geometry.mesh = mesh;

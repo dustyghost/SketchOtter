@@ -1195,11 +1195,17 @@ fn modeling_construction_presets_roundtrip_and_keep_older_preferences_compatible
     old.as_object_mut().unwrap().remove("construction");
     old.as_object_mut().unwrap().remove("flat_angle");
     old.as_object_mut().unwrap().remove("extrude_snap");
+    old.as_object_mut().unwrap().remove("move_snap");
+    old.as_object_mut().unwrap().remove("new_group");
+    old.as_object_mut().unwrap().remove("bevel_segments");
     let options: crate::viewport::ModelingOptions = serde_json::from_value(old).unwrap();
     options.validate().unwrap();
     assert_eq!(options.construction.width, 0.1);
     assert_eq!(options.flat_angle, 0.);
     assert!(options.extrude_snap);
+    assert_eq!(options.move_snap, crate::viewport::MoveSnap::Off);
+    assert!(!options.new_group);
+    assert_eq!(options.bevel_segments, 3);
     app.dispatch(
         Command::Action(Action::ModelTool(ModelTool::PointSplit)),
         &ctx,
@@ -1210,6 +1216,8 @@ fn modeling_construction_presets_roundtrip_and_keep_older_preferences_compatible
     app.ui.modeling.construction.triangulate = true;
     app.ui.modeling.amount = 0.08;
     app.ui.modeling.flat_angle = 25.;
+    app.ui.modeling.move_snap = crate::viewport::MoveSnap::Edge;
+    app.ui.modeling.new_group = true;
     let options = app.ui.modeling.options();
     app.ui.modeling.preset_name = "Round point socket".into();
     app.dispatch(Command::Action(Action::ModelSavePreset), &ctx);
@@ -2732,4 +2740,45 @@ fn point_extrude_protects_masked_roots_and_loose_tips() {
     assert_eq!(app.document.geometry_snapshot(), after);
     assert_eq!(app.document.history_counts(), history);
     assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
+}
+
+#[test]
+fn modeling_auto_groups_commit_with_geometry_and_undo_redo() {
+    use crate::{sculpt::TopologyEdit, viewport::Component};
+    let (mut app, ctx, _) = setup();
+    app.ui.modeling.new_group = true;
+    app.viewport.modeling.selected = [Component::Face(0)].into();
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts().0;
+    app.dispatch(Command::ModelTopology(TopologyEdit::DeleteFaces), &ctx);
+    let after = app.document.geometry_snapshot();
+    assert_eq!(
+        after.mesh.vertex_groups.len(),
+        before.mesh.vertex_groups.len() + 1,
+        "{}",
+        app.ui.status
+    );
+    assert_eq!(
+        after.mesh.vertex_groups.last().unwrap().name,
+        "Delete faces"
+    );
+    assert!(
+        after
+            .mesh
+            .vertex_groups
+            .last()
+            .unwrap()
+            .weights
+            .iter()
+            .any(|w| *w > 0.)
+    );
+    assert_eq!(app.document.history_counts().0, history + 1);
+    app.dispatch(Command::Undo, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    app.dispatch(Command::Redo, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), after);
+    app.viewport.modeling.sync(&app.document);
+    app.viewport.modeling.selected.clear();
+    app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
+    assert_eq!(app.document.geometry_snapshot(), after);
 }

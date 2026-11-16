@@ -54,7 +54,13 @@ impl Mesh {
     }
     // A center fan preserves every boundary segment, including inserted collinear
     // points. Ordinary n-gon triangulation can discard those points and make cracks.
-    fn component_polygon(&self, out: &mut Mesh, corners: &[usize], source: &Polygon, fan: bool) {
+    pub(super) fn component_polygon(
+        &self,
+        out: &mut Mesh,
+        corners: &[usize],
+        source: &Polygon,
+        fan: bool,
+    ) {
         if corners.len() <= 4 && !fan {
             out.push_polygon(corners, source.group, source.hidden);
         } else {
@@ -642,6 +648,7 @@ impl Mesh {
             out.loose_edges.push(edge(v, tip));
         }
         out.loose_edges.sort_unstable();
+        out.retain_loose_vertices();
         out.validate()?;
         symmetry.validate_result(&out)?;
         Ok(out)
@@ -701,6 +708,7 @@ impl Mesh {
             out.loose_edges.push(edge(v, tip));
         }
         out.loose_edges.sort_unstable();
+        out.retain_loose_vertices();
         out.validate()?;
         symmetry.validate_result(&out)?;
         Ok(out)

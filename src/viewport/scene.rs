@@ -620,6 +620,15 @@ impl Scene {
                 );
             }
         }
+        for &v in mesh.loose_vertices.iter() {
+            if self.point_unoccluded(mesh.vertices[v]) {
+                painter.circle_filled(
+                    self.project(mesh.vertices[v]),
+                    3.5,
+                    Color32::from_rgb(170, 195, 210),
+                );
+            }
+        }
         for &[a, b] in mesh.loose_edges.iter() {
             let start = mesh.vertices[a];
             let delta = mesh.vertices[b] - start;

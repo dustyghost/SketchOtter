@@ -91,8 +91,8 @@ pub fn export_bytes(
     cancel: &dyn Fn() -> bool,
 ) -> Result<Vec<u8>, String> {
     project.validate()?;
-    if !project.mesh.loose_edges.is_empty() {
-        return Err("Use .clay or OBJ to keep loose edges; this export supports faces only".into());
+    if !project.mesh.loose_edges.is_empty() || !project.mesh.loose_vertices.is_empty() {
+        return Err("Use .clay or OBJ to keep loose edges or isolated points; this export supports faces only".into());
     }
     if cancel() {
         return Err("Export cancelled".into());

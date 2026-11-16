@@ -111,6 +111,7 @@ impl App {
                     &mut self.document,
                     edit,
                     self.ui.modeling.protect_mask,
+                    self.ui.modeling.new_group,
                 )
             }
             Command::ModelRepeat => {
@@ -164,8 +165,12 @@ impl App {
                         Ok(mesh)
                     })
                     .and_then(|mesh| {
-                        self.document
-                            .commit_modeling(mesh, "Dissolve selected loops", revision)
+                        self.document.commit_modeling(
+                            mesh,
+                            "Dissolve selected loops",
+                            revision,
+                            self.ui.modeling.new_group,
+                        )
                     })
                     .map(|()| {
                         self.viewport.modeling.sync(&self.document);

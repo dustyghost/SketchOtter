@@ -102,6 +102,9 @@ jobs:
           CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-point-extrude" cargo test --locked --lib point_extrude_offscreen_review -- --ignored --test-threads=1
           CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-extrusion-snap" cargo test --locked --lib extrusion_snap_join_offscreen_review -- --ignored --test-threads=1
           CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-selected-face" cargo test --locked --lib create_selected_face_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-move-snap" cargo test --locked --lib move_snap_weld_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-detached" cargo test --locked --lib detached_copy_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-bevel" cargo test --locked --lib component_bevel_offscreen_review -- --ignored --test-threads=1
           cargo test --locked --lib viewport_lighting_offscreen_review -- --ignored
           cargo test --locked --lib reference_images_offscreen_preview -- --ignored
           cargo test --locked --lib navigation_and_smooth_offscreen_preview -- --ignored

@@ -1,0 +1,34 @@
+   Compiling clay-form v0.1.0-alpha.3 (/home/mark/Documents/ChatGPT/Clay From/clay-form-topology)
+    Finished `test` profile [unoptimized] target(s) in 1m 15s
+  Executable unittests src/lib.rs (/tmp/clay-ui-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 3 tests
+test app::tests::modeling::modeling_auto_groups_commit_with_geometry_and_undo_redo ... ok
+test document::modeling_groups::tests::modeling_auto_groups_isolate_new_points_preserve_masks_and_name_each_edit ... ok
+test document::modeling_groups::tests::modeling_auto_groups_transform_only_the_moved_vertices ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 1384 filtered out; finished in 3.78s
+
+
+running 4 tests
+test app::tests::guide_captures::bevel_capture::component_bevel_offscreen_review ... ignored, requires Vulkan; Q bevel controls, live sizing, cancellation, groups and Undo/Redo
+test sculpt::modeling::bevel::tests::component_bevel_chamfers_and_rounds_edges_vertices_and_junctions ... ok
+test sculpt::modeling::bevel::tests::component_bevel_mirrors_corner_and_edge_topology ... ok
+test sculpt::modeling::bevel::tests::component_bevel_preserves_untouched_uvs_groups_and_protection ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 1383 filtered out; finished in 1.07s
+
+
+running 3 tests
+test app::tests::guide_captures::detached_capture::detached_copy_offscreen_review ... ignored, requires Vulkan; Ctrl detached copies, isolated-point picking, groups and history
+test sculpt::modeling::detached::tests::detached_copy_faces_keep_originals_connections_uvs_and_groups ... ok
+test sculpt::modeling::detached::tests::detached_copy_isolated_vertices_survive_modeling_and_exchange ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 1384 filtered out; finished in 0.03s
+
+
+running 1 test
+test viewport::modeling::wire_tests::point_extrude_wire_picking_and_region_depth_work_without_faces_at_the_tip ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1386 filtered out; finished in 3.81s
+

@@ -290,7 +290,7 @@ Transform modes, directions and amounts save in presets; older presets retain Ax
 ### Snap components to a precise target
 
 1. Select the components to transform and choose **Move**, **Rotate**, or **Scale**.
-2. In **Snap to target**, choose **Vertex**, **Edge**, or **Surface**. Set the pick radius in screen pixels for vertex/edge targets; Surface picks the point directly under the pointer.
+2. In **Align without welding**, choose **Vertex**, **Edge**, or **Surface**. Set the pick radius in screen pixels for vertex/edge targets; Surface picks the point directly under the pointer.
 3. Click **Pick snap source**, then click a visible vertex belonging to your selection. Click a visible target on the active mesh. The highlighted candidate shows which point will be used.
 4. Inspect the preview while orbiting or zooming. **Pick another target** retains the source; **Pick snap source** starts again. **Apply snap** commits one geometry Undo step. **Cancel snap** or Escape leaves the mesh and history intact.
 
@@ -346,7 +346,7 @@ The highlighted rim stays on the dragged face even as the pen moves across other
 
 **Extrude** supports connected regions with shared side walls. Nonplanar regions move along averaged vertex normals; **Individual faces** makes separate extrusions. Distance is available numerically through **Apply amount**, as well as by pen drag. Matching-face tunnel joins remain available for aligned caps.
 
-**Inset** adds a border of the chosen Width inside a flat region. **Individual faces** insets each face separately. **Bevel boundary** trims a flat region's exterior corners, creating a single chamfer band; each corner must have one exterior edge descending away from the region. Use it for a single flat chamfer; arbitrary edge networks and rounded multi-segment profiles are unsupported. Widths that collapse narrow faces are rejected.
+**Inset** adds a border of the chosen Width inside a flat region. **Individual faces** insets each face separately. **Bevel boundary** trims a flat region's exterior corners, creating a single chamfer band; each corner must have one exterior edge descending away from the region. Use the Edge and Vertex chamfer/bevel tools below for individual components and rounded cuts. Widths that collapse narrow faces are rejected.
 
 Inset and bevel retain the cap selection for the next operation. New faces inherit their source region's face label; surviving weights and creases are retained.
 
@@ -363,6 +363,49 @@ Each region must be flat and separate regions must not share vertices. **Individ
 ![Two adjacent faces fused into one open tunnel, with the distance snapped to the opposite cap](../images/modeling-region-fuse-result.png)
 
 ![Two nonadjacent faces fused into separate tunnels in one edit](../images/modeling-separate-fuse-result.png)
+
+### Snap and weld while moving
+
+Choose **Move → Snap and weld on move**:
+
+- **Off** keeps the normal free move.
+- **Vertex** attracts a moved vertex to a nearby visible vertex and welds there on release. The target stays in place; edges that become duplicates combine into one.
+- **Edge** also welds a moved edge onto another nearly parallel edge when both corresponding endpoints are within the pixel radius. A nearby midpoint alone does not qualify. Vertex welding remains available in Vertex mode.
+
+Use a free drag or the gizmo center. Hold **Shift** during the drag to bypass welding, and release Shift to restore it. A gold **Weld vertex** or **Weld edge** marker identifies the target before release. Moving away restores the free move; Escape cancels. Each completed weld is one Undo/Redo step, retains the welded target selection, and clears measured Repeat last edit.
+
+This uses one vertex or edge and its exact symmetry copies on the active mesh. Independent multiple selections, face selections, axis/plane gizmo handles and numeric moves keep their ordinary behaviour. Hidden, occluded or protected targets are skipped. Duplicate faces, collapsed geometry and obstructed joins are rejected. Existing UV corners remain attached to their surviving triangles; creases and hard edges follow the weld. A vertex does not split or attach to the middle of an edge.
+
+The setting defaults to Off and saves in Modeling presets. The separate **Align without welding** source/target picker continues to align geometry without welding.
+
+![Move welding a vertex onto an existing vertex](../images/move-snap-vertex.png)
+
+![Move welding both ends of a parallel edge](../images/move-snap-edge.png)
+
+### Ctrl-extrude: detached copies
+
+Hold **Ctrl before starting the drag** with **Extrude** in Face mode or **Extrude point** in Vertex mode. The originals stay in place and a detached copy moves away. Face copies follow the normal extrusion direction, retain the selected region's connections and have no side walls. **Individual faces** gives each face its own copy. Vertex copies follow the screen plane and have no connecting edges.
+
+Release to apply, or press **Escape** to cancel. Ctrl-clicking without dragging makes no copy. The new components stay selected; one Undo restores the original mesh. Detached point copying bypasses snap-and-join so a nearby target cannot accidentally reconnect the copy. Isolated points can be selected, moved, extruded, welded, joined into a face or deleted. Save them in `.clay` or OBJ; surface-only exports and reconstruction tools cannot preserve isolated points.
+
+![Detached face copies](../images/detached-copy-faces.png)
+
+### A new vertex group for each edit
+
+Enable **New vertex group after each edit** in Modeling to group the affected surviving geometry after every successful edit. The group takes the operation's name, with a number for repeated names. It is created in the same Undo step as the geometry. The option is off by default and is stored in Modeling presets.
+
+Transforms group only the moved vertices. Topology changes include the corner vertices of new or changed faces. Deletion groups the surviving boundary when there is one; it never creates an empty group. Selection, cancellation, failed edits and unchanged geometry do not add groups. Existing groups and masks remain available.
+
+### Chamfer and rounded bevel
+
+Choose **Chamfer edges** or **Bevel edges** in Edge mode, and **Chamfer vertices** or **Bevel vertices** in Vertex mode. All four are in **Q**, the Modeling menu and the Mesh panel. Chamfer cuts a flat surface across the selected edge or corner. Bevel rounds the cut; **Segments** controls its resolution from 2 to 8.
+
+Drag upward on the selected component to increase **Width**, then release to apply. Escape cancels. Alternatively, enter a width and choose **Apply amount**. Q also exposes the width and segments for the active tool. Each cut is one Undo step and supports the optional new vertex group.
+
+Use closed surface fans with convex face corners. Open borders, loose edges, disconnected corner fans and cuts that overlap are rejected; reduce the width or selection when needed. Masks and hidden geometry remain protected. Untouched UVs remain intact; edited faces need unwrapping before texture painting. The existing face-mode **Bevel boundary** remains available for its original region operation.
+
+![Rounded edge bevel](../images/bevel-edge.png)
+![Rounded vertex bevel](../images/bevel-vertex.png)
 
 ### Construct from edges, points and face centers
 

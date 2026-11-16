@@ -26,6 +26,9 @@ pub(crate) struct ModelingControls {
     pub snap_target: crate::viewport::SnapTarget,
     pub snap_radius: Option<f32>,
     pub extrude_snap: Option<bool>,
+    pub move_snap: crate::viewport::MoveSnap,
+    pub new_group: bool,
+    pub bevel_segments: Option<u32>,
     pub snap_active: bool,
     pub snap_ready: bool,
     pub snap_hint: Option<String>,
@@ -80,6 +83,9 @@ impl ModelingControls {
         self.snap_target = o.snap_target;
         self.snap_radius = Some(o.snap_radius);
         self.extrude_snap = Some(o.extrude_snap);
+        self.move_snap = o.move_snap;
+        self.new_group = o.new_group;
+        self.bevel_segments = Some(o.bevel_segments);
         self.construction = o.construction;
         self.tap_repeat = o.tap_repeat;
         self.smooth_preview = o.smooth_preview;
@@ -105,6 +111,9 @@ impl ModelingControls {
             snap_target: self.snap_target,
             snap_radius: self.snap_radius.unwrap_or(12.),
             extrude_snap: self.extrude_snap.unwrap_or(true),
+            move_snap: self.move_snap,
+            new_group: self.new_group,
+            bevel_segments: self.bevel_segments.unwrap_or(3),
             construction: self.construction,
             tap_repeat: self.tap_repeat,
             smooth_preview: self.smooth_preview,
@@ -112,6 +121,38 @@ impl ModelingControls {
     }
 }
 impl UiState {
+    pub(super) fn bevel_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        ui.separator();
+        ui.strong(self.modeling.tool.label());
+        if let Some(width) = self.modeling.preview_amount {
+            ui.label(format!("Width {width:.6} (preview)"));
+        } else {
+            search::setting_response(
+                ui.add(
+                    egui::DragValue::new(&mut self.modeling.amount)
+                        .prefix("Width ")
+                        .range(0.000001..=1000.)
+                        .speed(0.001)
+                        .max_decimals(6),
+                ),
+                "Modeling amount",
+            );
+        }
+        if self.modeling.tool.rounded_bevel() {
+            search::setting_response(
+                ui.add(
+                    egui::Slider::new(self.modeling.bevel_segments.get_or_insert(3), 2..=8)
+                        .text("Segments"),
+                ),
+                "Bevel segments",
+            );
+        }
+        ui.weak("Drag up to widen · release applies · Esc cancels");
+        ui.weak("Closed surface corners. Reduce width if cuts overlap. Edited faces need unwrapping for texture painting.");
+        ui.add_enabled(self.modeling.count > 0, egui::Button::new("Apply amount"))
+            .customize(Action::ModelApply)
+            .clicked()
+    }
     pub(super) fn point_split_controls(&mut self, ui: &mut egui::Ui) -> bool {
         ui.separator();
         ui.strong("Split point settings");
@@ -279,10 +320,11 @@ impl UiState {
             if self.modeling.mode==ComponentMode::Face { ui.horizontal_wrapped(|ui| { for tool in [ModelTool::Inset,ModelTool::Bevel,ModelTool::Fuse] { if ui.selectable_label(self.modeling.tool==tool,match tool {ModelTool::Move=>"Move",ModelTool::Rotate=>"Rotate",ModelTool::Scale=>"Scale",_=>tool.label()}).customize(Action::ModelTool(tool)).clicked() {commands.push(Command::Action(Action::ModelTool(tool)));} } }); }
             if self.modeling.mode==ComponentMode::Edge && ui.selectable_label(self.modeling.tool==ModelTool::Slide,"Slide loop").customize(Action::ModelTool(ModelTool::Slide)).clicked(){commands.push(Command::Action(Action::ModelTool(ModelTool::Slide)));}
             ui.horizontal_wrapped(|ui| {
-                for tool in [ModelTool::CutCell,ModelTool::EdgeExtrude,ModelTool::EdgeSplit,ModelTool::EdgeCollapse,ModelTool::PointExtrude,ModelTool::PointSplit,ModelTool::FacePoint,ModelTool::FaceSplit] {
+                for tool in [ModelTool::CutCell,ModelTool::EdgeExtrude,ModelTool::EdgeSplit,ModelTool::EdgeCollapse,ModelTool::PointExtrude,ModelTool::PointSplit,ModelTool::EdgeChamfer,ModelTool::EdgeBevel,ModelTool::VertexChamfer,ModelTool::VertexBevel,ModelTool::FacePoint,ModelTool::FaceSplit] {
                     if tool.supports_mode(self.modeling.mode) && ui.selectable_label(self.modeling.tool==tool,tool.label()).customize(Action::ModelTool(tool)).clicked(){commands.push(Command::Action(Action::ModelTool(tool)));}
                 }
             });
+            search::setting_response(ui.checkbox(&mut self.modeling.new_group,"New vertex group after each edit"),"Modeling new vertex group").on_hover_text("Put created or changed geometry in a named group. Undo removes the edit and group together. Selection alone creates no group.");
             egui::CollapsingHeader::new("Topology").open(search::requested_section(ui.ctx(), "model_topology")).show(ui,|ui|{
                 if self.modeling.mode == ComponentMode::Edge {
                     let action = Action::ModelDissolveLoops;
@@ -317,6 +359,9 @@ impl UiState {
             design::checkbox(ui, &mut self.modeling.protect_mask,"Protect mask").customize(Action::ModelProtectMask);
             ui.weak("Hidden faces are protected · topology edits replace stored levels");
             match self.modeling.tool {
+                ModelTool::EdgeChamfer | ModelTool::EdgeBevel | ModelTool::VertexChamfer | ModelTool::VertexBevel => {
+                    if self.bevel_controls(ui) { commands.push(Command::ModelApply); }
+                }
                 ModelTool::PointSplit => {
                     if self.point_split_controls(ui) { commands.push(Command::ModelApply); }
                 }
@@ -340,6 +385,7 @@ impl UiState {
                     if tool==ModelTool::PointExtrude {
                         ui.weak("Creates one vertex joined to the original by an edge. The new endpoint follows your drag in the screen plane and stays selected.");
                         ui.weak("Drag first to set the direction for Apply amount and tap to repeat.");
+                        ui.weak("Hold Ctrl when starting a drag to move a detached vertex copy, with no connecting edge.");
                     }
                     if matches!(tool, ModelTool::PointExtrude | ModelTool::EdgeExtrude) {
                         search::setting_response(ui.checkbox(self.modeling.extrude_snap.get_or_insert(true), "Snap and join"), "Extrusion snap and join");
@@ -414,6 +460,7 @@ impl UiState {
                         ui.weak("Gold marks the target face or loop. Coral walls will be removed.");
                     } else {
                         ui.weak("Connected regions share walls; Individual faces extrude separately.");
+                        ui.weak("Hold Ctrl when starting a drag to move detached face copies. Originals stay; no side walls are created.");
                     }
                 }
                 ModelTool::Inset | ModelTool::Bevel => {
@@ -452,10 +499,23 @@ impl UiState {
                     let has_direction=!direct || self.modeling.interaction==ModelInteraction::Axis || self.modeling.tool==ModelTool::Scale || self.modeling.transform_direction.len()>1e-6;
                     if ui.add_enabled(self.modeling.count>0 && has_direction,egui::Button::new("Apply amount")).customize(Action::ModelApply).clicked() { commands.push(Command::ModelApply); }
                     ui.weak("Release applies · Esc cancels · one Undo per drag");
+                    if self.modeling.tool == ModelTool::Move {
+                        ui.strong("Snap and weld on move");
+                        ui.horizontal_wrapped(|ui| {
+                            use crate::viewport::MoveSnap;
+                            for (option,label) in [(MoveSnap::Off,"Off"),(MoveSnap::Vertex,"Vertex"),(MoveSnap::Edge,"Edge")] {
+                                search::setting_response(ui.selectable_value(&mut self.modeling.move_snap,option,label),"Move snap and weld");
+                            }
+                        });
+                        ui.weak("Vertex welds a moved point to an existing vertex. Edge also welds both ends of a parallel edge when both are nearby.");
+                        search::setting_response(ui.add(egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.)).range(4. ..=40.).prefix("Snap radius ").suffix(" px")),"Snap pick radius");
+                        ui.weak("Free drag or gizmo center · hold Shift for free movement · release to weld");
+                    }
+
                     ui.weak("Rotate and scale around the selection center");
                     if direct {
                         ui.separator();
-                        ui.strong("Snap to target");
+                        ui.strong("Align without welding");
                         ui.horizontal_wrapped(|ui| {
                             use crate::viewport::SnapTarget;
                             for target in [SnapTarget::Vertex, SnapTarget::Edge, SnapTarget::Surface] {

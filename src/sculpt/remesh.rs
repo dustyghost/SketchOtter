@@ -314,6 +314,7 @@ impl Grid {
         let dims = self.dims;
         let mut mesh = Mesh {
             loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,
@@ -440,6 +441,7 @@ mod tests {
     fn cube(offset: Vec3) -> Mesh {
         Mesh {
             loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,

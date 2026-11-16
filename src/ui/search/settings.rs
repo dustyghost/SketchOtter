@@ -465,6 +465,18 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
         "Set the contact snapping distance for the Modeling Fuse tool.",
     ),
     (
+        "Modeling new vertex group",
+        "modeling automatic vertex group each edit duplicate extrude",
+        Destination::Panel(Tool::Mesh),
+        "Create a named vertex group for the geometry affected by each completed Modeling edit.",
+    ),
+    (
+        "Move snap and weld",
+        "move vertex edge snap weld parallel nearby",
+        Destination::Panel(Tool::Mesh),
+        "Choose Move, then Vertex or Edge in Snap and weld on move. Hold Shift for free movement.",
+    ),
+    (
         "Extrusion snap and join",
         "extrude point vertex edge connect weld snap nearby",
         Destination::Panel(Tool::Mesh),
@@ -481,6 +493,12 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
         "modelling distance width angle scale fraction radius",
         Destination::Panel(Tool::Mesh),
         "Inspect the amount for the current Modeling edit. Choose an edit tool to expose its amount control.",
+    ),
+    (
+        "Bevel segments",
+        "bevel rounded chamfer edges vertices smooth",
+        Destination::Panel(Tool::Mesh),
+        "Set rounded bevel resolution from two to eight segments. Choose Bevel edges or Bevel vertices first.",
     ),
     (
         "Circularize ring",
@@ -1014,8 +1032,11 @@ pub(super) fn setting_section(name: &str) -> Option<&'static str> {
         "Paint away selection" => Some("modeling_options"),
         "Individual faces" => Some("modeling_options"),
         "Snap range" => Some("modeling_options"),
-        "Extrusion snap and join" | "Snap pick radius" => Some("modeling_options"),
-        "Modeling amount" => Some("modeling_options"),
+        "Modeling new vertex group"
+        | "Move snap and weld"
+        | "Extrusion snap and join"
+        | "Snap pick radius" => Some("modeling_options"),
+        "Modeling amount" | "Bevel segments" => Some("modeling_options"),
         "Circularize ring" => Some("modeling_options"),
         "Double ring sides" => Some("modeling_options"),
         "Crease ring" => Some("modeling_options"),

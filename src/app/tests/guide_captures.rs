@@ -3,12 +3,18 @@
 mod array_layers;
 #[path = "attached_array_capture.rs"]
 mod attached_array_capture;
+#[path = "bevel_capture.rs"]
+mod bevel_capture;
 #[path = "cameras_capture.rs"]
 mod cameras_capture;
 #[path = "guide_deformation_stack.rs"]
 mod deformation_stack_review;
+#[path = "detached_capture.rs"]
+mod detached_capture;
 #[path = "grouped_path_capture.rs"]
 mod grouped_path_capture;
+#[path = "move_snap_capture.rs"]
+mod move_snap_capture;
 #[path = "object_kits.rs"]
 mod object_kits;
 #[path = "path_assembly.rs"]

@@ -120,6 +120,7 @@ impl Mesh {
         }
         let surface: BTreeSet<_> = out.polygon_edges().into_iter().collect();
         out.loose_edges.retain(|e| !surface.contains(e));
+        out.retain_loose_vertices();
         if self.uv.current(self) {
             out.uv.removed.resize(self.triangles.len(), false);
             out.uv.removed.resize(out.triangles.len(), true);

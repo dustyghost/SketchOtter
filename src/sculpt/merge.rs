@@ -22,6 +22,9 @@ impl Mesh {
         let mut merged = self.clone();
         merged.vertices.extend_from_slice(&other.vertices);
         merged
+            .loose_vertices
+            .extend(other.loose_vertices.iter().map(|v| v + offset));
+        merged
             .loose_edges
             .extend(other.loose_edges.iter().map(|e| e.map(|v| v + offset)));
         merged.mask.extend_from_slice(&other.mask);

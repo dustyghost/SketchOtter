@@ -173,6 +173,7 @@ impl ModelingState {
             .filter(|p| p.visible)
             .flat_map(|p| p.vertices.iter().copied())
             .chain(wires.iter().flatten().copied())
+            .chain(document.mesh().loose_vertices.iter().copied())
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
@@ -266,7 +267,7 @@ impl ModelingState {
         let source = p.source.unwrap();
         let anchor = mesh.vertices[source];
         let changed = mesh != *document.mesh();
-        document.commit_modeling(mesh, "Snap components", p.revision)?;
+        document.commit_modeling(mesh, "Snap components", p.revision, options.new_group)?;
         let selected = p.selection.clone();
         self.snap_preview = None;
         self.sync(document);

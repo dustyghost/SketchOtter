@@ -4,10 +4,10 @@ use std::collections::BTreeSet;
 
 impl Mesh {
     pub(crate) fn require_surface_topology(&self) -> Result<(), String> {
-        if self.loose_edges.is_empty() {
+        if self.loose_edges.is_empty() && self.loose_vertices.is_empty() {
             Ok(())
         } else {
-            Err("This surface operation cannot preserve loose edges. Delete their vertices first, or keep this mesh for component modeling.".into())
+            Err("This surface operation cannot preserve loose edges or isolated vertices. Delete their vertices first, or keep this mesh for component modeling.".into())
         }
     }
     pub fn model_edges(&self) -> Vec<[usize; 2]> {
@@ -37,7 +37,39 @@ impl Mesh {
             .collect()
     }
 
+    pub(crate) fn retain_loose_vertices(&mut self) {
+        if self.loose_vertices.is_empty() {
+            return;
+        }
+        let used: BTreeSet<_> = self
+            .triangles
+            .iter()
+            .flatten()
+            .chain(self.loose_edges.iter().flatten())
+            .copied()
+            .collect();
+        self.loose_vertices.retain(|v| !used.contains(v));
+        self.loose_vertices.sort_unstable();
+        self.loose_vertices.dedup();
+    }
     pub(super) fn validate_loose_edges(&self) -> Result<(), String> {
+        if !self.loose_vertices.is_empty() {
+            let used: BTreeSet<_> = self
+                .triangles
+                .iter()
+                .flatten()
+                .chain(self.loose_edges.iter().flatten())
+                .copied()
+                .collect();
+            if self.loose_vertices.windows(2).any(|w| w[0] >= w[1])
+                || self
+                    .loose_vertices
+                    .iter()
+                    .any(|v| *v >= self.vertices.len() || used.contains(v))
+            {
+                return Err("Invalid isolated modeling vertices".into());
+            }
+        }
         if self.loose_edges.len() > super::max_vertices()
             || self.loose_edges.windows(2).any(|w| w[0] >= w[1])
             || self

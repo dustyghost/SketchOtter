@@ -11,7 +11,7 @@ pub(crate) mod objects;
 mod retopology_density;
 pub(crate) use modeling::{
     Component, ComponentMode, ModelAxis, ModelConstruction, ModelInteraction, ModelTool,
-    ModelingOptions, SelectionChange, SelectionSpan, SnapTarget,
+    ModelingOptions, MoveSnap, SelectionChange, SelectionSpan, SnapTarget,
 };
 mod gizmo;
 mod gpu;

@@ -409,6 +409,7 @@ fn check_long_snake_drag(curved: bool) {
 fn detail_carves_sharp_center_raised_shoulders_and_inverts_depth() {
     let mut plane = Mesh {
         loose_edges: Vec::new(),
+        loose_vertices: Vec::new(),
         uv: Default::default(),
         creases: Vec::new(),
         shading_seams: None,

@@ -29,6 +29,7 @@ impl Mesh {
         let mut out = self.clone();
         out.loose_edges.extend(edges);
         out.loose_edges.sort_unstable();
+        out.retain_loose_vertices();
         out.validate()?;
         symmetry.validate_result(&out)?;
         Ok((out, targets.into_iter().collect()))
@@ -97,6 +98,7 @@ impl Mesh {
         }
         let surface: BTreeSet<_> = out.polygon_edges().into_iter().collect();
         out.loose_edges.retain(|e| !surface.contains(e));
+        out.retain_loose_vertices();
         if self.uv.current(self) {
             out.uv.removed.resize(self.triangles.len(), false);
             out.uv.removed.resize(out.triangles.len(), true);

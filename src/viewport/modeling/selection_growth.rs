@@ -65,6 +65,12 @@ fn resized(
             }
         }
     }
+    for &v in &mesh.loose_vertices {
+        visible.insert(v);
+        if protect && mesh.mask[v] > 0. {
+            blocked.insert(v);
+        }
+    }
     let allowed_vertex = |v: usize| visible.contains(&v) && !blocked.contains(&v);
     let allowed = |c: Component| match c {
         Component::Vertex(v) => allowed_vertex(v),
@@ -114,6 +120,11 @@ fn resized(
                     boundary.insert(Component::Edge(e));
                 }
             }
+        }
+    }
+    if mode == ComponentMode::Vertex {
+        for &v in &mesh.loose_vertices {
+            adjacency.entry(Component::Vertex(v)).or_default();
         }
     }
     if mode == ComponentMode::Edge {

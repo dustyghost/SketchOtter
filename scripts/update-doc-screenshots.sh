@@ -36,6 +36,9 @@ cargo test --locked --lib component_delete_offscreen_review -- --ignored --test-
 cargo test --locked --lib point_extrude_offscreen_review -- --ignored --test-threads=1
 cargo test --locked --lib extrusion_snap_join_offscreen_review -- --ignored --test-threads=1
 cargo test --locked --lib create_selected_face_offscreen_review -- --ignored --test-threads=1
+cargo test --locked --lib move_snap_weld_offscreen_review -- --ignored --test-threads=1
+cargo test --locked --lib detached_copy_offscreen_review -- --ignored --test-threads=1
+cargo test --locked --lib component_bevel_offscreen_review -- --ignored --test-threads=1
 cargo test --locked --lib modeling_boundary_join_offscreen_review -- --ignored --test-threads=1
 env -u CLAY_REVIEW_PROJECT -u CLAY_REVIEW_MANIFEST -u CLAY_REVIEW_SWEEP -u CLAY_REVIEW_STRENGTH cargo test --locked --lib smooth_decimate_offscreen_review -- --ignored --test-threads=1
 cargo test --locked --lib surface_array_controls_offscreen_review -- --ignored --test-threads=1
@@ -68,4 +71,10 @@ cp "$capture_dir/guides/cleanup-before.png" docs/images/smooth-pull-before.png
 cp "$capture_dir/guides/cleanup-smoothed.png" docs/images/smooth-pull-after.png
 cp "$capture_dir/guides/front-study.png" docs/examples/front-study.png
 cp "$capture_dir/guides/side-study.png" docs/examples/side-study.png
+
+cp "$capture_dir/guides/move-snap-vertex-false.png" docs/images/move-snap-vertex.png
+cp "$capture_dir/guides/move-snap-edge-false.png" docs/images/move-snap-edge.png
+for name in detached-copy-faces detached-copy-vertex bevel-edge bevel-vertex chamfer-edge chamfer-vertex extrusion-snap-vertex-false extrusion-snap-edge-false; do
+    cp "$capture_dir/guides/$name.png" "docs/images/$name.png"
+done
 printf 'Documentation screenshots updated. Extra captures remain in %s\n' "$capture_dir"

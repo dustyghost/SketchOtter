@@ -117,6 +117,7 @@ fn parse(text: &str, cancelled: &impl Fn() -> bool) -> Result<Mesh, String> {
     let mut has_colors = false;
     let mut faces = Vec::new();
     let mut loose_edges = Vec::new();
+    let mut loose_vertices = Vec::new();
     let (mut textures, mut normals) = (0, 0);
     let mut texcoords = Vec::new();
     let (mut texture_ref, mut normal_ref) = (0, 0);
@@ -197,6 +198,14 @@ fn parse(text: &str, cancelled: &impl Fn() -> bool) -> Result<Mesh, String> {
                     }
                     if textures > max_triangles() * 3 || normals > max_triangles() * 3 {
                         return Err("OBJ has too many texture coordinates or normals".into());
+                    }
+                }
+                "p" => {
+                    for value in words {
+                        loose_vertices.push(index(value, vertices.len())?);
+                    }
+                    if loose_vertices.len() > max_vertices() {
+                        return Err("OBJ has too many isolated points".into());
                     }
                 }
                 "l" => {
@@ -289,14 +298,15 @@ fn parse(text: &str, cancelled: &impl Fn() -> bool) -> Result<Mesh, String> {
     if !logical.is_empty() {
         return Err(format!("OBJ line {start}: unfinished line continuation"));
     }
-    if faces.is_empty() && loose_edges.is_empty() {
-        return Err("OBJ contains no polygon faces or edges".into());
+    if faces.is_empty() && loose_edges.is_empty() && loose_vertices.is_empty() {
+        return Err("OBJ contains no polygon faces, edges or points".into());
     }
     if texture_ref > textures || normal_ref > normals {
         return Err("OBJ texture or normal index is out of range".into());
     }
     let mut mesh = Mesh {
         loose_edges,
+        loose_vertices,
         uv: Default::default(),
         creases: Vec::new(),
         shading_seams: None,
@@ -353,6 +363,7 @@ fn parse(text: &str, cancelled: &impl Fn() -> bool) -> Result<Mesh, String> {
         mesh.uv.topology = mesh.triangles.clone();
     }
     mesh.canonicalize_polygroups();
+    mesh.retain_loose_vertices();
     mesh.loose_edges.sort_unstable();
     mesh.loose_edges.dedup();
     let surface: HashSet<_> = mesh.polygon_edges().into_iter().collect();
@@ -481,6 +492,9 @@ pub(super) fn export_uv_obj(path: &str, mesh: &Mesh) -> Result<(), String> {
     let mut text = String::from("# Clay Form seam-aware UV mesh\n");
     for v in &mesh.vertices {
         writeln!(text, "v {} {} {}", v.0, v.1, v.2).unwrap();
+    }
+    for &v in &mesh.loose_vertices {
+        writeln!(text, "p {}", v + 1).unwrap();
     }
     for &[a, b] in &mesh.loose_edges {
         writeln!(text, "l {} {}", a + 1, b + 1).unwrap();

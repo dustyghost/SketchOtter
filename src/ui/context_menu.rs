@@ -233,7 +233,9 @@ impl UiState {
                 ui.close_kind(egui::UiKind::Menu);
             }
         }
-        if self.modeling.tool == ModelTool::PointSplit && self.point_split_controls(ui) {
+        if (self.modeling.tool == ModelTool::PointSplit && self.point_split_controls(ui))
+            || (self.modeling.tool.is_component_bevel() && self.bevel_controls(ui))
+        {
             commands.push(Command::ModelApply);
             if popup {
                 ui.close_kind(egui::UiKind::Menu);
@@ -330,6 +332,10 @@ impl UiState {
                 ModelTool::EdgeCollapse,
                 ModelTool::PointExtrude,
                 ModelTool::PointSplit,
+                ModelTool::EdgeChamfer,
+                ModelTool::EdgeBevel,
+                ModelTool::VertexChamfer,
+                ModelTool::VertexBevel,
                 ModelTool::FacePoint,
                 ModelTool::FaceSplit,
             ]
@@ -750,7 +756,9 @@ impl UiState {
                     self.viewport_menu.selected = i;
                     action = Some(chosen);
                 }
-                if self.modeling.tool == ModelTool::PointSplit && self.point_split_controls(ui) {
+                if (self.modeling.tool == ModelTool::PointSplit && self.point_split_controls(ui))
+                    || (self.modeling.tool.is_component_bevel() && self.bevel_controls(ui))
+                {
                     action = Some(Action::ModelApply);
                 }
             } else if context == ViewportMenuContext::Components {

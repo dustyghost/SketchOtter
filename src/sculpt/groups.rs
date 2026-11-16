@@ -439,6 +439,12 @@ impl Mesh {
         for (new, &old) in old_vertices.iter().enumerate() {
             indices[old] = new;
         }
+        result.loose_vertices = self
+            .loose_vertices
+            .iter()
+            .filter_map(|v| indices.get(*v).copied().filter(|i| *i != usize::MAX))
+            .collect();
+        result.loose_vertices.sort_unstable();
         result.loose_edges = self
             .loose_edges
             .iter()

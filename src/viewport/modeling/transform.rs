@@ -14,7 +14,7 @@ pub(super) struct DirectDrag {
     pub gizmo: bool,
     pub direction: Vec3,
     pivot: Vec3,
-    handle: Handle,
+    pub(super) handle: Handle,
     rotation: Option<RotationDrag>,
 }
 fn axes() -> [(Vec3, Color32, &'static str); 3] {
@@ -114,6 +114,7 @@ impl ModelingState {
             pivot
         };
         self.edit_drag = Some(EditDrag {
+            detached: false,
             start: point,
             direct: Some(DirectDrag {
                 gizmo,

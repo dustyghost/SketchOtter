@@ -7,6 +7,7 @@ pub(crate) struct DisplaySurface {
     pub triangles: Arc<Vec<[usize; 3]>>,
     pub quads: Arc<Vec<[usize; 4]>>,
     pub loose_edges: Arc<Vec<[usize; 2]>>,
+    pub loose_vertices: Arc<Vec<usize>>,
     pub mask: Arc<Vec<f32>>,
     pub materials: Arc<Vec<Material>>,
 }
@@ -24,6 +25,7 @@ impl From<Mesh> for DisplaySurface {
             triangles: shared(mesh.triangles),
             quads: shared(mesh.quads),
             loose_edges: shared(mesh.loose_edges),
+            loose_vertices: shared(mesh.loose_vertices),
             mask: shared(mesh.mask),
             materials: shared(mesh.materials),
         }
@@ -60,6 +62,7 @@ impl DisplaySurface {
             triangles: self.triangles.clone(),
             quads: self.quads.clone(),
             loose_edges: self.loose_edges.clone(),
+            loose_vertices: self.loose_vertices.clone(),
             mask: if self.same_mask(source) {
                 self.mask.clone()
             } else {
@@ -81,6 +84,7 @@ impl DisplaySurface {
             triangles: (*self.triangles).clone(),
             quads: (*self.quads).clone(),
             loose_edges: (*self.loose_edges).clone(),
+            loose_vertices: (*self.loose_vertices).clone(),
             mask: (*self.mask).clone(),
             materials: (*self.materials).clone(),
             ..Default::default()

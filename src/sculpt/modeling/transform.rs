@@ -42,6 +42,17 @@ impl Mesh {
                 .into());
             }
         }
+        for &v in &self.loose_vertices {
+            if mask
+                && self.mask[v] > 0.
+                && !out
+                    .loose_vertices
+                    .iter()
+                    .any(|&i| out.vertices[i] == self.vertices[v])
+            {
+                return Err("This edit touches masked isolated vertices; clear the mask or turn off Protect mask".into());
+            }
+        }
         let wire_key = |mesh: &Mesh, e: [usize; 2]| {
             let mut points = e.map(|v| {
                 let p = mesh.vertices[v];

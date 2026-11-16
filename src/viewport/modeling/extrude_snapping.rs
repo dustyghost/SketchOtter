@@ -21,7 +21,7 @@ impl ModelingState {
             return;
         };
         let Some(pointer) = pointer else { return };
-        if !drag.moved {
+        if !drag.moved || drag.detached {
             return;
         }
         // Point dragging refreshes its free result every frame. Edge dragging's
@@ -92,6 +92,7 @@ fn point_join(
         .filter(|p| p.visible)
         .flat_map(|p| p.vertices)
         .chain(mesh.visible_loose_edges().into_iter().flatten())
+        .chain(mesh.loose_vertices.iter().copied())
         .collect();
     let existing: BTreeSet<_> = mesh.model_edges().into_iter().collect();
     let mut targets: Vec<_> = visible

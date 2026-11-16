@@ -41,6 +41,20 @@ impl EditOutcome {
             ..Self::new(mesh, amount, false)
         }
     }
+    pub(super) fn move_weld(
+        mesh: Mesh,
+        selection: BTreeSet<Component>,
+        target: Component,
+        amount: f32,
+    ) -> Self {
+        let mut result = Self::snap_join(mesh, selection, target, amount);
+        result.notice = if matches!(target, Component::Vertex(_)) {
+            "Welded to existing vertex"
+        } else {
+            "Welded parallel edges"
+        };
+        result
+    }
     pub(super) fn moved_selection(&self, source: &BTreeSet<Component>) -> BTreeSet<Component> {
         if !self.point_tips.is_empty() {
             return self.point_tips.clone();
@@ -57,6 +71,7 @@ impl EditOutcome {
 pub(super) struct EditDrag {
     pub start: Pos2,
     pub direct: Option<super::transform::DirectDrag>,
+    pub detached: bool,
     pub rail: Option<egui::Vec2>,
     pub initial_amount: f32,
     pub preview_options: ModelingOptions,
@@ -70,7 +85,8 @@ pub(super) struct EditDrag {
 }
 impl ModelTool {
     pub fn is_edit(self) -> bool {
-        self.construction_kind().is_some()
+        self.is_component_bevel()
+            || self.construction_kind().is_some()
             || matches!(
                 self,
                 Self::CutCell
@@ -240,6 +256,41 @@ impl ModelingState {
                     .unwrap_or_default(),
             })
             .collect();
+        if options.tool.is_component_bevel() {
+            let edges: Vec<_> = components
+                .iter()
+                .filter_map(|c| {
+                    if let Component::Edge(e) = c {
+                        Some(*e)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let points: Vec<_> = components
+                .iter()
+                .filter_map(|c| {
+                    if let Component::Vertex(v) = c {
+                        Some(*v)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let result = mesh.bevel_components(
+                &edges,
+                &points,
+                amount,
+                if options.tool.rounded_bevel() {
+                    options.bevel_segments
+                } else {
+                    1
+                },
+                &ModelingSymmetry::new(mesh, document.symmetry())?,
+            )?;
+            mesh.check_model_protection(&result, options.protect_mask)?;
+            return Ok(EditOutcome::new(result, amount, false));
+        }
         if let Some(kind) = options.tool.construction_kind() {
             let faces: Vec<_> = components
                 .iter()
@@ -493,6 +544,9 @@ impl ModelingState {
         let Some(drag) = self.edit_drag.take() else {
             return Ok(());
         };
+        if drag.detached && !drag.moved {
+            return Ok(());
+        }
         if let Some(direct) = &drag.direct {
             if !drag.moved && direct.gizmo {
                 return Ok(());
@@ -542,12 +596,21 @@ impl ModelingState {
             BTreeSet::new()
         };
         let amount = result.amount;
-        document.commit_modeling(result.mesh, options.tool.label(), drag.revision)?;
+        document.commit_modeling(
+            result.mesh,
+            if drag.detached {
+                "Duplicate vertices"
+            } else {
+                options.tool.label()
+            },
+            drag.revision,
+            options.new_group,
+        )?;
         self.sync(document);
         let mut last = options;
         last.amount = amount;
         self.notice = (!result.notice.is_empty()).then_some(result.notice);
-        self.last_edit = (!snapped).then_some(last);
+        self.last_edit = (!snapped && !drag.detached).then_some(last);
         self.requested_amount = Some(amount);
         if options.tool.is_transform() || options.tool == ModelTool::PointExtrude {
             self.requested_direction = Some(options.transform_direction);
@@ -626,7 +689,12 @@ impl ModelingState {
         };
         let mut options = options;
         options.amount = result.amount;
-        document.commit_modeling(result.mesh, options.tool.label(), self.revision)?;
+        document.commit_modeling(
+            result.mesh,
+            options.tool.label(),
+            self.revision,
+            options.new_group,
+        )?;
         self.selected = selection;
         self.revision = document.display_revision();
         self.notice = (!result.notice.is_empty()).then_some(result.notice);
@@ -674,6 +742,7 @@ impl Viewport {
                 let anchor = match component {
                     Component::Vertex(v)
                         if model.tool == ModelTool::PointExtrude
+                            || mesh.loose_vertices.contains(&v)
                             || mesh.loose_edges.iter().any(|e| e.contains(&v)) =>
                     {
                         mesh.vertices[v]
@@ -722,6 +791,7 @@ impl Viewport {
                     ModelingState::edit_result(document, &components, anchor, model, model.amount)
                 });
                 self.modeling.edit_drag = Some(EditDrag {
+                    detached: false,
                     direct: None,
                     start: point,
                     rail: if let Component::Edge([a, b]) = component {
@@ -762,6 +832,7 @@ impl ModelingState {
         document: &mut Document,
         edit: crate::sculpt::TopologyEdit,
         protect: bool,
+        new_group: bool,
     ) -> Result<(), String> {
         self.sync(document);
         document.require_modeling()?;
@@ -797,7 +868,7 @@ impl ModelingState {
             .mesh()
             .edit_model_topology(edit, &faces, &edges, &vertices, &symmetry)?;
         document.mesh().check_model_protection(&result, protect)?;
-        document.commit_modeling(result, edit.label(), self.revision)?;
+        document.commit_modeling(result, edit.label(), self.revision, new_group)?;
         self.sync(document);
         Ok(())
     }
