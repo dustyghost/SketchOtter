@@ -2080,171 +2080,196 @@ fn modeling_face_cell_notch_straight_on_preview_and_apply_to_selection_agree() {
 }
 
 #[test]
-fn modeling_manual_topology_preview_apply_cancel_history_and_brush_switch() {
+fn modeling_manual_topology_connect_is_immediate_undoable_and_leaves_no_draft() {
     use crate::{sculpt::TopologyEdit, viewport::Component};
     let (mut app, ctx, _) = setup();
     app.dispatch(Command::ModelingComponent(ComponentMode::Vertex), &ctx);
     let q = app.document.mesh().quads[0];
-    let select = |app: &mut App| {
-        app.viewport.modeling.sync(&app.document);
-        app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
-    };
-    select(&mut app);
+    app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
     let before = app.document.geometry_snapshot();
     let history = app.document.history_counts();
     app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
-    assert_eq!(app.document.geometry_snapshot(), before);
-    assert_eq!(app.document.history_counts(), history);
-    let preview = app
-        .viewport
-        .modeling
-        .preview()
-        .expect(&app.ui.status)
-        .clone();
-    app.camera.yaw += 0.3;
-    navigation_frame(&mut app, &ctx, vec![]);
-    assert_eq!(app.viewport.modeling.preview(), Some(&preview));
-    app.dispatch(Command::CancelModelTopology, &ctx);
-    assert_eq!(app.document.geometry_snapshot(), before);
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
-    assert_eq!(app.viewport.modeling.selected.len(), 2);
-    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
-    app.dispatch(Command::ApplyModelTopology, &ctx);
-    assert_eq!(app.document.mesh(), &preview);
+    let connected = app.document.geometry_snapshot();
+    assert_eq!(connected.mesh.quads.len(), before.mesh.quads.len() - 1);
     assert_eq!(app.document.history_counts().0, history.0 + 1);
+    assert!(app.viewport.modeling.preview().is_none());
+    assert!(app.viewport.modeling.selected.is_empty());
     app.dispatch(Command::Undo, &ctx);
     assert_eq!(app.document.geometry_snapshot(), before);
     app.dispatch(Command::Redo, &ctx);
-    assert_eq!(app.document.mesh(), &preview);
-    app.dispatch(Command::Undo, &ctx);
-    select(&mut app);
-    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    assert_eq!(app.document.geometry_snapshot(), connected);
+    navigation_frame(&mut app, &ctx, vec![slice_key(egui::Key::Escape, true)]);
+    assert_eq!(app.document.geometry_snapshot(), connected);
+    assert!(!app.ui.modeling.active);
     app.execute_action(
         Action::SelectBrush(app.document.brushes()[0].identity()),
         &ctx,
     );
-    assert!(app.ui.tool_change.is_some());
-    navigation_frame(&mut app, &ctx, vec![]);
-    assert!(app.viewport.modeling.topology_preview_label().is_some());
-    app.resolve_tool_change(crate::app::tool_change::Decision::KeepEditing, &ctx);
-    assert_eq!(app.document.geometry_snapshot(), before);
-    app.execute_action(
-        Action::SelectBrush(app.document.brushes()[0].identity()),
-        &ctx,
-    );
-    app.resolve_tool_change(crate::app::tool_change::Decision::Apply, &ctx);
-    assert_eq!(app.document.mesh(), &preview);
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
+    assert!(app.ui.tool_change.is_none());
+    assert_eq!(app.document.geometry_snapshot(), connected);
+    assert_eq!(app.document.history_counts().0, history.0 + 1);
 }
 
 #[test]
-fn modeling_manual_topology_rejects_protected_and_stale_previews_and_escape_cancels() {
+fn modeling_manual_topology_delete_create_and_fill_each_commit_one_history_step() {
+    use crate::{sculpt::TopologyEdit, viewport::Component};
+    for edit in [TopologyEdit::CreateFace, TopologyEdit::Fill] {
+        let (mut app, ctx, _) = setup();
+        let q = app.document.mesh().quads[0];
+        let original = app.document.geometry_snapshot();
+        let history = app.document.history_counts().0;
+        app.viewport.modeling.selected = [Component::Face(0)].into();
+        app.dispatch(Command::ModelTopology(TopologyEdit::DeleteFaces), &ctx);
+        let open = app.document.geometry_snapshot();
+        assert_eq!(open.mesh.quads.len(), original.mesh.quads.len() - 1);
+        assert_eq!(app.document.history_counts().0, history + 1);
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), original);
+        app.dispatch(Command::Redo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), open);
+        app.dispatch(
+            Command::ModelingComponent(if edit == TopologyEdit::Fill {
+                ComponentMode::Edge
+            } else {
+                ComponentMode::Vertex
+            }),
+            &ctx,
+        );
+        app.viewport.modeling.selected = if edit == TopologyEdit::Fill {
+            (0..4)
+                .map(|i| {
+                    let a = q[i];
+                    let b = q[(i + 1) % 4];
+                    Component::Edge([a.min(b), a.max(b)])
+                })
+                .collect()
+        } else {
+            q.map(Component::Vertex).into()
+        };
+        app.dispatch(Command::ModelTopology(edit), &ctx);
+        let capped = app.document.geometry_snapshot();
+        assert_eq!(
+            capped.mesh.quads.len(),
+            original.mesh.quads.len(),
+            "{}",
+            app.ui.status
+        );
+        assert_eq!(app.document.history_counts().0, history + 2);
+        assert!(app.viewport.modeling.preview().is_none());
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), open);
+        app.dispatch(Command::Redo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), capped);
+        let saved = serde_json::to_vec(&app.document.project()).unwrap();
+        let restored: crate::sculpt::Project = serde_json::from_slice(&saved).unwrap();
+        restored.validate().unwrap();
+        assert_eq!(restored.mesh, capped.mesh);
+    }
+}
+
+#[test]
+fn modeling_manual_topology_failed_connect_preserves_geometry_history_and_redo() {
     use crate::{sculpt::TopologyEdit, viewport::Component};
     let (mut app, ctx, _) = setup();
     app.dispatch(Command::ModelingComponent(ComponentMode::Vertex), &ctx);
     let q = app.document.mesh().quads[0];
-    let select = |app: &mut App| {
-        app.viewport.modeling.sync(&app.document);
-        app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
-    };
-    select(&mut app);
-    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
-    assert!(app.viewport.modeling.topology_preview_label().is_some());
-    navigation_frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::Key {
-            key: egui::Key::Escape,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: Default::default(),
-        }],
-    );
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
-    assert!(app.ui.modeling.active);
-    navigation_frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::Key {
-            key: egui::Key::Escape,
-            physical_key: None,
-            pressed: false,
-            repeat: false,
-            modifiers: Default::default(),
-        }],
-    );
-    select(&mut app);
-    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
-    app.ui.modeling.protect_mask = false;
+    app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
     let before = app.document.geometry_snapshot();
-    app.dispatch(Command::ApplyModelTopology, &ctx);
-    assert!(app.ui.status.contains("changed"));
-    assert_eq!(app.document.geometry_snapshot(), before);
-    let mut geometry = before.clone();
-    geometry.mesh.mask[q[0]] = 1.;
-    app.document.replace_geometry(geometry).unwrap();
-    app.ui.modeling.protect_mask = true;
-    select(&mut app);
     app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
-    assert!(app.ui.status.contains("masked"));
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
-}
-
-#[test]
-fn modeling_manual_topology_cap_protection_hidden_and_changed_target() {
-    use crate::{sculpt::TopologyEdit, viewport::Component};
-    let (mut app, ctx, _) = setup();
-    let q = app.document.mesh().quads[0];
-    app.viewport.modeling.selected = [Component::Face(0)].into();
-    app.dispatch(Command::ModelTopology(TopologyEdit::DeleteFaces), &ctx);
-    app.dispatch(Command::ModelingComponent(ComponentMode::Vertex), &ctx);
-    let open = app.document.geometry_snapshot();
-    let select = |app: &mut App| {
-        app.viewport.modeling.sync(&app.document);
-        app.viewport.modeling.selected = q.map(Component::Vertex).into();
-    };
-    let mut protected = open.clone();
+    let connected = app.document.geometry_snapshot();
+    app.dispatch(Command::Undo, &ctx);
+    let history = app.document.history_counts();
+    app.viewport.modeling.sync(&app.document);
+    app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[1])].into();
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    assert_eq!(app.document.history_counts(), history);
+    assert!(app.ui.status.contains("opposite"), "{}", app.ui.status);
+    app.dispatch(Command::Redo, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), connected);
+    let mut protected = before;
     protected.mesh.mask[q[0]] = 1.;
-    app.document.replace_geometry(protected).unwrap();
-    select(&mut app);
-    app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
+    app.document.replace_geometry(protected.clone()).unwrap();
+    app.viewport.modeling.sync(&app.document);
+    app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
+    let history = app.document.history_counts();
+    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
     assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
-    app.ui.modeling.protect_mask = false;
-    app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
-    assert!(
-        app.viewport.modeling.topology_preview_label().is_some(),
-        "{}",
-        app.ui.status
-    );
-    app.dispatch(Command::ApplyModelTopology, &ctx);
-    assert_eq!(app.document.mesh().mask[q[0]], 1.);
-    let mut hidden = open.clone();
-    hidden.mesh.hidden_faces = vec![true; hidden.mesh.triangles.len()];
-    app.document.replace_geometry(hidden).unwrap();
-    select(&mut app);
-    app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
-    assert!(app.ui.status.contains("hidden"), "{}", app.ui.status);
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
-    app.document.replace_geometry(open.clone()).unwrap();
-    select(&mut app);
-    app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
-    assert!(app.viewport.modeling.topology_preview_label().is_some());
-    app.document
-        .replace_geometry(Geometry::new(
-            Primitive::for_kind(PrimitiveKind::Cube).mesh().unwrap(),
-        ))
-        .unwrap();
-    let changed = app.document.geometry_snapshot();
-    app.dispatch(Command::ApplyModelTopology, &ctx);
-    assert_eq!(app.document.geometry_snapshot(), changed);
-    assert!(app.ui.status.contains("changed"), "{}", app.ui.status);
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
+    assert_eq!(app.document.geometry_snapshot(), protected);
+    assert_eq!(app.document.history_counts(), history);
 }
 
 #[test]
-fn modeling_manual_topology_actions_reopen_modeling_and_reject_changed_tool() {
+fn modeling_manual_topology_caps_protect_masked_hidden_and_incomplete_boundaries() {
+    use crate::{sculpt::TopologyEdit, viewport::Component};
+    for edit in [TopologyEdit::CreateFace, TopologyEdit::Fill] {
+        let (mut app, ctx, _) = setup();
+        let q = app.document.mesh().quads[0];
+        app.viewport.modeling.selected = [Component::Face(0)].into();
+        app.dispatch(Command::ModelTopology(TopologyEdit::DeleteFaces), &ctx);
+        app.dispatch(
+            Command::ModelingComponent(if edit == TopologyEdit::Fill {
+                ComponentMode::Edge
+            } else {
+                ComponentMode::Vertex
+            }),
+            &ctx,
+        );
+        let open = app.document.geometry_snapshot();
+        let select = |app: &mut App| {
+            app.viewport.modeling.sync(&app.document);
+            app.viewport.modeling.selected = if edit == TopologyEdit::Fill {
+                (0..4)
+                    .map(|i| {
+                        let a = q[i];
+                        let b = q[(i + 1) % 4];
+                        Component::Edge([a.min(b), a.max(b)])
+                    })
+                    .collect()
+            } else {
+                q.map(Component::Vertex).into()
+            };
+        };
+        let mut protected = open.clone();
+        protected.mesh.mask[q[0]] = 1.;
+        app.document.replace_geometry(protected.clone()).unwrap();
+        select(&mut app);
+        let history = app.document.history_counts();
+        app.dispatch(Command::ModelTopology(edit), &ctx);
+        assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
+        assert_eq!(app.document.geometry_snapshot(), protected);
+        assert_eq!(app.document.history_counts(), history);
+        app.ui.modeling.protect_mask = false;
+        app.dispatch(Command::ModelTopology(edit), &ctx);
+        assert_eq!(
+            app.document.mesh().quads.len(),
+            open.mesh.quads.len() + 1,
+            "{}",
+            app.ui.status
+        );
+        assert_eq!(app.document.mesh().mask[q[0]], 1.);
+        assert_eq!(app.document.history_counts().0, history.0 + 1);
+        let mut hidden = open.clone();
+        hidden.mesh.hidden_faces = vec![true; hidden.mesh.triangles.len()];
+        app.document.replace_geometry(hidden.clone()).unwrap();
+        select(&mut app);
+        let history = app.document.history_counts();
+        app.dispatch(Command::ModelTopology(edit), &ctx);
+        assert!(app.ui.status.contains("hidden"), "{}", app.ui.status);
+        assert_eq!(app.document.geometry_snapshot(), hidden);
+        assert_eq!(app.document.history_counts(), history);
+        app.document.replace_geometry(open.clone()).unwrap();
+        select(&mut app);
+        app.viewport.modeling.selected.pop_first();
+        let history = app.document.history_counts();
+        app.dispatch(Command::ModelTopology(edit), &ctx);
+        assert_eq!(app.document.geometry_snapshot(), open);
+        assert_eq!(app.document.history_counts(), history);
+    }
+}
+
+#[test]
+fn modeling_manual_topology_actions_reopen_modeling_and_commit_from_other_tools() {
     use crate::{sculpt::TopologyEdit, viewport::Component};
     let (mut app, ctx, _) = setup();
     app.dispatch(Command::ModelingComponent(ComponentMode::Vertex), &ctx);
@@ -2252,25 +2277,20 @@ fn modeling_manual_topology_actions_reopen_modeling_and_reject_changed_tool() {
     app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
     navigation_frame(&mut app, &ctx, vec![]);
     app.dispatch(Command::ModelingMode(false), &ctx);
+    let before = app.document.geometry_snapshot();
     app.dispatch(
         Command::Action(Action::ModelTopology(TopologyEdit::Connect)),
         &ctx,
     );
     assert!(app.ui.modeling.active);
-    assert!(app.viewport.modeling.topology_preview_label().is_some());
-    // A failed attempt must not leave an earlier, different construction ready to Apply.
-    app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
+    assert_eq!(app.document.mesh().quads.len(), before.mesh.quads.len() - 1);
+    app.dispatch(Command::Undo, &ctx);
+    app.viewport.modeling.sync(&app.document);
+    app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
     app.execute_action(Action::ModelTool(ModelTool::Move), &ctx);
     app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
     assert_eq!(app.ui.modeling.tool, ModelTool::Select);
-    let before = app.document.geometry_snapshot();
-    app.execute_action(Action::ModelTool(ModelTool::Move), &ctx);
-    // Direct command paths must be safe before the next viewport frame invalidates the preview.
-    app.dispatch(Command::ApplyModelTopology, &ctx);
-    assert!(app.ui.status.contains("changed"), "{}", app.ui.status);
-    assert_eq!(app.document.geometry_snapshot(), before);
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
+    assert_eq!(app.document.mesh().quads.len(), before.mesh.quads.len() - 1);
 }
 
 #[test]
@@ -2279,32 +2299,28 @@ fn modeling_manual_topology_interacts_with_selection_history_and_snapping() {
     let (mut app, ctx, _) = setup();
     app.dispatch(Command::ModelingComponent(ComponentMode::Vertex), &ctx);
     let q = app.document.mesh().quads[0];
-    let selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
-    app.viewport.modeling.selected = selected;
+    app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
     let before = app.document.geometry_snapshot();
     let history = app.document.history_counts();
-    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
-    assert!(app.viewport.modeling.topology_preview_label().is_some());
     app.dispatch(Command::ModelResizeSelection(true), &ctx);
-    navigation_frame(&mut app, &ctx, vec![]);
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
     app.dispatch(Command::ModelSelectionHistory(false), &ctx);
-    navigation_frame(&mut app, &ctx, vec![]);
     assert_eq!(app.viewport.modeling.selected.len(), 2);
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
-
-    app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
     app.execute_action(Action::ModelTool(ModelTool::Move), &ctx);
     app.dispatch(Command::ModelSnap, &ctx);
     navigation_frame(&mut app, &ctx, vec![]);
     assert!(app.viewport.modeling.snap_active(), "{}", app.ui.status);
-    assert!(app.viewport.modeling.topology_preview_label().is_none());
     app.dispatch(Command::ModelTopology(TopologyEdit::Connect), &ctx);
     navigation_frame(&mut app, &ctx, vec![]);
-    assert!(app.viewport.modeling.topology_preview_label().is_some());
     assert!(!app.viewport.modeling.snap_active());
+    assert_eq!(app.document.mesh().quads.len(), before.mesh.quads.len() - 1);
+    assert_eq!(app.document.history_counts().0, history.0 + 1);
+    assert!(
+        !app.viewport
+            .modeling
+            .can_restore_selection(&app.document, false)
+    );
+    app.dispatch(Command::Undo, &ctx);
     assert_eq!(app.document.geometry_snapshot(), before);
-    assert_eq!(app.document.history_counts(), history);
 }
 
 #[test]

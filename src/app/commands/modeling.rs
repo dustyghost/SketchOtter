@@ -90,14 +90,6 @@ impl App {
                 self.ui.modeling.span = crate::viewport::SelectionSpan::Single;
                 Ok(())
             }
-            Command::ApplyModelTopology => self
-                .viewport
-                .modeling
-                .apply_topology(&mut self.document, self.ui.modeling.options()),
-            Command::CancelModelTopology => {
-                self.viewport.modeling.cancel_topology();
-                Ok(())
-            }
             Command::ModelTopology(edit) => {
                 self.viewport.cancel(&mut self.document);
                 if matches!(
@@ -106,27 +98,20 @@ impl App {
                         | crate::sculpt::TopologyEdit::Fill
                         | crate::sculpt::TopologyEdit::CreateFace
                 ) {
-                    // Search and shelf actions must reveal the persistent preview
-                    // even after leaving Modeling with a retained selection.
+                    // Search and shelf actions also work with a retained selection
+                    // after leaving Modeling.
                     if !self.ui.modeling.active {
                         self.dispatch_modeling(Command::ModelingMode(true))?;
                     }
                     self.ui
                         .modeling
                         .set_tool(crate::viewport::ModelTool::Select);
-                    self.viewport.modeling.preview_topology(
-                        &self.document,
-                        edit,
-                        self.ui.modeling.options(),
-                    )
-                } else {
-                    self.viewport.modeling.cancel_topology();
-                    self.viewport.modeling.topology_edit(
-                        &mut self.document,
-                        edit,
-                        self.ui.modeling.protect_mask,
-                    )
                 }
+                self.viewport.modeling.topology_edit(
+                    &mut self.document,
+                    edit,
+                    self.ui.modeling.protect_mask,
+                )
             }
             Command::ModelRepeat => {
                 self.viewport.cancel(&mut self.document);

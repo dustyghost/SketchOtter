@@ -422,7 +422,6 @@ impl App {
         }
         self.viewport.modeling.sync(&self.document);
         self.ui.modeling.count = self.viewport.modeling.selection().len();
-        self.ui.modeling.topology_preview = self.viewport.modeling.topology_preview_label();
         self.ui.modeling.selection_undo = self
             .viewport
             .modeling
@@ -443,12 +442,10 @@ impl App {
         {
             if !self.viewport.modeling.dragging()
                 && self.viewport.modeling.fuse_contact_preview().is_none()
-                && self.viewport.modeling.topology_preview_label().is_none()
                 && !self.viewport.modeling.snap_active()
             {
                 self.ui.modeling.active = false;
             }
-            self.viewport.modeling.cancel_topology();
             self.viewport.cancel(&mut self.document);
             self.viewport.wait_for_release();
         }
@@ -847,7 +844,6 @@ impl App {
             self.paint_temporary_mask_status(ui);
         }
         self.ui.modeling.count = self.viewport.modeling.selection().len();
-        self.ui.modeling.topology_preview = self.viewport.modeling.topology_preview_label();
         self.ui.modeling.selection_undo = self
             .viewport
             .modeling

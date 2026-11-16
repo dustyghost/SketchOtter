@@ -352,8 +352,6 @@ impl App {
             | Command::ModelSelectionHistory(_)
             | Command::ModelBoundary
             | Command::ModelTopology(..)
-            | Command::ApplyModelTopology
-            | Command::CancelModelTopology
             | Command::ModelRepeat
             | Command::ModelPreviewFuse
             | Command::ModelApply

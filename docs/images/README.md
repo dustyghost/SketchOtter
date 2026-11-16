@@ -74,7 +74,7 @@ See [Development](../development.md#update-guide-screenshots) for prerequisites 
 
 | `material-copper.png`, `material-painted-stroke.png` | [Example materials and a local paint stroke](../guide/materials.md) | `material_examples_manual_capture` (manual only) |
 
-| `create-face-preview.png`, `connect-vertices-preview.png` | [Manual face construction with Apply/Cancel](../guide/modeling.md#connect-vertices-and-create-faces) | `manual_topology_offscreen_review` |
+| `create-face-applied.png`, `connect-vertices-applied.png` | [Manual face construction with Undo/Redo](../guide/modeling.md#connect-vertices-and-create-faces) | `manual_topology_offscreen_review` |
 
 ## Example assets
 

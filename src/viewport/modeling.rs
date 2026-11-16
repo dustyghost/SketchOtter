@@ -6,7 +6,6 @@ mod edit;
 mod selection;
 mod selection_growth;
 mod snapping;
-mod topology;
 pub(crate) use snapping::SnapTarget;
 mod transform;
 use edit::EditDrag;
@@ -265,7 +264,6 @@ pub(crate) struct ModelingState {
     drag: Option<ExtrudeDrag>,
     edit_drag: Option<EditDrag>,
     fuse_amount_preview: Option<FuseAmountPreview>,
-    topology_preview: Option<topology::TopologyPreview>,
     snap_preview: Option<snapping::SnapPreview>,
     selection_drag: Option<SelectionDrag>,
     loop_preview: Option<LoopPreview>,
@@ -320,7 +318,6 @@ impl ModelingState {
             self.drag = None;
             self.edit_drag = None;
             self.fuse_amount_preview = None;
-            self.topology_preview = None;
             self.snap_preview = None;
             self.loop_drag = None;
             self.loop_preview = None;
@@ -382,9 +379,6 @@ impl ModelingState {
         self.edit_drag.as_ref().map(|drag| drag.amount)
     }
     pub fn preview(&self) -> Option<&Mesh> {
-        if let Some(preview) = &self.topology_preview {
-            return Some(&preview.mesh);
-        }
         if let Some(preview) = &self.snap_preview {
             return preview.mesh();
         }
@@ -418,22 +412,6 @@ impl ModelingState {
         escape: bool,
     ) {
         self.sync(document);
-        if let Some(preview) = &self.topology_preview {
-            if escape
-                || options.is_none_or(|o| {
-                    o.tool != preview.tool
-                        || o.mode != preview.mode
-                        || o.protect_mask != preview.protect
-                })
-                || preview.selected != self.selected
-                || &preview.symmetry != document.symmetry()
-            {
-                self.topology_preview = None;
-            } else {
-                // Persistent Apply/Cancel previews survive navigation and modal tool-change decisions.
-                return;
-            }
-        }
         if !enabled
             && !escape
             && self.snap_active()

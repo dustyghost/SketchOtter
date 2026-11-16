@@ -681,6 +681,7 @@ impl ModelingState {
         protect: bool,
     ) -> Result<(), String> {
         self.sync(document);
+        document.require_modeling()?;
         let mut faces = Vec::new();
         let mut edges = Vec::new();
         let mut vertices = Vec::new();
@@ -692,6 +693,23 @@ impl ModelingState {
             }
         }
         let symmetry = ModelingSymmetry::new(document.mesh(), document.symmetry())?;
+        if matches!(
+            edit,
+            crate::sculpt::TopologyEdit::Connect
+                | crate::sculpt::TopologyEdit::Fill
+                | crate::sculpt::TopologyEdit::CreateFace
+        ) {
+            // Caps add faces without removing existing polygons, so also check
+            // their boundary vertices, including all symmetry copies.
+            let touched: Vec<_> = edges
+                .iter()
+                .flatten()
+                .copied()
+                .chain(vertices.iter().copied())
+                .flat_map(|v| symmetry.vertex_copies(v))
+                .collect();
+            document.mesh().protect_model_vertices(&touched, protect)?;
+        }
         let result = document
             .mesh()
             .edit_model_topology(edit, &faces, &edges, &vertices, &symmetry)?;
