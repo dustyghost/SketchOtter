@@ -476,6 +476,7 @@ impl Action {
         Self::ModelTool(crate::viewport::ModelTool::FacePoint),
         Self::ModelTool(crate::viewport::ModelTool::FaceSplit),
         Self::ModelTopology(crate::sculpt::TopologyEdit::DeleteFaces),
+        Self::ModelTopology(crate::sculpt::TopologyEdit::DeleteVertices),
         Self::ModelTopology(crate::sculpt::TopologyEdit::DeleteLoop),
         Self::ModelTopology(crate::sculpt::TopologyEdit::Fill),
         Self::ModelTopology(crate::sculpt::TopologyEdit::Bridge),

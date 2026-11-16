@@ -4,6 +4,7 @@ mod manual;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TopologyEdit {
     DeleteFaces,
+    DeleteVertices,
     DeleteLoop,
     Fill,
     Bridge,
@@ -14,8 +15,9 @@ pub enum TopologyEdit {
     Collapse,
 }
 impl TopologyEdit {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::DeleteFaces,
+        Self::DeleteVertices,
         Self::DeleteLoop,
         Self::Fill,
         Self::Bridge,
@@ -28,6 +30,7 @@ impl TopologyEdit {
     pub fn label(self) -> &'static str {
         match self {
             Self::DeleteFaces => "Delete faces",
+            Self::DeleteVertices => "Delete vertices",
             Self::DeleteLoop => "Delete loop (leave gap)",
             Self::Fill => "Fill boundary",
             Self::Bridge => "Bridge boundaries",
@@ -190,6 +193,31 @@ impl Mesh {
                     .any(|&f| polygons.get(f).is_none_or(|p| !p.visible))
                 {
                     return Err("Select visible faces".into());
+                }
+            }
+            TopologyEdit::DeleteVertices => {
+                if vertices.is_empty() {
+                    return Err("Select vertices to delete".into());
+                }
+                if vertices.iter().any(|&v| v >= self.vertices.len()) {
+                    return Err("Select current vertices".into());
+                }
+                let selected: BTreeSet<_> = vertices
+                    .iter()
+                    .flat_map(|&v| symmetry.vertex_copies(v))
+                    .collect();
+                removed = polygons
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(f, p)| {
+                        p.vertices.iter().any(|v| selected.contains(v)).then_some(f)
+                    })
+                    .collect();
+                if removed.is_empty() {
+                    return Err("Select vertices belonging to faces".into());
+                }
+                if removed.iter().any(|&f| !polygons[f].visible) {
+                    return Err("Show all faces attached to the selected vertices first".into());
                 }
             }
             TopologyEdit::DeleteLoop => {

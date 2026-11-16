@@ -335,6 +335,11 @@ impl<'a> EditorPolicy<'a> {
             {
                 "Switch to Edge mode and select a loop first"
             }
+            Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteVertices)
+                if self.ui.modeling.mode != crate::viewport::ComponentMode::Vertex =>
+            {
+                "Switch to Vertex mode and select vertices first"
+            }
             Action::ModelBoundary
                 if self.ui.modeling.mode != crate::viewport::ComponentMode::Face =>
             {
@@ -597,6 +602,8 @@ impl<'a> EditorPolicy<'a> {
                     && self.ui.modeling.count > 0
                     && (*edit != crate::sculpt::TopologyEdit::DeleteLoop
                         || self.ui.modeling.mode == crate::viewport::ComponentMode::Edge)
+                    && (*edit != crate::sculpt::TopologyEdit::DeleteVertices
+                        || self.ui.modeling.mode == crate::viewport::ComponentMode::Vertex)
             }
             Action::ModelApply => {
                 self.edge_unavailable(action).is_none()

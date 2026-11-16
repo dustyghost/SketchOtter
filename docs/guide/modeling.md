@@ -500,6 +500,7 @@ Expand **Topology** for operations on the current selection:
 | Mode | Action | Result and limits |
 | --- | --- | --- |
 | Face | Delete faces | Removes the selected faces and opens holes |
+| Vertex | Delete vertices | Removes the selected vertices and all attached faces, leaving an opening |
 | Edge | Delete loop (keep surface) | Dissolves complete interior quad loops and joins the surrounding faces |
 | Edge | Delete loop (leave gap) | Removes the faces touching complete interior quad loops and leaves an opening |
 | Edge | Fill boundary | Immediately fills complete planar or mildly nonplanar boundaries; concave outlines are triangulated |
@@ -511,6 +512,10 @@ Expand **Topology** for operations on the current selection:
 | Vertex | Weld vertices | Merges two vertices at their midpoint, including corresponding symmetry pairs |
 
 Use **Target → Boundary** to select a complete hole. For two boundaries or vertices, use **Add** to select the second. These edits preserve surviving weights and creases, respect **Protect mask**, and reject invalid or ambiguous results as a whole. Bridge does not detect arbitrary intersections with other surfaces. Delete and collapse change the surface; **Delete loop (keep surface)** removes redundant loops while keeping it connected; **Delete loop (leave gap)** removes their adjoining face strips. Each completed edit is one Undo step.
+
+To remove selected components, choose **Vertex → Q → Topology → Delete vertices** or **Face → Q → Topology → Delete faces**. Vertex deletion also removes every attached face; face deletion removes only the selected faces. Both apply immediately with normal Undo/Redo, preserve protected geometry, and include matching symmetry components. Use the Z selection tools with Ctrl+Shift to select many components before deleting.
+
+![Delete vertices in the Q popup](../images/delete-vertices-options-1100.png)
 
 ### Model with symmetry
 
@@ -848,7 +853,7 @@ Open **Modeling** in the toolbar, or press **Q** over the viewport for its quick
 
 The same controls are also in **Model → Modeling** on the top bar. Use its Panel controls to pin a movable window or dock a collapsible section on the left or right. These placements are saved with your workspace. Pinned and docked controls stay open when you choose a function; the drop-down and Q popup close after a function choice. Opening or moving the menu alone does not edit the model.
 
-The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes both **Delete loop** options, **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu and keeps the current selection. Escape, an outside click or focus loss dismisses the menu without editing geometry. Finish the current drag before opening it.
+The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Delete vertices**, **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes both **Delete loop** options, **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu and keeps the current selection. Escape, an outside click or focus loss dismisses the menu without editing geometry. Finish the current drag before opening it.
 
 ![Q menu with topology actions beside Modeling functions](../images/modeling-topology-q-1100.png)
 

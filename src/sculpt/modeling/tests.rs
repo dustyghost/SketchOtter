@@ -2080,3 +2080,51 @@ fn modeling_delete_loop_gap_rejects_crossings_and_hidden_neighbors() {
             .is_err()
     );
 }
+
+#[test]
+fn modeling_delete_vertices_removes_attached_faces_and_rejects_invalid_targets() {
+    let mut primitive = Primitive::for_kind(PrimitiveKind::Grid);
+    primitive.divisions = [5, 5, 1];
+    let mut mesh = primitive.mesh().unwrap();
+    mesh.mask.fill(0.4);
+    mesh.create_vertex_group("All".into(), 0., true).unwrap();
+    mesh.creases = mesh.polygon_edges();
+    let find = |x: f32| {
+        mesh.vertices
+            .iter()
+            .position(|p| (p.0 - x).abs() < 1e-5 && (p.1 - 0.6).abs() < 1e-5)
+            .unwrap()
+    };
+    let vertices = [find(0.6), find(-0.6)];
+    let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+    let before = mesh.clone();
+    let apply = |vertices: &[usize]| {
+        mesh.edit_model_topology(TopologyEdit::DeleteVertices, &[], &[], vertices, &symmetry)
+    };
+    let out = apply(&vertices).unwrap();
+    assert_eq!(out.quads.len(), 17);
+    for v in vertices {
+        assert!(!out.vertices.contains(&mesh.vertices[v]));
+    }
+    assert!(out.mask.iter().all(|&m| m == 0.4));
+    assert!(out.vertex_groups[0].weights.iter().all(|&w| w == 1.));
+    assert_eq!(out.creases, out.polygon_edges());
+    manifold(&out).unwrap();
+    assert!(apply(&[]).is_err());
+    assert!(apply(&[usize::MAX]).is_err());
+    assert!(apply(&(0..mesh.vertices.len()).collect::<Vec<_>>()).is_err());
+    assert_eq!(mesh, before);
+    let face = mesh
+        .triangles
+        .iter()
+        .position(|t| t.contains(&vertices[0]))
+        .unwrap();
+    mesh.hidden_faces = vec![false; mesh.triangles.len()];
+    mesh.hidden_faces[face] = true;
+    let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+    assert!(
+        mesh.edit_model_topology(TopologyEdit::DeleteVertices, &[], &[], &vertices, &symmetry)
+            .unwrap_err()
+            .contains("Show all faces")
+    );
+}

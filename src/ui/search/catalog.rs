@@ -474,6 +474,9 @@ fn action_aliases(action: &Action) -> &'static str {
         Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteLoop) => {
             "delete edge loop face strip gap hole remove"
         }
+        Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteVertices) => {
+            "delete remove selected vertex vertices verts points attached faces"
+        }
         Action::ModelFaces => "faces polygons quads triangles",
         Action::KeySettings => "keyboard keybinding hotkeys shortcuts bindings",
         Action::CustomizeWorkspace => {

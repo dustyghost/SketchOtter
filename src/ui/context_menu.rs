@@ -290,7 +290,7 @@ impl UiState {
                             self.modeling.mode
                                 == match edit {
                                     T::DeleteFaces => ComponentMode::Face,
-                                    T::Connect | T::Weld | T::CreateFace => ComponentMode::Vertex,
+                                    T::Connect | T::Weld | T::CreateFace | T::DeleteVertices => ComponentMode::Vertex,
                                     _ => ComponentMode::Edge,
                                 }
                         })
@@ -301,7 +301,9 @@ impl UiState {
                                 action,
                                 label: edit.label().into(),
                                 selected: false,
-                                hint: if edit == crate::sculpt::TopologyEdit::DeleteLoop {
+                                hint: if edit == crate::sculpt::TopologyEdit::DeleteVertices {
+                                    "Remove selected vertices and every attached face. Applies immediately as one Undo/Redo step."
+                                } else if edit == crate::sculpt::TopologyEdit::DeleteLoop {
                                     "Remove the faces touching the selected complete edge loops, opening a gap. Applies immediately as one Undo/Redo step."
                                 } else {
                                     "Applies immediately to the selection as one Undo/Redo step."

@@ -739,6 +739,18 @@ fn modeling_buttons_offer_menu_and_shortcut_customization() {
             Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteLoop),
         ),
         ("Face", Mode::Face, Tool::Select, Action::ModelFaces),
+        (
+            "Delete vertices",
+            Mode::Vertex,
+            Tool::Select,
+            Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteVertices),
+        ),
+        (
+            "Delete faces",
+            Mode::Face,
+            Tool::Select,
+            Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteFaces),
+        ),
         ("Edge", Mode::Face, Tool::Select, Action::ModelEdges),
         ("Vertex", Mode::Face, Tool::Select, Action::ModelVertices),
         ("Extrude", Mode::Face, Tool::Select, Action::ModelExtrude),
@@ -816,7 +828,7 @@ fn modeling_buttons_offer_menu_and_shortcut_customization() {
         };
         let group = central_text(
             &output,
-            if label.starts_with("Delete loop") {
+            if label.starts_with("Delete ") {
                 "Topology"
             } else {
                 "Selection to vertex group"

@@ -150,3 +150,67 @@ fn delete_loop_offscreen_review() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires Vulkan; clicks vertex and face deletion and checks Undo/Redo"]
+fn component_delete_offscreen_review() {
+    let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    for size in [[1100, 900], [760, 720]] {
+        for (mode, label, count, name) in [
+            (ComponentMode::Vertex, "Delete vertices", 21, "vertices"),
+            (ComponentMode::Face, "Delete faces", 24, "faces"),
+        ] {
+            let mut g = Guide::new(&directory, size);
+            g.interactive = true;
+            g.toolbar = false;
+            let mut grid = Primitive::for_kind(PrimitiveKind::Grid);
+            grid.divisions = [5, 5, 1];
+            g.app
+                .document
+                .replace_geometry(crate::sculpt::Geometry::new(grid.mesh().unwrap()))
+                .unwrap();
+            g.app.camera.yaw = 0.;
+            g.app.camera.pitch = 0.;
+            g.app.camera.zoom = 0.6;
+            g.app.dispatch(Command::ModelingMode(true), &g.ctx);
+            g.app.dispatch(Command::ModelingComponent(mode), &g.ctx);
+            let rect = g.frame(vec![]).0;
+            let component = if mode == ComponentMode::Vertex {
+                Component::Vertex(
+                    g.app
+                        .document
+                        .mesh()
+                        .vertices
+                        .iter()
+                        .position(|p| (p.0 - 0.2).abs() < 1e-5 && (p.1 - 0.2).abs() < 1e-5)
+                        .unwrap(),
+                )
+            } else {
+                Component::Face(12)
+            };
+            g.app.viewport.modeling.selected = [component].into();
+            g.frame(vec![]);
+            let before = g.app.document.geometry_snapshot();
+            let history = g.app.document.history_counts().0;
+            g.app.open_quick_menu(&g.ctx, Action::ViewportContextMenu);
+            g.app.ui.viewport_menu.position = Some(rect.min + egui::vec2(10., 10.));
+            g.save(&format!("delete-{name}-options-{}", size[0]));
+            click_guide_label(&mut g, label);
+            assert!(g.app.ui.viewport_menu.context.is_none());
+            assert_eq!(
+                g.app.document.mesh().quads.len(),
+                count,
+                "{}",
+                g.app.ui.status
+            );
+            assert_eq!(g.app.document.history_counts().0, history + 1);
+            let after = g.app.document.geometry_snapshot();
+            g.save(&format!("delete-{name}-result-{}", size[0]));
+            g.app.dispatch(Command::Undo, &g.ctx);
+            assert_eq!(g.app.document.geometry_snapshot(), before);
+            g.app.dispatch(Command::Redo, &g.ctx);
+            assert_eq!(g.app.document.geometry_snapshot(), after);
+        }
+    }
+}

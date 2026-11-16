@@ -2531,3 +2531,91 @@ fn modeling_delete_loop_options_preserve_masked_geometry() {
         assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
     }
 }
+
+#[test]
+fn modeling_delete_vertices_pointer_selection_symmetry_and_undo_redo() {
+    use crate::sculpt::TopologyEdit;
+    for mirror in [false, true] {
+        let (mut app, ctx, rect) = selection_grid();
+        app.dispatch(
+            Command::SetSymmetry(crate::sculpt::Symmetry {
+                enabled: mirror,
+                ..Default::default()
+            }),
+            &ctx,
+        );
+        app.execute_action(Action::ModelVertices, &ctx);
+        let scale = rect.width().min(rect.height()) * 0.35;
+        tap(
+            &mut app,
+            &ctx,
+            rect.center() + Vec2::new(scale * 0.6, -scale * 0.6),
+        );
+        assert_eq!(
+            app.viewport.modeling.selected.len(),
+            if mirror { 2 } else { 1 }
+        );
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        app.execute_action(Action::ModelTopology(TopologyEdit::DeleteVertices), &ctx);
+        let after = app.document.geometry_snapshot();
+        assert_eq!(
+            after.mesh.quads.len(),
+            if mirror { 17 } else { 21 },
+            "{}",
+            app.ui.status
+        );
+        assert_eq!(app.document.history_counts().0, history.0 + 1);
+        assert_eq!(app.document.undo_label(), Some("Delete vertices"));
+        assert!(app.viewport.modeling.selected.is_empty());
+        assert!(app.viewport.modeling.preview().is_none());
+        crate::sculpt::ModelingSymmetry::new(&after.mesh, app.document.symmetry()).unwrap();
+        app.document.project().validate().unwrap();
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.dispatch(Command::Redo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), after);
+    }
+}
+
+#[test]
+fn modeling_delete_vertices_protects_attached_masked_faces_and_redo_history() {
+    use crate::sculpt::TopologyEdit;
+    let (mut app, ctx, _) = selection_grid();
+    app.execute_action(Action::ModelVertices, &ctx);
+    let mut geometry = app.document.geometry_snapshot();
+    let vertex = geometry
+        .mesh
+        .vertices
+        .iter()
+        .position(|p| (p.0 - 0.6).abs() < 1e-5 && (p.1 - 0.6).abs() < 1e-5)
+        .unwrap();
+    let face = geometry
+        .mesh
+        .quads
+        .iter()
+        .find(|q| q.contains(&vertex))
+        .unwrap();
+    let neighbor = *face.iter().find(|&&v| v != vertex).unwrap();
+    geometry.mesh.mask[neighbor] = 1.;
+    app.document.replace_geometry(geometry.clone()).unwrap();
+    navigation_frame(&mut app, &ctx, vec![]);
+    app.viewport.modeling.selected = [crate::viewport::Component::Vertex(vertex)].into();
+    navigation_frame(&mut app, &ctx, vec![]);
+    app.ui.modeling.protect_mask = false;
+    app.execute_action(Action::ModelTopology(TopologyEdit::DeleteVertices), &ctx);
+    assert_eq!(app.document.mesh().quads.len(), 21, "{}", app.ui.status);
+    app.dispatch(Command::Undo, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), geometry);
+    navigation_frame(&mut app, &ctx, vec![]);
+    app.viewport.modeling.selected = [crate::viewport::Component::Vertex(vertex)].into();
+    app.ui.modeling.protect_mask = true;
+    navigation_frame(&mut app, &ctx, vec![]);
+    let selection = app.viewport.modeling.selected.clone();
+    let history = app.document.history_counts();
+    app.execute_action(Action::ModelTopology(TopologyEdit::DeleteVertices), &ctx);
+    assert_eq!(app.document.geometry_snapshot(), geometry);
+    assert_eq!(app.document.history_counts(), history);
+    assert_eq!(app.viewport.modeling.selected, selection);
+    assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
+}
