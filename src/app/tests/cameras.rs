@@ -19,6 +19,63 @@ fn fixture() -> (App, egui::Context) {
 }
 
 #[test]
+fn cameras_active_identity_survives_rename_and_does_not_follow_deleted_indices() {
+    let (mut app, ctx) = fixture();
+    app.dispatch(Command::Camera(C::Save("First".into())), &ctx);
+    app.dispatch(Command::Camera(C::Save("Second".into())), &ctx);
+    assert_eq!(
+        app.document.saved_cameras()[0].view,
+        app.document.saved_cameras()[1].view
+    );
+    assert_eq!(app.ui.cameras.active.as_deref(), Some("Second"));
+    app.dispatch(Command::Camera(C::Recall(0)), &ctx);
+    app.dispatch(Command::Camera(C::Rename(0, "Renamed".into())), &ctx);
+    assert_eq!(app.ui.cameras.active.as_deref(), Some("Renamed"));
+    app.dispatch(Command::Camera(C::Rename(0, "Second".into())), &ctx);
+    assert_eq!(app.ui.cameras.active.as_deref(), Some("Renamed"));
+    app.dispatch(Command::Camera(C::Delete(1)), &ctx);
+    assert_eq!(app.ui.cameras.active.as_deref(), Some("Renamed"));
+    app.dispatch(Command::Camera(C::Delete(0)), &ctx);
+    assert_eq!(app.ui.cameras.active, None);
+}
+
+#[test]
+fn cameras_view_matching_handles_resize_roundoff_and_detects_navigation() {
+    let (mut app, _) = fixture();
+    app.camera.pan = Vec2::new(0.5, -0.8);
+    let saved = app.camera.saved_view(Vec2::splat(672.)).unwrap();
+    let restored = Camera::from_saved_view(saved, Vec2::splat(360.)).unwrap();
+    let roundtrip = restored.saved_view(Vec2::splat(360.)).unwrap();
+    assert_ne!(
+        saved.pan, roundtrip.pan,
+        "fixture exercises real f32 conversion loss"
+    );
+    assert!(saved.matches(&roundtrip));
+    let mut rolled = roundtrip;
+    rolled.roll += std::f32::consts::TAU;
+    assert!(saved.matches(&rolled));
+    for change in 0..8 {
+        let mut changed = roundtrip;
+        match change {
+            0 => changed.pan[0] += 0.01,
+            1 => changed.roll += 0.01,
+            2 => changed.yaw += 0.01,
+            3 => changed.pitch += 0.01,
+            4 => changed.zoom *= 1.01,
+            5 => changed.field_of_view += 1.,
+            6 => changed.perspective_radius += 0.1,
+            _ => changed.perspective = !changed.perspective,
+        }
+        assert!(!saved.matches(&changed));
+    }
+    let mut tiny = saved;
+    tiny.zoom = 1e-6;
+    let mut zoomed = tiny;
+    zoomed.zoom *= 2.;
+    assert!(!tiny.matches(&zoomed));
+}
+
+#[test]
 fn cameras_reset_roll_keeps_direction_framing_geometry_and_redo() {
     let (mut app, ctx) = fixture();
     app.document.invert_mask().unwrap();
@@ -264,6 +321,14 @@ fn cameras_real_controls_save_recall_update_rename_delete_and_reset() {
     assert_eq!(app.camera.roll, 0.);
     let update = center(&settle(&mut app, &ctx), "Update from view");
     click(&mut app, &ctx, update);
+    assert_eq!(app.document.saved_cameras()[0].view, original);
+    let keep = center(&settle(&mut app, &ctx), "Keep saved view");
+    click(&mut app, &ctx, keep);
+    assert_eq!(app.document.saved_cameras()[0].view, original);
+    let update = center(&settle(&mut app, &ctx), "Update from view");
+    click(&mut app, &ctx, update);
+    let replace = center(&settle(&mut app, &ctx), "Replace saved view");
+    click(&mut app, &ctx, replace);
     assert_eq!(app.document.saved_cameras()[0].view.roll, 0.);
     let rename = center(&settle(&mut app, &ctx), "Rename");
     click(&mut app, &ctx, rename);

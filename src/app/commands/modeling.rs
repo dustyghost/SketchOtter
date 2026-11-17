@@ -35,8 +35,42 @@ impl App {
                     .set_tool(crate::viewport::ModelTool::Select);
                 Ok(())
             }
+            Command::ModelResizeSelection(grow) => {
+                self.viewport.cancel(&mut self.document);
+                self.viewport.modeling.resize_selection(
+                    &self.document,
+                    self.ui.modeling.mode,
+                    self.ui.modeling.protect_mask,
+                    grow,
+                )
+            }
+            Command::ModelSelectionHistory(redo) => {
+                self.viewport.cancel(&mut self.document);
+                self.viewport
+                    .modeling
+                    .restore_selection(&self.document, redo)
+            }
+            Command::ModelSnap => {
+                self.viewport.cancel(&mut self.document);
+                self.viewport
+                    .modeling
+                    .begin_snap(&self.document, self.ui.modeling.options())
+            }
+            Command::ModelSnapApply => self
+                .viewport
+                .modeling
+                .apply_snap(&mut self.document, self.ui.modeling.options()),
+            Command::ModelSnapCancel => {
+                self.viewport.cancel(&mut self.document);
+                Ok(())
+            }
+            Command::ModelSnapRetarget => {
+                self.viewport.modeling.reset_snap_target();
+                Ok(())
+            }
             Command::ClearModelSelection => {
                 self.viewport.cancel(&mut self.document);
+                self.viewport.modeling.clear_selection_history();
                 self.viewport.modeling.selected.clear();
                 self.viewport.set_edge_selection(Vec::new(), &self.document);
                 Ok(())
@@ -56,38 +90,25 @@ impl App {
                 self.ui.modeling.span = crate::viewport::SelectionSpan::Single;
                 Ok(())
             }
-            Command::ApplyModelTopology => self
-                .viewport
-                .modeling
-                .apply_topology(&mut self.document, self.ui.modeling.options()),
-            Command::CancelModelTopology => {
-                self.viewport.modeling.cancel_topology();
-                Ok(())
-            }
             Command::ModelTopology(edit) => {
                 self.viewport.cancel(&mut self.document);
-                if edit.previews() {
-                    // Search and shelf actions must reveal the persistent preview
-                    // even after leaving Modeling with a retained selection.
+                if edit.can_start_modeling() {
+                    // Search and shelf actions also work with a retained selection
+                    // after leaving Modeling.
                     if !self.ui.modeling.active {
                         self.dispatch_modeling(Command::ModelingMode(true))?;
                     }
                     self.ui
                         .modeling
                         .set_tool(crate::viewport::ModelTool::Select);
-                    self.viewport.modeling.preview_topology(
-                        &self.document,
-                        edit,
-                        self.ui.modeling.options(),
-                    )
-                } else {
-                    self.viewport.modeling.cancel_topology();
-                    self.viewport.modeling.topology_edit(
-                        &mut self.document,
-                        edit,
-                        self.ui.modeling.protect_mask,
-                    )
                 }
+                self.viewport.modeling.topology_edit(
+                    &mut self.document,
+                    edit,
+                    self.ui.modeling.protect_mask,
+                    self.ui.modeling.new_group,
+                    self.ui.modeling.bridge_segments,
+                )
             }
             Command::ModelRepeat => {
                 self.viewport.cancel(&mut self.document);
@@ -140,8 +161,12 @@ impl App {
                         Ok(mesh)
                     })
                     .and_then(|mesh| {
-                        self.document
-                            .commit_modeling(mesh, "Dissolve selected loops", revision)
+                        self.document.commit_modeling(
+                            mesh,
+                            "Dissolve selected loops",
+                            revision,
+                            self.ui.modeling.new_group,
+                        )
                     })
                     .map(|()| {
                         self.viewport.modeling.sync(&self.document);

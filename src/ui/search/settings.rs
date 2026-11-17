@@ -465,22 +465,46 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
         "Set the contact snapping distance for the Modeling Fuse tool.",
     ),
     (
+        "Modeling new vertex group",
+        "modeling automatic vertex group each edit duplicate extrude",
+        Destination::Panel(Tool::Mesh),
+        "Create a named vertex group for the geometry affected by each completed Modeling edit.",
+    ),
+    (
+        "Move snap and weld",
+        "move vertex edge snap weld parallel nearby",
+        Destination::Panel(Tool::Mesh),
+        "Choose Move, then Vertex or Edge in Snap and weld on move. Hold Shift for free movement.",
+    ),
+    (
+        "Extrusion snap and join",
+        "extrude point vertex edge connect weld snap nearby",
+        Destination::Panel(Tool::Mesh),
+        "Join a nearby vertex or open edge while extruding. Choose Extrude point or Extrude edge. Hold Shift to bypass snapping.",
+    ),
+    (
+        "Snap pick radius",
+        "snap distance pixels range extrusion modeling",
+        Destination::Panel(Tool::Mesh),
+        "Set the screen distance for choosing snap targets in Modeling.",
+    ),
+    (
         "Modeling amount",
         "modelling distance width angle scale fraction radius",
         Destination::Panel(Tool::Mesh),
         "Inspect the amount for the current Modeling edit. Choose an edit tool to expose its amount control.",
     ),
     (
-        "Point base radius",
-        "point extrude construction width modeling",
+        "Bevel segments",
+        "bevel rounded chamfer edges vertices smooth",
         Destination::Panel(Tool::Mesh),
-        "Set the starting radius for Point extrude. Choose Point extrude in Vertex mode first.",
+        "Set rounded bevel resolution from two to eight segments. Choose Bevel edges or Bevel vertices first.",
     ),
     (
         "Circularize ring",
-        "circularise round point split extrude",
+        "circularise round point split",
         Destination::Panel(Tool::Mesh),
-        "Make the ring circular when using Point split or Point extrude.",
+        "Make the ring circular when using Point split.",
     ),
     (
         "Double ring sides",
@@ -490,9 +514,9 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
     ),
     (
         "Crease ring",
-        "point split extrude sharp boundary construction",
+        "point split sharp boundary construction",
         Destination::Panel(Tool::Mesh),
-        "Crease the generated ring in Point split or Point extrude.",
+        "Crease the generated ring in Point split.",
     ),
     (
         "Triangulate centre",
@@ -856,7 +880,7 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
     ),
     (
         "Light list",
-        "Add light Remove light selected",
+        "Add light Remove light selected name rename enable disable front back",
         Destination::Menu(BuiltinMenu::View),
         "Adjust light list in Lighting. Per-light settings apply to the selected light.",
     ),
@@ -1008,8 +1032,11 @@ pub(super) fn setting_section(name: &str) -> Option<&'static str> {
         "Paint away selection" => Some("modeling_options"),
         "Individual faces" => Some("modeling_options"),
         "Snap range" => Some("modeling_options"),
-        "Modeling amount" => Some("modeling_options"),
-        "Point base radius" => Some("modeling_options"),
+        "Modeling new vertex group"
+        | "Move snap and weld"
+        | "Extrusion snap and join"
+        | "Snap pick radius" => Some("modeling_options"),
+        "Modeling amount" | "Bevel segments" => Some("modeling_options"),
         "Circularize ring" => Some("modeling_options"),
         "Double ring sides" => Some("modeling_options"),
         "Crease ring" => Some("modeling_options"),

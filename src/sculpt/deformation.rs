@@ -412,6 +412,8 @@ mod tests {
                 triangles: vec![[0, 1, 2], [3, 4, 5]],
                 mask: vec![0.; 6],
                 quads: Vec::new(),
+                loose_edges: Vec::new(),
+                loose_vertices: Vec::new(),
                 uv: Default::default(),
                 creases: Vec::new(),
                 shading_seams: None,

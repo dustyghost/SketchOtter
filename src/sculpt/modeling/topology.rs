@@ -2,10 +2,13 @@
 use super::*;
 mod chains;
 mod manual;
+mod points;
 mod regions;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TopologyEdit {
     DeleteFaces,
+    DeleteVertices,
+    DeleteLoop,
     Fill,
     Bridge,
     BridgeChains,
@@ -18,8 +21,10 @@ pub enum TopologyEdit {
     Collapse,
 }
 impl TopologyEdit {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 13] = [
         Self::DeleteFaces,
+        Self::DeleteVertices,
+        Self::DeleteLoop,
         Self::Fill,
         Self::Bridge,
         Self::BridgeChains,
@@ -31,7 +36,7 @@ impl TopologyEdit {
         Self::Weld,
         Self::Collapse,
     ];
-    pub fn previews(self) -> bool {
+    pub fn can_start_modeling(self) -> bool {
         matches!(
             self,
             Self::Connect
@@ -45,6 +50,8 @@ impl TopologyEdit {
     pub fn label(self) -> &'static str {
         match self {
             Self::DeleteFaces => "Delete faces",
+            Self::DeleteVertices => "Delete vertices",
+            Self::DeleteLoop => "Delete loop (leave gap)",
             Self::Fill => "Fill boundary",
             Self::Bridge => "Bridge boundaries",
             Self::BridgeChains => "Bridge partial chains",
@@ -217,6 +224,51 @@ impl Mesh {
                     return Err("Select visible faces".into());
                 }
             }
+            TopologyEdit::DeleteVertices => {
+                if vertices.is_empty() {
+                    return Err("Select vertices to delete".into());
+                }
+                if vertices.iter().any(|&v| v >= self.vertices.len()) {
+                    return Err("Select current vertices".into());
+                }
+                let selected: BTreeSet<_> = vertices
+                    .iter()
+                    .flat_map(|&v| symmetry.vertex_copies(v))
+                    .collect();
+                removed = polygons
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(f, p)| {
+                        p.vertices.iter().any(|v| selected.contains(v)).then_some(f)
+                    })
+                    .collect();
+                out.loose_edges
+                    .retain(|e| e.iter().all(|v| !selected.contains(v)));
+                out.loose_vertices.retain(|v| !selected.contains(v));
+                if removed.is_empty()
+                    && out.loose_edges == self.loose_edges
+                    && out.loose_vertices == self.loose_vertices
+                {
+                    return Err(
+                        "Select vertices belonging to faces, edges or isolated points".into(),
+                    );
+                }
+                if removed.is_empty() {
+                    let mut result = self.clone();
+                    result.loose_edges = out.loose_edges;
+                    result.loose_vertices = out.loose_vertices;
+                    result.compact_model_vertices();
+                    result.validate()?;
+                    symmetry.validate_result(&result)?;
+                    return Ok(result);
+                }
+                if removed.iter().any(|&f| !polygons[f].visible) {
+                    return Err("Show all faces attached to the selected vertices first".into());
+                }
+            }
+            TopologyEdit::DeleteLoop => {
+                removed = self.faces_along_loops(&symmetry.edges(edges))?;
+            }
             TopologyEdit::Split => {
                 let edges = symmetry.edges(edges);
                 if edges.is_empty() {
@@ -383,7 +435,26 @@ impl Mesh {
                 }
             }
         }
-        if out.triangles.is_empty() {
+        out.loose_edges = out
+            .loose_edges
+            .iter()
+            .filter_map(|&[a, b]| {
+                let a = *mapping.get(&a).unwrap_or(&a);
+                let b = *mapping.get(&b).unwrap_or(&b);
+                (a != b).then_some(edge(a, b))
+            })
+            .collect();
+        out.loose_vertices = out
+            .loose_vertices
+            .iter()
+            .map(|v| *mapping.get(v).unwrap_or(v))
+            .collect();
+        out.retain_loose_vertices();
+        out.loose_edges.sort_unstable();
+        out.loose_edges.dedup();
+        let surface_edges: BTreeSet<_> = out.polygon_edges().into_iter().collect();
+        out.loose_edges.retain(|e| !surface_edges.contains(e));
+        if out.triangles.is_empty() && out.loose_edges.is_empty() && out.loose_vertices.is_empty() {
             return Err("This would remove the entire mesh".into());
         }
         out.creases = self

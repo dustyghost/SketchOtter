@@ -10,6 +10,8 @@ pub(crate) struct ModelingControls {
     pub flat_angle: f32,
     pub erase_radius: f32,
     pub count: usize,
+    pub selection_undo: bool,
+    pub selection_redo: bool,
     pub loop_count: u32,
     pub bridge_segments: u32,
     pub join: bool,
@@ -19,10 +21,18 @@ pub(crate) struct ModelingControls {
     pub directions: std::collections::BTreeMap<ModelTool, crate::sculpt::Vec3>,
     pub amount: f32,
     pub preview_amount: Option<f32>,
-    pub topology_preview: Option<&'static str>,
     pub protect_mask: bool,
     pub individual: bool,
     pub snap: f32,
+    pub snap_target: crate::viewport::SnapTarget,
+    pub snap_radius: Option<f32>,
+    pub extrude_snap: Option<bool>,
+    pub move_snap: crate::viewport::MoveSnap,
+    pub new_group: bool,
+    pub bevel_segments: Option<u32>,
+    pub snap_active: bool,
+    pub snap_ready: bool,
+    pub snap_hint: Option<String>,
     pub construction: crate::viewport::ModelConstruction,
     pub tap_repeat: bool,
     pub smooth_preview: bool,
@@ -72,6 +82,12 @@ impl ModelingControls {
         self.protect_mask = o.protect_mask;
         self.individual = o.individual;
         self.snap = o.snap;
+        self.snap_target = o.snap_target;
+        self.snap_radius = Some(o.snap_radius);
+        self.extrude_snap = Some(o.extrude_snap);
+        self.move_snap = o.move_snap;
+        self.new_group = o.new_group;
+        self.bevel_segments = Some(o.bevel_segments);
         self.construction = o.construction;
         self.tap_repeat = o.tap_repeat;
         self.smooth_preview = o.smooth_preview;
@@ -95,6 +111,12 @@ impl ModelingControls {
             protect_mask: self.protect_mask,
             individual: self.individual,
             snap: self.snap,
+            snap_target: self.snap_target,
+            snap_radius: self.snap_radius.unwrap_or(12.),
+            extrude_snap: self.extrude_snap.unwrap_or(true),
+            move_snap: self.move_snap,
+            new_group: self.new_group,
+            bevel_segments: self.bevel_segments.unwrap_or(3),
             construction: self.construction,
             tap_repeat: self.tap_repeat,
             smooth_preview: self.smooth_preview,
@@ -102,6 +124,38 @@ impl ModelingControls {
     }
 }
 impl UiState {
+    pub(super) fn bevel_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        ui.separator();
+        ui.strong(self.modeling.tool.label());
+        if let Some(width) = self.modeling.preview_amount {
+            ui.label(format!("Width {width:.6} (preview)"));
+        } else {
+            search::setting_response(
+                ui.add(
+                    egui::DragValue::new(&mut self.modeling.amount)
+                        .prefix("Width ")
+                        .range(0.000001..=1000.)
+                        .speed(0.001)
+                        .max_decimals(6),
+                ),
+                "Modeling amount",
+            );
+        }
+        if self.modeling.tool.rounded_bevel() {
+            search::setting_response(
+                ui.add(
+                    egui::Slider::new(self.modeling.bevel_segments.get_or_insert(3), 2..=8)
+                        .text("Segments"),
+                ),
+                "Bevel segments",
+            );
+        }
+        ui.weak("Drag up to widen · release applies · Esc cancels");
+        ui.weak("Closed surface corners. Reduce width if cuts overlap. Edited faces need unwrapping for texture painting.");
+        ui.add_enabled(self.modeling.count > 0, egui::Button::new("Apply amount"))
+            .customize(Action::ModelApply)
+            .clicked()
+    }
     pub(super) fn point_split_controls(&mut self, ui: &mut egui::Ui) -> bool {
         ui.separator();
         ui.strong("Split point settings");
@@ -165,7 +219,7 @@ impl UiState {
         search::mark_destination(ui, "section:modeling_options");
         if self.modeling.active && self.modeling.mode == ComponentMode::Face {
             if let Some(set) = document.instances().sets.iter().find(|s| document.surface_guide_editing(s.id)) {
-                if ui.add_enabled(self.modeling.count > 0, egui::Button::new("Use selected faces for surface array")).on_hover_text("Replaces the region and clears per-copy overrides. Preview before applying.").clicked() {
+                if ui.add_enabled(self.modeling.count > 0, egui::Button::new("Use selected faces for surface array")).on_hover_text("Keeps edits on retained faces while connectivity is unchanged. Removed faces lose their copy edits; topology changes reset all copy edits. Preview before applying.").clicked() {
                     commands.push(Command::Instances(crate::command::InstanceCommand::SurfaceSelection(set.id)));
                 }
                 if ui.button("Show surface array result").clicked() { commands.push(Command::Instances(crate::command::InstanceCommand::SurfaceGuide(set.id, false))); }
@@ -211,18 +265,6 @@ impl UiState {
         if !self.modeling.active {
             ui.weak("Enable Modeling to select faces, edges or vertices. Your component selection is kept when switching tools.");
             return;
-        }
-        if let Some(label) = self.modeling.topology_preview {
-            ui.label(format!("Preview: {label} · active model"));
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("Apply topology").clicked() {
-                    commands.push(Command::ApplyModelTopology);
-                }
-                if ui.button("Cancel topology preview").clicked() {
-                    commands.push(Command::CancelModelTopology);
-                }
-            });
-            ui.weak("Orbit to inspect. Apply is one Undo step; Escape cancels. Changing the selection or modelling tool cancels this preview.");
         }
         ui.label(format!(
             "{:?} · {} · {} selected",
@@ -281,8 +323,36 @@ impl UiState {
             if self.modeling.mode==ComponentMode::Face { ui.horizontal_wrapped(|ui| { for tool in [ModelTool::Inset,ModelTool::Bevel,ModelTool::Fuse] { if ui.selectable_label(self.modeling.tool==tool,match tool {ModelTool::Move=>"Move",ModelTool::Rotate=>"Rotate",ModelTool::Scale=>"Scale",_=>tool.label()}).customize(Action::ModelTool(tool)).clicked() {commands.push(Command::Action(Action::ModelTool(tool)));} } }); }
             if self.modeling.mode==ComponentMode::Edge && ui.selectable_label(self.modeling.tool==ModelTool::Slide,"Slide loop").customize(Action::ModelTool(ModelTool::Slide)).clicked(){commands.push(Command::Action(Action::ModelTool(ModelTool::Slide)));}
             ui.horizontal_wrapped(|ui| {
-                for tool in [ModelTool::CutCell,ModelTool::EdgeExtrude,ModelTool::EdgeSplit,ModelTool::EdgeCollapse,ModelTool::PointExtrude,ModelTool::PointSplit,ModelTool::FacePoint,ModelTool::FaceSplit] {
+                for tool in [ModelTool::CutCell,ModelTool::EdgeExtrude,ModelTool::EdgeSplit,ModelTool::EdgeCollapse,ModelTool::PointExtrude,ModelTool::PointSplit,ModelTool::EdgeChamfer,ModelTool::EdgeBevel,ModelTool::VertexChamfer,ModelTool::VertexBevel,ModelTool::FacePoint,ModelTool::FaceSplit] {
                     if tool.supports_mode(self.modeling.mode) && ui.selectable_label(self.modeling.tool==tool,tool.label()).customize(Action::ModelTool(tool)).clicked(){commands.push(Command::Action(Action::ModelTool(tool)));}
+                }
+            });
+            search::setting_response(ui.checkbox(&mut self.modeling.new_group,"New vertex group after each edit"),"Modeling new vertex group").on_hover_text("Put created or changed geometry in a named group. Undo removes the edit and group together. Selection alone creates no group.");
+            egui::CollapsingHeader::new("Topology").open(search::requested_section(ui.ctx(), "model_topology")).show(ui,|ui|{
+                if self.modeling.mode == ComponentMode::Edge {
+                    ui.add(egui::Slider::new(&mut self.modeling.bridge_segments,1..=16).text("Bridge segments"));
+                    ui.weak("Partial chains: select two open chains with equal edge counts. Segments divide the gap. Applies immediately; Undo restores the opening.");
+                }
+                if self.modeling.mode == ComponentMode::Face {
+                    ui.weak("Flip needs complete connected shells. Dissolve joins flat faces while protecting curvature, seams, creases and painted detail.");
+                }
+
+                if self.modeling.mode == ComponentMode::Edge {
+                    let action = Action::ModelDissolveLoops;
+                    if ui.add_enabled(self.modeling.count > 0, egui::Button::new(action.label())).customize(action)
+                        .on_hover_text("Remove complete interior quad loops and merge the surrounding faces. Keeps the surface joined. One Undo step.").clicked() {
+                        commands.push(Command::ModelDissolveLoops);
+                    }
+                }
+                for edit in crate::sculpt::TopologyEdit::ALL {
+                    use crate::sculpt::TopologyEdit as T;
+                    let mode=match edit {T::DeleteFaces|T::FlipFaces|T::DissolveFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace|T::DeleteVertices=>ComponentMode::Vertex,_=>ComponentMode::Edge};
+                    if (self.modeling.mode==mode || (edit==T::CreateFace && self.modeling.mode==ComponentMode::Edge)) && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
+                }
+                ui.weak("Create face fills three or four selected vertices, including endpoints of selected edges and loose outlines. For larger openings, select the complete boundary. Fill boundary uses its complete edge loop. Connect vertices splits a quad. These actions apply immediately as one Undo step. New faces need unwrapping before texture painting.");
+                ui.weak("Delete loop: Keep surface joins the adjoining faces; Leave gap removes the faces touching the loop. Select complete interior quad loops. Weld uses the midpoint.");
+                if self.modeling.mode == ComponentMode::Vertex {
+                    ui.weak("Delete vertices also removes every face attached to them.");
                 }
             });
             if self.modeling.tool != ModelTool::CutCell {
@@ -300,6 +370,9 @@ impl UiState {
             design::checkbox(ui, &mut self.modeling.protect_mask,"Protect mask").customize(Action::ModelProtectMask);
             ui.weak("Hidden faces are protected · topology edits replace stored levels");
             match self.modeling.tool {
+                ModelTool::EdgeChamfer | ModelTool::EdgeBevel | ModelTool::VertexChamfer | ModelTool::VertexBevel => {
+                    if self.bevel_controls(ui) { commands.push(Command::ModelApply); }
+                }
                 ModelTool::PointSplit => {
                     if self.point_split_controls(ui) { commands.push(Command::ModelApply); }
                 }
@@ -314,22 +387,30 @@ impl UiState {
                     } else if !tool.instant() {
                         ui.label(if tool==ModelTool::PointSplit {"Radius"}else{"Distance"});
                         search::setting_response(ui.add(egui::DragValue::new(&mut self.modeling.amount).speed(0.01)), "Modeling amount");
-                        ui.weak("Drag up/down to adjust · release applies · Esc cancels");
+                        ui.weak(if tool == ModelTool::PointExtrude {"Drag in the screen plane · release applies · Esc cancels"} else {"Drag up/down to adjust · release applies · Esc cancels"});
                     }
                     if tool==ModelTool::EdgeExtrude {
                         design::checkbox(ui, &mut self.modeling.construction.other_side,"Other adjacent side");
                         ui.weak("Border: extend outward · surface: extrude the highlighted side");
                     }
                     if tool==ModelTool::PointExtrude {
-                        search::setting_response(ui.add(egui::DragValue::new(&mut self.modeling.construction.width).prefix("Base radius ").range(0.0001..=1000.).speed(0.01)), "Point base radius");
+                        ui.weak("Creates one vertex joined to the original by an edge. The new endpoint follows your drag in the screen plane and stays selected.");
+                        ui.weak("Drag first to set the direction for Apply amount and tap to repeat.");
+                        ui.weak("Hold Ctrl when starting a drag to move a detached vertex copy, with no connecting edge.");
                     }
-                    if matches!(tool,ModelTool::PointSplit|ModelTool::PointExtrude) {
+                    if matches!(tool, ModelTool::PointExtrude | ModelTool::EdgeExtrude) {
+                        search::setting_response(ui.checkbox(self.modeling.extrude_snap.get_or_insert(true), "Snap and join"), "Extrusion snap and join");
+                        search::setting_response(ui.add(egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.)).range(4. ..=40.).prefix("Snap radius ").suffix(" px")), "Snap pick radius");
+                        ui.weak("Nearby visible targets on this mesh · hold Shift for free extrusion");
+                        ui.weak(if tool == ModelTool::PointExtrude { "One point (plus symmetry copies) connects to an existing vertex. Gold marks the join before release." } else { "One open edge (plus symmetry copies) joins another open edge. Gold marks the join before release." });
+                    }
+                    if tool==ModelTool::PointSplit {
                         search::setting_response(design::checkbox(ui, &mut self.modeling.construction.round,"Circularize ring"), "Circularize ring");
                         search::setting_response(design::checkbox(ui, &mut self.modeling.construction.crease,"Crease ring"), "Crease ring");
                         ui.weak("Closed point fan · radius below half the shortest edge");
                     }
                     if tool.instant(){ui.weak(if tool==ModelTool::FacePoint {"Tap: connect a center point to each corner"}else{"Tap: split into quads and connect neighboring edges"});}
-                    if ui.add_enabled(self.modeling.count>0,egui::Button::new(if tool.instant(){"Apply to selection"}else{"Apply amount"})).customize(Action::ModelApply).clicked(){commands.push(Command::ModelApply);}
+                    if ui.add_enabled(self.modeling.count>0 && (tool != ModelTool::PointExtrude || self.modeling.transform_direction.len()>1e-6),egui::Button::new(if tool.instant(){"Apply to selection"}else{"Apply amount"})).customize(Action::ModelApply).clicked(){commands.push(Command::ModelApply);}
                 }
 
                 ModelTool::Select => {
@@ -390,6 +471,7 @@ impl UiState {
                         ui.weak("Gold marks the target face or loop. Coral walls will be removed.");
                     } else {
                         ui.weak("Connected regions share walls; Individual faces extrude separately.");
+                        ui.weak("Hold Ctrl when starting a drag to move detached face copies. Originals stay; no side walls are created.");
                     }
                 }
                 ModelTool::Inset | ModelTool::Bevel => {
@@ -428,7 +510,48 @@ impl UiState {
                     let has_direction=!direct || self.modeling.interaction==ModelInteraction::Axis || self.modeling.tool==ModelTool::Scale || self.modeling.transform_direction.len()>1e-6;
                     if ui.add_enabled(self.modeling.count>0 && has_direction,egui::Button::new("Apply amount")).customize(Action::ModelApply).clicked() { commands.push(Command::ModelApply); }
                     ui.weak("Release applies · Esc cancels · one Undo per drag");
+                    if self.modeling.tool == ModelTool::Move {
+                        ui.strong("Snap and weld on move");
+                        ui.horizontal_wrapped(|ui| {
+                            use crate::viewport::MoveSnap;
+                            for (option,label) in [(MoveSnap::Off,"Off"),(MoveSnap::Vertex,"Vertex"),(MoveSnap::Edge,"Edge")] {
+                                search::setting_response(ui.selectable_value(&mut self.modeling.move_snap,option,label),"Move snap and weld");
+                            }
+                        });
+                        ui.weak("Vertex welds a moved point to an existing vertex. Edge also welds both ends of a parallel edge when both are nearby.");
+                        search::setting_response(ui.add(egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.)).range(4. ..=40.).prefix("Snap radius ").suffix(" px")),"Snap pick radius");
+                        ui.weak("Free drag or gizmo center · hold Shift for free movement · release to weld");
+                    }
+
                     ui.weak("Rotate and scale around the selection center");
+                    if direct {
+                        ui.separator();
+                        ui.strong("Align without welding");
+                        ui.horizontal_wrapped(|ui| {
+                            use crate::viewport::SnapTarget;
+                            for target in [SnapTarget::Vertex, SnapTarget::Edge, SnapTarget::Surface] {
+                                search::setting_response(ui.selectable_value(&mut self.modeling.snap_target, target, target.label()), "Snap target type");
+                            }
+                        });
+                        search::setting_response(ui.add(egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.)).range(4. ..=40.).prefix("Pick radius ").suffix(" px")), "Snap pick radius");
+                        ui.weak("Active mesh · visible, unselected targets").on_hover_text("Selected vertices, symmetry copies and incident target geometry are excluded. Free/Gizmo snap freely; Axis / amount uses the chosen axis.");
+                        ui.weak(match self.modeling.tool {
+                            ModelTool::Move => "Move aligns the source to the target; an axis projects that movement.",
+                            ModelTool::Rotate => "Rotate aims the source direction at the target around the selection center; distance stays fixed.",
+                            _ => "Scale matches distance from the selection center, or its chosen axis component; direction stays fixed.",
+                        });
+                        if let Some(hint) = &self.modeling.snap_hint { ui.label(hint); }
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.add_enabled(self.modeling.count>0,egui::Button::new("Pick snap source")).customize(Action::ModelSnap).clicked() { commands.push(Command::ModelSnap); }
+                            if self.modeling.snap_active {
+                                if ui.button("Pick another target").clicked() { commands.push(Command::ModelSnapRetarget); }
+                                if ui.add_enabled(self.modeling.snap_ready,egui::Button::new("Apply snap")).clicked() { commands.push(Command::ModelSnapApply); }
+                                if ui.button("Cancel snap").clicked() { commands.push(Command::ModelSnapCancel); }
+                            }
+                        });
+                        ui.weak("Click source, then target. Orbit/zoom to inspect.").on_hover_text("Apply amount uses the numeric value without snapping and discards this preview.");
+                    }
+
                 }
                 ModelTool::LoopCut => {
                     use crate::sculpt::LoopCut;
@@ -462,6 +585,17 @@ impl UiState {
                     commands.push(Command::ModelSelectLoop);
                 }
             });
+            ui.horizontal_wrapped(|ui| {
+                for (label, action) in [("Grow selection", Action::ModelGrowSelection), ("Shrink selection", Action::ModelShrinkSelection)] {
+                    if ui.add_enabled(self.modeling.count > 0, egui::Button::new(label)).customize(action.clone()).clicked() { commands.push(Command::Action(action)); }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                for (label, action, enabled) in [("Undo selection change", Action::ModelUndoSelection, self.modeling.selection_undo), ("Redo selection change", Action::ModelRedoSelection, self.modeling.selection_redo)] {
+                    if ui.add_enabled(enabled, egui::Button::new(label)).customize(action.clone()).clicked() { commands.push(Command::Action(action)); }
+                }
+            });
+            ui.weak("One polygon step. Hidden/protected geometry blocks growth. Selection Undo/Redo is separate from geometry history.");
             if self.modeling.mode==ComponentMode::Face && ui.button("Select region boundary").customize(Action::ModelBoundary).clicked() { commands.push(Command::ModelBoundary); }
             if self.modeling.mode==ComponentMode::Edge {
                 ui.horizontal_wrapped(|ui| {
@@ -469,11 +603,6 @@ impl UiState {
                     if ui.add_enabled(self.modeling.count>0,egui::Button::new("Clear UV seams")).clicked() { commands.push(Command::UvSeams(false)); }
                 });
                 ui.weak("Select edges, then mark or clear seams. Unwrap uses the marked seams.");
-                let response=ui.add_enabled(self.modeling.count>0,egui::Button::new("Dissolve selected loops"))
-                    .customize(Action::ModelDissolveLoops);
-                if design::help(response,"Remove complete interior quad loops and merge the surrounding faces. Keeps the surface connected; replaces stored levels. Undo restores the mesh.").clicked() {
-                    commands.push(Command::ModelDissolveLoops);
-                }
             }
             ui.horizontal_wrapped(|ui|{
                 if ui.add_enabled(self.modeling.can_repeat && self.modeling.count>0,egui::Button::new("Repeat last edit")).customize(Action::ModelRepeat).on_hover_text(&self.modeling.repeat_label).clicked(){commands.push(Command::ModelRepeat);}
@@ -490,22 +619,6 @@ impl UiState {
                     });
                 }
                 ui.weak("Saves action, target and options. Right-click a preset to add it to a shelf.");
-            });
-            egui::CollapsingHeader::new("Topology").open(search::requested_section(ui.ctx(), "model_topology")).show(ui,|ui|{
-                if self.modeling.mode == ComponentMode::Edge {
-                    ui.add(egui::Slider::new(&mut self.modeling.bridge_segments, 1..=16).text("Bridge segments"));
-                    ui.weak("Partial chains: select two open chains with equal edge counts. Endpoints pair in opposite boundary directions; twisting or crossing is rejected. Segments divide the gap. Change the selection to change alignment, then preview again.");
-                }
-                if self.modeling.mode == ComponentMode::Face {
-                    ui.weak("Flip needs complete connected shells. Dissolve combines flat regions while preserving their outline; curvature, seams, creases and painted gradients are protected.");
-                }
-                for edit in crate::sculpt::TopologyEdit::ALL {
-                    use crate::sculpt::TopologyEdit as T;
-                    let mode=match edit {T::DeleteFaces|T::FlipFaces|T::DissolveFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace=>ComponentMode::Vertex,_=>ComponentMode::Edge};
-                    if self.modeling.mode==mode && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
-                }
-                ui.weak("Connect vertices splits a quad. Create face uses every vertex around an opening; Fill boundary uses its complete edge loop. These actions preview before Apply. New caps follow the boundary winding and need unwrapping before texture painting. Loose edges are not supported.");
-                ui.weak("Delete opens holes; dissolve keeps the surface. Weld uses the midpoint.");
             });
             egui::CollapsingHeader::new("Selection to vertex group").open(search::requested_section(ui.ctx(), "model_groups")).show(ui, |ui| {
                 ui.text_edit_singleline(&mut self.modeling.group_name);

@@ -11,15 +11,15 @@ pub(super) enum Decision {
 
 impl App {
     pub(super) fn prepare_brush_change(&mut self, action: &Action, ctx: &egui::Context) -> bool {
-        let pending = self.viewport.modeling.topology_preview_label().is_some()
-            || self.paths.busy()
+        let pending = self.paths.busy()
             || self.paths.has_preview()
             || (self.viewport.paths.active && self.viewport.paths.has_unfinished(&self.document))
             || self.ui.projection.busy
             || self.projection.draft.is_some()
             || self.ui.fusion.busy
             || self.ui.fusion.ready
-            || self.document.instance_preview_active();
+            || self.document.instance_preview_active()
+            || self.viewport.modeling.snap_active();
         if pending {
             self.ui.tool_change = Some(action.clone());
             self.ui.tool_change_error = None;
@@ -43,7 +43,6 @@ impl App {
         if self.ui.fusion.open {
             self.cancel_fusion();
         }
-        self.viewport.modeling.cancel_topology();
         self.viewport.cancel(&mut self.document);
         self.ui.slice_active = false;
         self.ui.selection_tool = None;
@@ -55,7 +54,8 @@ impl App {
     }
 
     fn tool_change_can_apply(&self) -> bool {
-        !self.paths.busy()
+        (!self.viewport.modeling.snap_active() || self.viewport.modeling.snap_ready())
+            && !self.paths.busy()
             && !self.ui.projection.busy
             && !self.ui.fusion.busy
             && (!self.document.instance_preview_active() || !self.ui.instances.invalid)
@@ -91,7 +91,11 @@ impl App {
             return;
         }
         let result = if decision == Decision::Apply {
-            if self.paths.has_preview() {
+            if self.viewport.modeling.snap_active() {
+                self.viewport
+                    .modeling
+                    .apply_snap(&mut self.document, self.ui.modeling.options())
+            } else if self.paths.has_preview() {
                 self.dispatch_path(PathCommand::Apply)
             } else if self.viewport.paths.active
                 && self.viewport.paths.has_unfinished(&self.document)
@@ -101,10 +105,6 @@ impl App {
                 self.apply_projection()
             } else if self.ui.fusion.ready {
                 self.apply_fusion()
-            } else if self.viewport.modeling.topology_preview_label().is_some() {
-                self.viewport
-                    .modeling
-                    .apply_topology(&mut self.document, self.ui.modeling.options())
             } else if self.document.instance_preview_active() {
                 self.dispatch_instances(InstanceCommand::Apply)
             } else {

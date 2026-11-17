@@ -1,0 +1,68 @@
+   Compiling clay-form v0.1.0-alpha.3 (/home/mark/Documents/ChatGPT/Clay From/clay-form-topology)
+    Finished `test` profile [unoptimized] target(s) in 1m 16s
+  Executable unittests src/lib.rs (/tmp/clay-ui-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 4 tests
+test app::tests::guide_captures::bevel_capture::component_bevel_offscreen_review ... ignored, requires Vulkan; Q bevel controls, live sizing, cancellation, groups and Undo/Redo
+test sculpt::modeling::bevel::tests::component_bevel_chamfers_and_rounds_edges_vertices_and_junctions ... ok
+test sculpt::modeling::bevel::tests::component_bevel_mirrors_corner_and_edge_topology ... ok
+test sculpt::modeling::bevel::tests::component_bevel_preserves_untouched_uvs_groups_and_protection ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 1382 filtered out; finished in 1.08s
+
+
+running 6 tests
+test app::tests::guide_captures::move_snap_capture::move_snap_weld_offscreen_review ... ignored, requires Vulkan; Move snap options, live welding, Shift override and history
+test sculpt::modeling::move_weld::tests::move_snap_weld_applies_exact_symmetry_atomically ... ok
+test sculpt::modeling::move_weld::tests::move_snap_weld_preserves_uvs_creases_and_stationary_edge ... ok
+test sculpt::modeling::move_weld::tests::move_snap_weld_rejects_protection_duplicate_faces_and_obstructions ... ok
+test sculpt::modeling::move_weld::tests::move_snap_weld_reuses_target_and_combines_duplicate_edges ... ok
+test viewport::modeling::move_snapping::tests::move_snap_edge_needs_parallel_edges_and_both_nearby_endpoints ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 1380 filtered out; finished in 3.88s
+
+
+running 2 tests
+test app::tests::modeling::modeling_auto_groups_commit_with_geometry_and_undo_redo ... ok
+test document::modeling_groups::tests::modeling_auto_groups_isolate_new_points_preserve_masks_and_name_each_edit ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 1384 filtered out; finished in 3.85s
+
+
+running 3 tests
+test app::tests::guide_captures::detached_capture::detached_copy_offscreen_review ... ignored, requires Vulkan; Ctrl detached copies, isolated-point picking, groups and history
+test sculpt::modeling::detached::tests::detached_copy_faces_keep_originals_connections_uvs_and_groups ... ok
+test sculpt::modeling::detached::tests::detached_copy_isolated_vertices_survive_modeling_and_exchange ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 1383 filtered out; finished in 0.04s
+
+
+running 1 test
+test app::tests::modeling::modeling_construction_presets_roundtrip_and_keep_older_preferences_compatible ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1385 filtered out; finished in 3.70s
+
+
+running 1 test
+test app::tests::modeling::modeling_free_move_tracks_pen_in_both_projections_and_repeats_the_vector ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1385 filtered out; finished in 4.25s
+
+
+running 1 test
+test app::tests::guide_captures::move_snap_capture::move_snap_weld_offscreen_review ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1385 filtered out; finished in 21.58s
+
+
+running 1 test
+test app::tests::guide_captures::detached_capture::detached_copy_offscreen_review ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1385 filtered out; finished in 15.60s
+
+
+running 1 test
+test app::tests::guide_captures::bevel_capture::component_bevel_offscreen_review ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1385 filtered out; finished in 19.87s
+

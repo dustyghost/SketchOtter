@@ -417,9 +417,12 @@ fn action_destination(action: &Action) -> Destination {
         | ModelCreateGroup | ModelAddToGroup | ModelRemoveFromGroup | ModelRepeat
         | ModelProtectMask | ModelSmoothPreview | ModelTapRepeat | ModelApply | ModelBoundary
         | ModelClearSelection | ModelDissolveLoops | ModelNewMesh | ModelJoin | ModelFewerLoops
-        | ModelMoreLoops | ModelSelectLoop | ModelInteraction(_) | ModelSelect | ModelExtrude
-        | ModelLoopCut | ModelReplace | ModelAdd | ModelRemove | ModelSelectSingle
-        | ModelSelectLoops | ModelSelectRing | ModelAxis(_) => Destination::Panel(Tool::Mesh),
+        | ModelSnap | ModelGrowSelection | ModelShrinkSelection | ModelUndoSelection
+        | ModelRedoSelection | ModelMoreLoops | ModelSelectLoop | ModelInteraction(_)
+        | ModelSelect | ModelExtrude | ModelLoopCut | ModelReplace | ModelAdd | ModelRemove
+        | ModelSelectSingle | ModelSelectLoops | ModelSelectRing | ModelAxis(_) => {
+            Destination::Panel(Tool::Mesh)
+        }
         PenModeling => Destination::Panel(Tool::Mesh),
         ViewportContextMenu | ModelFaces | ModelEdges | ModelVertices | ModelTool(_)
         | ModelTarget(_) => Destination::Menu(BuiltinMenu::Modeling),
@@ -443,7 +446,7 @@ fn action_section(action: &Action) -> Option<&'static str> {
         Action::ModelSavePreset | Action::ModelPreset(_) | Action::ModelDeletePreset(_) => {
             Some("model_presets")
         }
-        Action::ModelTopology(_) => Some("model_topology"),
+        Action::ModelTopology(_) | Action::ModelDissolveLoops => Some("model_topology"),
         Action::ModelCreateGroup | Action::ModelAddToGroup | Action::ModelRemoveFromGroup => {
             Some("model_groups")
         }
@@ -467,6 +470,13 @@ fn action_aliases(action: &Action) -> &'static str {
         Action::PenModeling => "modelling modeling components polygons",
         Action::ModelVertices => "vertex vertices verts points",
         Action::ModelEdges => "edge edges lines",
+        Action::ModelDissolveLoops => "dissolve selected loops delete remove edge keep surface",
+        Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteLoop) => {
+            "delete edge loop face strip gap hole remove"
+        }
+        Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteVertices) => {
+            "delete remove selected vertex vertices verts points attached faces"
+        }
         Action::ModelFaces => "faces polygons quads triangles",
         Action::KeySettings => "keyboard keybinding hotkeys shortcuts bindings",
         Action::CustomizeWorkspace => {

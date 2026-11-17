@@ -6,15 +6,17 @@ use serde::{Deserialize, Serialize};
 pub(crate) enum MaskShape {
     #[default]
     Brush,
+    Rectangle,
     Lasso,
     Line,
 }
 impl MaskShape {
     pub(crate) fn label(self) -> &'static str {
         match self {
+            Self::Rectangle => "Rectangle",
             Self::Brush => "Surface brush",
-            Self::Lasso => "Through-depth lasso",
-            Self::Line => "Through-depth line",
+            Self::Lasso => "Lasso",
+            Self::Line => "Line",
         }
     }
 }
@@ -22,6 +24,7 @@ impl MaskShape {
 #[serde(default)]
 pub(crate) struct MaskPreset {
     pub shape: MaskShape,
+    pub visible_only: bool,
     pub erase: bool,
     pub flip: bool,
     pub brush_id: Option<String>,
@@ -39,8 +42,24 @@ impl MaskPreset {
             .or_else(|| document.brushes().iter().position(|b| b.kind == Kind::Mask))
     }
     pub(crate) fn selection_tool(&self) -> Option<SelectionTool> {
+        if self.shape == MaskShape::Rectangle
+            || (self.visible_only && self.shape != MaskShape::Brush)
+        {
+            use crate::viewport::{RegionOperation, RegionShape, RegionTool};
+            return Some(SelectionTool::Region(RegionTool {
+                shape: match self.shape {
+                    MaskShape::Rectangle => RegionShape::Rectangle,
+                    MaskShape::Lasso => RegionShape::Lasso,
+                    _ => RegionShape::Line,
+                },
+                through: !self.visible_only,
+                flip: self.flip && self.shape == MaskShape::Line,
+                operation: RegionOperation::Mask { erase: self.erase },
+            }));
+        }
         match self.shape {
             MaskShape::Brush => None,
+            MaskShape::Rectangle => unreachable!(),
             MaskShape::Lasso => Some(SelectionTool::MaskLassoOperation { erase: self.erase }),
             MaskShape::Line => Some(SelectionTool::MaskLine {
                 erase: self.erase,

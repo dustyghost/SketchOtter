@@ -3,16 +3,26 @@
 mod array_layers;
 #[path = "attached_array_capture.rs"]
 mod attached_array_capture;
+#[path = "bevel_capture.rs"]
+mod bevel_capture;
 #[path = "cameras_capture.rs"]
 mod cameras_capture;
 #[path = "guide_deformation_stack.rs"]
 mod deformation_stack_review;
+#[path = "detached_capture.rs"]
+mod detached_capture;
 #[path = "grouped_path_capture.rs"]
 mod grouped_path_capture;
+#[path = "move_snap_capture.rs"]
+mod move_snap_capture;
 #[path = "object_kits.rs"]
 mod object_kits;
 #[path = "path_assembly.rs"]
 mod path_assembly;
+#[path = "precision_capture.rs"]
+mod precision_capture;
+#[path = "region_selection_capture.rs"]
+mod region_selection_capture;
 #[path = "surface_array_capture.rs"]
 mod surface_array_capture;
 #[path = "topology_capture.rs"]
@@ -2547,7 +2557,13 @@ fn modeling_symmetry_dissolve_offscreen_review() {
     g.app.camera.pitch = 0.;
     g.app.camera.zoom = 0.65;
     click_guide_modeling_checkbox(&mut g);
-    click_guide_label(&mut g, "Symmetry");
+    g.app.dispatch(
+        Command::SetSymmetry(Symmetry {
+            enabled: true,
+            ..Default::default()
+        }),
+        &g.ctx,
+    );
     assert!(g.app.document.symmetry().enabled);
     let (rect, _) = g.frame(vec![]);
     let scale = rect.width().min(rect.height()) * 0.35 * g.app.camera.zoom;
@@ -2593,7 +2609,10 @@ fn modeling_symmetry_dissolve_offscreen_review() {
         rect.left_top() + Vec2::new(5., 5.),
     )]);
     g.save("modeling-dissolve-before");
-    click_guide_label(&mut g, "Dissolve selected loops");
+    reach_sidebar_control(&mut g, "Topology");
+    click_guide_label(&mut g, "Topology");
+    reach_sidebar_control(&mut g, "Delete loop (keep surface)");
+    click_guide_label(&mut g, "Delete loop (keep surface)");
     assert_eq!(
         (
             g.app.document.mesh().vertices.len(),
@@ -4465,6 +4484,49 @@ fn viewport_lighting_offscreen_review() {
         .dock_menu(BuiltinMenu::View, Dock::Right);
     click_guide_label(&mut g, "Lighting");
     g.frame(vec![]);
+    // Rename using the actual text field, then toggle the same saved light.
+    let name = g
+        .text_positions
+        .iter()
+        .find(|(text, _)| text == "Light name")
+        .unwrap()
+        .1
+        + Vec2::new(0., 25.);
+    g.frame(vec![
+        egui::Event::PointerMoved(name),
+        primary_event(name, true),
+    ]);
+    g.frame(vec![primary_event(name, false)]);
+    g.frame(vec![
+        egui::Event::Key {
+            key: egui::Key::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::COMMAND,
+        },
+        egui::Event::Text("Studio key".into()),
+    ]);
+    g.frame(vec![egui::Event::Key {
+        key: egui::Key::A,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    }]);
+    assert_eq!(g.app.ui.preferences.lighting.lights[0].name, "Studio key");
+    let named = g.app.ui.preferences.lighting.lights[0].clone();
+    click_guide_label(&mut g, "Light on");
+    assert!(!g.app.ui.preferences.lighting.lights[0].enabled);
+    g.frame(vec![]);
+    assert!(
+        g.text_positions
+            .iter()
+            .any(|(text, _)| text == "Studio key (off)")
+    );
+    g.save("lighting-named-off");
+    click_guide_label(&mut g, "Light on");
+    assert_eq!(g.app.ui.preferences.lighting.lights[0], named);
     let (rect, before_pixels) = g.frame(vec![egui::Event::PointerGone]);
     let before = g.app.document.geometry_snapshot();
     let history = g.app.document.history_counts();
@@ -4501,12 +4563,14 @@ fn viewport_lighting_offscreen_review() {
             .abs()
             < 1.
     );
+    reach_sidebar_control(&mut g, "Point light");
     click_guide_label(&mut g, "Point light");
     assert_eq!(
         g.app.ui.preferences.lighting.lights[0].kind,
         LightKind::Point
     );
     g.save("lighting-point");
+    reach_sidebar_control(&mut g, "Reset studio lighting");
     click_guide_label(&mut g, "Reset studio lighting");
     assert_eq!(g.app.ui.preferences.lighting, Lighting::default());
     assert_eq!(g.app.document.geometry_snapshot(), before);
@@ -4518,7 +4582,22 @@ fn viewport_lighting_offscreen_review() {
             .iter()
             .any(|(text, _)| text == "Drag light")
     );
+    reach_sidebar_control(&mut g, "Show light controls");
     click_guide_label(&mut g, "Show light controls");
+    g.frame(vec![]);
+    let on = g
+        .text_positions
+        .iter()
+        .filter(|(text, _)| text == "Light on")
+        .min_by(|a, b| a.1.x.total_cmp(&b.1.x))
+        .unwrap()
+        .1;
+    g.frame(vec![egui::Event::PointerMoved(on), primary_event(on, true)]);
+    g.frame(vec![primary_event(on, false)]);
+    assert!(!g.app.ui.preferences.lighting.lights[0].enabled);
+    g.frame(vec![egui::Event::PointerMoved(on), primary_event(on, true)]);
+    g.frame(vec![primary_event(on, false)]);
+    assert!(g.app.ui.preferences.lighting.lights[0].enabled);
     // The viewport widget moves a world-space light in screen directions, while
     // retaining its pointer even after dragging out over the model.
     g.app.camera.yaw = 0.8;
@@ -4596,6 +4675,7 @@ fn viewport_lighting_offscreen_review() {
         LightKind::Point
     );
     g.frame(vec![]);
+    g.save("lighting-point-widget");
     let distance = g.app.ui.preferences.lighting.lights[0].distance;
     let start = g
         .text_positions
@@ -4616,7 +4696,14 @@ fn viewport_lighting_offscreen_review() {
     let side = g.app.ui.preferences.lighting.lights[0]
         .vector(right, up, view)
         .dot(view);
-    click_guide_label(&mut g, "Front / back");
+    click_guide_label(
+        &mut g,
+        if side > 0. {
+            "Move to back"
+        } else {
+            "Move to front"
+        },
+    );
     let flipped = g.app.ui.preferences.lighting.lights[0]
         .vector(right, up, view)
         .dot(view);
@@ -4651,22 +4738,25 @@ fn viewport_lighting_offscreen_review() {
     );
     // Exercise adding/removing lights from a single-light rig.
     g.app.ui.preferences.lighting.lights.truncate(1);
-    let first = g.app.ui.preferences.lighting.lights[0];
+    let first = g.app.ui.preferences.lighting.lights[0].clone();
+    reach_sidebar_control(&mut g, "Add light");
     click_guide_label(&mut g, "Add light");
     assert_eq!(g.app.ui.preferences.lighting.lights.len(), 2);
     assert_eq!(g.app.ui.preferences.lighting.selected, 1);
+    reach_sidebar_control(&mut g, "Point light");
     click_guide_label(&mut g, "Point light");
     assert_eq!(g.app.ui.preferences.lighting.lights[0], first);
     assert_eq!(
         g.app.ui.preferences.lighting.lights[1].kind,
         LightKind::Point
     );
-    let second = g.app.ui.preferences.lighting.lights[1];
+    let second = g.app.ui.preferences.lighting.lights[1].clone();
+    reach_sidebar_control(&mut g, "Show light controls");
     click_guide_label(&mut g, "Show light controls");
     click_guide_label(&mut g, "Light"); // Reopen the collapsed orbit controls.
     g.save("lighting-multiple-lights");
-    click_guide_label(&mut g, "Light 2");
     click_guide_label(&mut g, "Light 1");
+    click_guide_label(&mut g, "Key");
     assert_eq!(g.app.ui.preferences.lighting.selected, 0);
     g.frame(vec![]);
     let start = pad(&g);
@@ -4679,12 +4769,15 @@ fn viewport_lighting_offscreen_review() {
     g.frame(vec![primary_event(end, false)]);
     assert_ne!(g.app.ui.preferences.lighting.lights[0], first);
     assert_eq!(g.app.ui.preferences.lighting.lights[1], second);
+    reach_sidebar_control(&mut g, "Remove light");
     click_guide_label(&mut g, "Remove light");
     assert_eq!(g.app.ui.preferences.lighting.lights, vec![second]);
     assert_eq!(g.app.ui.preferences.lighting.selected, 0);
+    reach_sidebar_control(&mut g, "Remove light");
     click_guide_label(&mut g, "Remove light");
     assert!(g.app.ui.preferences.lighting.lights.is_empty());
     g.save("lighting-ambient-only");
+    reach_sidebar_control(&mut g, "Reset studio lighting");
     click_guide_label(&mut g, "Reset studio lighting");
     click_guide_label(&mut g, "Close light controls");
     assert_eq!(g.app.ui.preferences.lighting, Lighting::default());

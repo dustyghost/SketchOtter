@@ -80,6 +80,7 @@ impl Mesh {
     ) -> Result<Self, String> {
         check_cancel(cancel)?;
         self.validate()?;
+        self.require_surface_topology()?;
         if !options.offset.is_finite() || options.offset.abs() > 1_000_000. {
             return Err("Mirror center must be finite and within model coordinate limits".into());
         }

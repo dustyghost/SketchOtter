@@ -15,6 +15,7 @@ mod fusion;
 mod mask;
 mod mesh;
 mod modeling;
+mod modeling_groups;
 mod path_stroke;
 mod paths;
 mod primitive;

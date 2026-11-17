@@ -89,6 +89,7 @@ fn solver_positions(vertices: &[Vec3]) -> Result<Vec<clay_retopology::Vec3>, Str
 }
 impl Mesh {
     pub(crate) fn require_retopology_input(&self) -> Result<(), String> {
+        self.require_surface_topology()?;
         if self.triangles.is_empty() || self.vertices.len() > self.triangles.len().saturating_mul(3)
         {
             return Err("Retopology needs source triangles with no loose vertices".into());

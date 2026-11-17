@@ -45,8 +45,9 @@ impl Viewport {
                 ]
             })
             .collect();
-        for edge in mesh.polygon_edges() {
-            if !visible.contains(&edge) {
+        let wires: std::collections::BTreeSet<_> = mesh.visible_loose_edges().into_iter().collect();
+        for edge in mesh.model_edges() {
+            if !visible.contains(&edge) && !wires.contains(&edge) {
                 continue;
             }
             let [a, b] = edge;
@@ -63,14 +64,17 @@ impl Viewport {
         }
         candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
         candidates.into_iter().find_map(|(_, edge, p)| {
-            // Picking at the closest screen point supplies the depth test. At an
-            // exact silhouette, sample slightly toward the pointer as well.
+            // Test the actual point on the edge. A face hit exactly on a
+            // silhouette can miss after projection rounding, despite a visible edge.
             let [a, b] = edge;
             let delta = mesh.vertices[b] - mesh.vertices[a];
-            let hit = scene.pick(p).or_else(|| scene.pick(p.lerp(point, 0.05)))?;
-            let t =
-                ((hit.0 - mesh.vertices[a]).dot(delta) / delta.dot(delta).max(1e-12)).clamp(0., 1.);
-            ((hit.0 - (mesh.vertices[a] + delta * t)).len() < delta.len() * 0.03 + 1e-4)
+            let length = delta.len();
+            let t = scene
+                .axis_parameter(p, mesh.vertices[a], delta.norm())
+                .unwrap_or(length * 0.5)
+                .clamp(0., length);
+            scene
+                .point_unoccluded(mesh.vertices[a] + delta.norm() * t)
                 .then_some(edge)
         })
     }

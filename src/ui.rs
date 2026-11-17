@@ -1365,6 +1365,14 @@ impl UiState {
         document: &Document,
         commands: &mut Vec<Command>,
     ) {
+        if document.instance_preview_active()
+            && self.instances.editor.as_ref().is_some_and(|set| {
+                matches!(set.layout, crate::sculpt::instances::Layout::Surface(_))
+            })
+        {
+            self.instance_controls(ui, document, commands);
+            return;
+        }
         ui.add_enabled_ui(!self.mesh_busy, |ui| {
             Self::submodel_rows(ui, document, commands)
         });

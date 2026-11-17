@@ -375,6 +375,7 @@ pub(crate) struct ModelingPreset {
 /// The shared selection hold follows the mode chosen in the shared selection menu.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum SelectionMode {
+    Components,
     Mask,
     Slice,
     #[default]
@@ -399,6 +400,9 @@ pub(crate) struct Preferences {
     #[serde(default)]
     pub brush_controls_version: u32,
     pub selection_mode: SelectionMode,
+    pub component_region_shape: crate::viewport::RegionShape,
+    pub component_select_through: bool,
+    pub component_region_change: crate::viewport::SelectionChange,
     pub visibility_selection: VisibilitySettings,
     pub modeling_presets: Vec<ModelingPreset>,
     pub next_modeling_preset_id: u64,
@@ -469,6 +473,9 @@ impl Default for Preferences {
                 })
                 .collect(),
             selection_mode: SelectionMode::default(),
+            component_region_shape: Default::default(),
+            component_select_through: false,
+            component_region_change: Default::default(),
             mask_hold: HoldBinding::default(),
             mask_preset: MaskPreset::default(),
             visibility_hold: HoldBinding::visibility_default(),

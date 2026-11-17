@@ -138,7 +138,7 @@ impl App {
                 self.ui.instances.invalid = false;
                 self.ui.instances.focus_array = true;
                 self.ui.status =
-                    "Surface array preview · choose a captured part, then Apply instances".into();
+                    "Surface array preview · choose a captured part and fit, then Apply surface array".into();
             }
             C::SurfaceGuide(id, editing) => {
                 if self.ui.instances.invalid {
@@ -154,8 +154,13 @@ impl App {
                 self.ui.edges.selecting = false;
                 self.ui.modeling.active = editing;
                 self.ui.modeling.mode = crate::viewport::ComponentMode::Face;
+                if editing {
+                    self.ui
+                        .modeling
+                        .set_tool(crate::viewport::ModelTool::Select);
+                }
                 self.ui.transform_mode = crate::viewport::TransformMode::Sculpt;
-                self.ui.status = if editing { "Edit guide · copies are temporarily hidden · select faces and use the new region, or Show result" } else { "Surface array result" }.into();
+                self.ui.status = if editing { "Edit guide · copies are temporarily hidden · select faces and use the new region, or Show surface array result" } else { "Surface array result" }.into();
             }
             C::NewArray => {
                 self.viewport.cancel(&mut self.document);

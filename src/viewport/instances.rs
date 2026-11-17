@@ -5,6 +5,73 @@ use egui::{Rect, Stroke};
 pub(crate) const COPY_COLOR: Color32 = Color32::from_rgb(255, 198, 82);
 pub(crate) const SET_COLOR: Color32 = Color32::from_rgb(101, 216, 243);
 
+/// Cache world-space guide boundaries; orbiting only projects the cached lines.
+#[derive(Default)]
+pub(super) struct SurfaceOutline {
+    key: Option<(u64, u64)>,
+    lines: Vec<[Vec3; 2]>,
+}
+impl SurfaceOutline {
+    pub(super) fn paint(
+        &mut self,
+        scene: &Scene,
+        painter: &egui::Painter,
+        document: &Document,
+        editor: Option<u64>,
+    ) {
+        use crate::sculpt::instances::{Layout, Source};
+        let set = editor
+            .filter(|_| document.instance_preview_active())
+            .and_then(|id| {
+                document
+                    .instances()
+                    .sets
+                    .iter()
+                    .find(|s| s.id == id && s.visible)
+            });
+        let Some(set) = set else {
+            self.key = None;
+            self.lines.clear();
+            return;
+        };
+        let Layout::Surface(array) = &set.layout else {
+            self.key = None;
+            self.lines.clear();
+            return;
+        };
+        let key = (document.display_revision(), set.id);
+        if self.key != Some(key) {
+            self.lines.clear();
+            if let Some(owner) = document.surface_owner(set.id)
+                && document.model(owner).is_some_and(|m| m.metadata.visible)
+                && let Some(guide) = document.instance_source(Source::Model(array.owner))
+                && let Ok(polygons) = array.polygons(guide)
+            {
+                let mut edges = std::collections::BTreeSet::new();
+                for polygon in polygons.iter().filter(|p| p.visible) {
+                    for (&a, &b) in polygon
+                        .vertices
+                        .iter()
+                        .zip(polygon.vertices.iter().cycle().skip(1))
+                    {
+                        if edges.insert((a.min(b), a.max(b))) {
+                            self.lines.push([guide.vertices[a], guide.vertices[b]]);
+                        }
+                    }
+                }
+            }
+            self.key = Some(key);
+        }
+        let painter = painter.with_clip_rect(navigation::inner(scene.rect));
+        for &line in &self.lines {
+            if let Some(line) = scene.clip_segment(line) {
+                painter.line_segment(line, Stroke::new(3_f32, Color32::from_black_alpha(180)));
+                painter.line_segment(line, Stroke::new(1_f32, SET_COLOR.gamma_multiply(0.65)));
+            }
+        }
+    }
+}
+
 fn brackets(painter: &egui::Painter, rect: Rect, color: Color32) {
     let length = (rect.width().min(rect.height()) * 0.25).clamp(3., 12.);
     for (corner, dx, dy) in [

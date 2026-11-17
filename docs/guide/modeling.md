@@ -220,6 +220,30 @@ Loop selections can wrap around the model, including its far side. Face loops an
 
 **Keeping a selection:** navigation keeps it; topology, visibility, or model changes clear it. Drag the navigation frame or empty space to orbit, or use secondary-button navigation. Escape exits modeling when no preview is active.
 
+### Select many components with a region
+
+While Modeling is enabled, press **Z** and choose **Select**. Choose **Replace**, **Add** or **Remove**, then **Visible only** or **Through mesh**, and a **Rectangle**, **Lasso** or **Line** shape.
+
+Hold **Ctrl+Shift** while drawing in the viewport, then release the pen to keep the selection. Release Ctrl+Shift to restore the previous Modeling function and options. Releasing the hold before the pen, pressing Escape or losing focus cancels an unfinished region. **Alt** temporarily removes components (or adds when Remove is selected).
+
+**Visible only** selects the surface you can see. **Through mesh** also selects occluded and rear-facing components. A region tests vertex positions, edge midpoints or face centres. Explicitly hidden geometry and its boundary vertices remain excluded; **Protect mask** also excludes masked components. Exact symmetry adds matching components when the whole matching set is unprotected.
+
+The Select tab remembers its shape, operation and depth choice. It is available only in Modeling. **Undo selection change** and **Redo selection change** in Z restore region selections without changing geometry or consuming sculpt Undo/Redo.
+
+![Z menu with region shape, operation and depth controls](../images/modeling-selection-z-1100.png)
+
+### Grow and shrink a component selection
+
+Select a face, edge, or vertex, then use **Grow selection** or **Shrink selection** in Modeling. Both actions are also in Search and can be assigned to a shelf or shortcut. They preserve the current component mode and tool.
+
+Each click takes one step through the mesh's logical polygons. Faces cross shared edges, vertices follow real polygon edges, and edges reach other edges sharing an endpoint. Rendering diagonals inside quads do not count. Disconnected islands stay separate. Shrink removes the outer layer at open borders as well as beside unselected components; a fully selected closed island stays selected.
+
+Hidden faces block growth through their vertices. With **Protect mask** enabled, any nonzero mask blocks growth through that vertex too. Grow retains existing protected selections without expanding through them; Shrink removes protected components. Exact symmetry applies to whole matching sets, including when protection blocks one side. As with other Modeling selections, mismatched hidden faces across symmetry require showing matching faces first.
+
+**Undo selection change** and **Redo selection change** restore growth and region-selection steps without consuming sculpt Undo/Redo. The selection history belongs to the current mesh and selection; changing geometry or choosing a different selection invalidates it. It is temporary and is not saved with a project. Geometry changes made afterwards keep their usual single Undo step.
+
+![A centre face grown to its four polygon neighbours, with selection history controls](../images/precision-selection-growth.png)
+
 ### Shared targets and component transforms
 
 Hover before pressing to check what the edit will affect. Pressing an already-selected component uses the current selection; pressing elsewhere uses the hovered **Target**.
@@ -263,6 +287,27 @@ A free or gizmo drag remembers its direction and amount. **Apply amount** reuses
 
 Transform modes, directions and amounts save in presets; older presets retain Axis / amount behavior. Right-click Free, Gizmo or Axis / amount to add it to a custom menu or shelf, or assign a shortcut.
 
+### Snap components to a precise target
+
+1. Select the components to transform and choose **Move**, **Rotate**, or **Scale**.
+2. In **Align without welding**, choose **Vertex**, **Edge**, or **Surface**. Set the pick radius in screen pixels for vertex/edge targets; Surface picks the point directly under the pointer.
+3. Click **Pick snap source**, then click a visible vertex belonging to your selection. Click a visible target on the active mesh. The highlighted candidate shows which point will be used.
+4. Inspect the preview while orbiting or zooming. **Pick another target** retains the source; **Pick snap source** starts again. **Apply snap** commits one geometry Undo step. **Cancel snap** or Escape leaves the mesh and history intact.
+
+| Operation | Result |
+| --- | --- |
+| Move | Aligns the source vertex to the target. With an axis constraint, only the displacement along that axis is used. |
+| Rotate | Aims the source's direction from the selection centre toward the target. The source's radius stays fixed. With an axis constraint, both directions are projected into its rotation plane. |
+| Scale | Matches the source's distance from the selection centre to the target distance. With an axis constraint, it matches their signed axis distances. Direction stays fixed; zero, negative and excessive scales are rejected. |
+
+**Free** and **Gizmo** use unrestricted click snapping. **Axis / amount** uses the selected X/Y/Z or region-normal axis; Uniform scales uniformly. For rotation and scale, a target is a direction or distance reference: it need not coincide with the resulting source point. The source/target markers and connecting line show any remaining separation. **Apply amount** always uses the numeric value without snapping and discards the click preview.
+
+Targets are visible, unselected geometry on the active mesh. Selected vertices, their symmetry copies and incident target geometry are excluded; back or occluded surfaces are not picked through. Masks can be used as stationary references, while Protect mask still prevents moving masked source vertices. Snapping changes positions, preserves polygon connectivity and attributes, and does not weld coincident vertices. Exact symmetry can constrain a source on a mirror seam.
+
+Use a single subdivision level and an editable mesh. Convert primitives or arrays explicitly and apply or disable temporary Thickness first. Changing the target mesh, selection, symmetry or snap settings cancels a stale preview. Switching to a sculpt brush offers Apply, Discard or Keep editing. Save the project after applying to preserve the geometry; unfinished snap previews are not saved.
+
+![A source vertex aligned to an unselected target with the snap preview awaiting Apply](../images/precision-snap-preview.png)
+
 ### Cut a one-cell notch
 
 Choose **Cut one cell** in Face or Edge mode. Press a component to preview the full cut. Release to apply it in one Undo step, or press **Esc** while holding to cancel. For a preselected face or edge, use **Apply to selection**. Symmetry cuts matching cells together.
@@ -301,7 +346,7 @@ The highlighted rim stays on the dragged face even as the pen moves across other
 
 **Extrude** supports connected regions with shared side walls. Nonplanar regions move along averaged vertex normals; **Individual faces** makes separate extrusions. Distance is available numerically through **Apply amount**, as well as by pen drag. Matching-face tunnel joins remain available for aligned caps.
 
-**Inset** adds a border of the chosen Width inside a flat region. **Individual faces** insets each face separately. **Bevel boundary** trims a flat region's exterior corners, creating a single chamfer band; each corner must have one exterior edge descending away from the region. Use it for a single flat chamfer; arbitrary edge networks and rounded multi-segment profiles are unsupported. Widths that collapse narrow faces are rejected.
+**Inset** adds a border of the chosen Width inside a flat region. **Individual faces** insets each face separately. **Bevel boundary** trims a flat region's exterior corners, creating a single chamfer band; each corner must have one exterior edge descending away from the region. Use the Edge and Vertex chamfer/bevel tools below for individual components and rounded cuts. Widths that collapse narrow faces are rejected.
 
 Inset and bevel retain the cap selection for the next operation. New faces inherit their source region's face label; surviving weights and creases are retained.
 
@@ -319,6 +364,49 @@ Each region must be flat and separate regions must not share vertices. **Individ
 
 ![Two nonadjacent faces fused into separate tunnels in one edit](../images/modeling-separate-fuse-result.png)
 
+### Snap and weld while moving
+
+Choose **Move → Snap and weld on move**:
+
+- **Off** keeps the normal free move.
+- **Vertex** attracts a moved vertex to a nearby visible vertex and welds there on release. The target stays in place; edges that become duplicates combine into one.
+- **Edge** also welds a moved edge onto another nearly parallel edge when both corresponding endpoints are within the pixel radius. A nearby midpoint alone does not qualify. Vertex welding remains available in Vertex mode.
+
+Use a free drag or the gizmo center. Hold **Shift** during the drag to bypass welding, and release Shift to restore it. A gold **Weld vertex** or **Weld edge** marker identifies the target before release. Moving away restores the free move; Escape cancels. Each completed weld is one Undo/Redo step, retains the welded target selection, and clears measured Repeat last edit.
+
+This uses one vertex or edge and its exact symmetry copies on the active mesh. Independent multiple selections, face selections, axis/plane gizmo handles and numeric moves keep their ordinary behaviour. Hidden, occluded or protected targets are skipped. Duplicate faces, collapsed geometry and obstructed joins are rejected. Existing UV corners remain attached to their surviving triangles; creases and hard edges follow the weld. A vertex does not split or attach to the middle of an edge.
+
+The setting defaults to Off and saves in Modeling presets. The separate **Align without welding** source/target picker continues to align geometry without welding.
+
+![Move welding a vertex onto an existing vertex](../images/move-snap-vertex.png)
+
+![Move welding both ends of a parallel edge](../images/move-snap-edge.png)
+
+### Ctrl-extrude: detached copies
+
+Hold **Ctrl before starting the drag** with **Extrude** in Face mode or **Extrude point** in Vertex mode. The originals stay in place and a detached copy moves away. Face copies follow the normal extrusion direction, retain the selected region's connections and have no side walls. **Individual faces** gives each face its own copy. Vertex copies follow the screen plane and have no connecting edges.
+
+Release to apply, or press **Escape** to cancel. Ctrl-clicking without dragging makes no copy. The new components stay selected; one Undo restores the original mesh. Detached point copying bypasses snap-and-join so a nearby target cannot accidentally reconnect the copy. Isolated points can be selected, moved, extruded, welded, joined into a face or deleted. Save them in `.clay` or OBJ; surface-only exports and reconstruction tools cannot preserve isolated points.
+
+![Detached face copies](../images/detached-copy-faces.png)
+
+### A new vertex group for each edit
+
+Enable **New vertex group after each edit** in Modeling to group the affected surviving geometry after every successful edit. The group takes the operation's name, with a number for repeated names. It is created in the same Undo step as the geometry. The option is off by default and is stored in Modeling presets.
+
+Transforms group only the moved vertices. Topology changes include the corner vertices of new or changed faces. Deletion groups the surviving boundary when there is one; it never creates an empty group. Selection, cancellation, failed edits and unchanged geometry do not add groups. Existing groups and masks remain available.
+
+### Chamfer and rounded bevel
+
+Choose **Chamfer edges** or **Bevel edges** in Edge mode, and **Chamfer vertices** or **Bevel vertices** in Vertex mode. All four are in **Q**, the Modeling menu and the Mesh panel. Chamfer cuts a flat surface across the selected edge or corner. Bevel rounds the cut; **Segments** controls its resolution from 2 to 8.
+
+Drag upward on the selected component to increase **Width**, then release to apply. Escape cancels. Alternatively, enter a width and choose **Apply amount**. Q also exposes the width and segments for the active tool. Each cut is one Undo step and supports the optional new vertex group.
+
+Use closed surface fans with convex face corners. Open borders, loose edges, disconnected corner fans and cuts that overlap are rejected; reduce the width or selection when needed. Masks and hidden geometry remain protected. Untouched UVs remain intact; edited faces need unwrapping before texture painting. The existing face-mode **Bevel boundary** remains available for its original region operation.
+
+![Rounded edge bevel](../images/bevel-edge.png)
+![Rounded vertex bevel](../images/bevel-vertex.png)
+
 ### Construct from edges, points and face centers
 
 Choose a component mode to reveal its construction tools. Measured tools support numeric amounts, pen previews, Escape to cancel, tap repeat and one Undo per completed edit.
@@ -329,11 +417,25 @@ Choose a component mode to reveal its construction tools. Measured tools support
 | Edge | Split edge | Drag along the edge to place a new vertex. **Position** runs from 0 to 1, starting at the circled endpoint nearest the initial press; insertion stays just inside the endpoints. |
 | Edge | Collapse edge | Drag along the edge or choose **Marked end**, **Midpoint**, or **Other end**. This merges both endpoints at the chosen position. |
 | Vertex | Split point | Set Radius or drag up/down to replace a vertex with a ring and center patch. **Double ring sides (4 to 8)** adds one corner inside each adjacent face. **Circularize ring**, **Triangulate center**, and **Crease ring** control the patch. |
-| Vertex | Extrude point | Set Distance or drag up/down to create a pointed protrusion along the averaged surface normal. **Base radius** controls its footprint independently; circularization and ring creasing are optional. |
+| Vertex | Extrude point | Drag to add one vertex joined to the original by one edge. The new endpoint follows the cursor in the screen plane at the original vertex’s depth. Existing faces stay intact. Distance and tap-to-repeat reuse the last drag direction. |
 | Face | Insert center point | Tap a face to insert its center and connect it to every corner with triangles. |
 | Face | Split face | Tap to connect a new center to shared edge midpoints, producing quads inside each selected face. |
 
-**Insert center point** and **Split face** act on a tap even when Tap to repeat is disabled. Both also offer **Apply to selection**. New construction tools clear the component selection after committing; hover or select the new geometry for the next operation. Their buttons can be added to custom menus, shelves and shortcuts, and their settings save in tool presets.
+**Insert center point** and **Split face** act on a tap even when Tap to repeat is disabled. Both also offer **Apply to selection**. **Extrude point** keeps its new endpoints selected for the next extrusion or move. A snap join keeps its target selected; other construction tools clear the component selection after committing; hover or select the new geometry for the next operation. Their buttons can be added to custom menus, shelves and shortcuts, and their settings save in tool presets.
+
+Point extrusion works on surface borders as well as interior vertices. It has no base radius or ring settings. Use **Select**, **Move**, **Delete vertices**, or the Z region tools on the new endpoint; each extrusion is one Undo/Redo step. Each new drag sets a fresh direction, including when extending a loose endpoint. Orbiting changes the drawing plane; perspective and camera roll are respected. Drag once before using Apply amount.
+
+![One new vertex connected to the original by a single edge](../images/point-extrude-orthographic.png)
+
+Loose edges save in `.clay` projects and OBJ line records. Surface-only operations such as remeshing, slicing and solidifying require those edges to be removed first. Other exchange formats currently require faces only. Use **Create face** to fill three or four selected vertices or the endpoints of selected edges, including a loose-edge outline. Edges that become part of the face are reused.
+
+**Snap and join** is on by default for point and edge extrusion. Drag a point near a visible vertex on the active mesh, or an open edge near a compatible open edge. A gold marker shows **Join vertex** or **Join edge** before release. Release connects to the existing target without duplicating its vertices. Hold **Shift** at any time during the drag for free extrusion; releasing Shift restores snapping. Move away from the target to continue freely, or press Escape to cancel.
+
+The pixel radius controls how near the target must be. Snapping uses one source component and its exact symmetry copies. Independent multiple selections extrude normally. Hidden, obstructed, or protected targets are skipped. Edge joins require separate endpoints and a valid connecting face. Each join is one Undo/Redo step and clears the measured repeat to avoid replaying the connection. Numeric Apply and tap repeat remain ordinary extrusion.
+
+![A point attracted to an existing vertex before release](../images/extrusion-snap-vertex-false.png)
+
+![An open edge joining another open edge without a duplicate seam](../images/extrusion-snap-edge-false.png)
 
 To make an eight-sided patch at a four-quad junction:
 
@@ -401,17 +503,26 @@ The cuts share vertices across faces and preserve masks, group weights, and crea
 
 For loops around a hole or selected region, use the existing [support-loop controls](edges.md).
 
-### Dissolve selected loops
+<a id="dissolve-selected-loops"></a>
 
-1. Choose **Edge → Select → Loop**, then select the loop to remove. Use **Add** to select several separate loops.
-2. Click **Dissolve selected loops**. The loop edges and redundant vertices disappear; the surrounding faces merge into quads without opening holes.
-3. Use **Undo** to restore the entire operation, including stored subdivision levels.
+### Delete loops
 
-This requires complete, noncrossing interior quad loops. An open loop must end at the mesh border. Partial loops, selected border edges, hidden adjoining faces, and intersections are rejected without changing the mesh. Merging across different face-group labels is also rejected. Remaining vertex masks/group weights and boundary creases are preserved. Removing a curved loop can simplify the shape.
+Choose **Edge → Select → Loop**, then select the complete loop to remove. Use **Add** for several separate loops. Open **Q → Topology**, the toolbar **Modeling** menu, or **Mesh → Modeling → Topology** and choose:
 
-![Two mirrored edge loops selected for removal](../images/modeling-dissolve-before.png)
+| Option | Result |
+| --- | --- |
+| **Delete loop (keep surface)** | Dissolves the selected edges and redundant vertices, joining surrounding faces into quads without opening holes |
+| **Delete loop (leave gap)** | Deletes the adjoining face strip on both sides of the selected edges, leaving an opening |
 
-![The selected loops removed, with larger connected quads remaining](../images/modeling-dissolve-after.png)
+Both apply immediately as one normal **Undo/Redo** step. **Protect mask**, hidden-face protection and exact symmetry apply to both. Use Undo to restore the operation, including stored subdivision levels.
+
+Both require complete, noncrossing interior quad loops. An open loop must end at the mesh border. Partial loops, selected boundary edges, hidden adjoining faces and intersections are rejected without changing the mesh. Keep surface also rejects merging different face-group labels. Remaining vertex masks/group weights and boundary creases are preserved. Removing a curved loop with Keep surface can simplify the shape.
+
+![Both Delete loop options in Q's Edge topology section](../images/delete-loop-options-1100.png)
+
+| Keep surface | Leave gap |
+| --- | --- |
+| ![Larger connected quads after dissolving the loop](../images/delete-loop-keep-surface-1100.png) | ![The adjoining face strip removed to leave a gap](../images/delete-loop-leave-gap-1100.png) |
 
 ### Connect vertices and create faces
 
@@ -420,22 +531,24 @@ This requires complete, noncrossing interior quad loops. An open loop must end a
 | Action | Selection | Result |
 | --- | --- | --- |
 | **Connect vertices** | In Vertex mode, select opposite corners of one quad | Split the quad along the chosen diagonal; existing edges are never duplicated |
-| **Create face** | In Vertex mode, select every vertex around an existing opening | Create a face or patch using the boundary's order |
+| **Create face** | Select three or four vertices, or edges with three or four distinct endpoints; for larger openings select the complete boundary | Create a triangle, quad or triangulated patch, reusing existing vertices |
 | **Fill boundary** | In Edge mode, choose Boundary and select a complete opening | Fill the selected loop; other holes remain open |
 
-Choose an action to preview it; Modeling returns to **Select** while you inspect. Inspect the shaded surface and wireframe, orbit the view, then use **Apply topology** near the top of Modeling. **Cancel topology preview** or Escape discards it and keeps the selection. Apply creates one Undo step and clears the old component selection. Undo restores the geometry and subdivision levels; Redo restores the result. The applied result saves with the project; an uncommitted preview is session-only.
+Choose an action to apply it immediately. Each successful action creates one Undo step and clears the old component selection; Modeling returns to **Select** ready for the next edit. **Delete faces** also applies immediately as one Undo step. Undo restores the previous geometry and subdivision levels; Redo restores the result. Save the project to keep the edits.
 
-Changing the selection or modelling tool cancels the preview. Switching to a sculpt brush offers **Apply and switch**, **Discard and switch**, or **Keep editing**. Hidden and masked boundary vertices remain protected; **Protect mask** can be turned off deliberately before generating a new preview. Changed targets or protection settings require a fresh preview.
+Invalid selections or protected geometry leave the mesh and history unchanged. Hidden and masked boundary vertices remain protected; **Protect mask** can be turned off deliberately before running an action. Switching to a sculpt brush after construction needs no additional confirmation.
 
-For example, orbit to expose the adjoining surfaces and select the vertices around a four-sided opening and choose **Create face**. A convex rim produces one quad. A triangular rim produces one triangle; concave four-sided and larger rims produce a triangulated patch with visible internal edges. Only the selected boundary is welded. The tool does not add loose edges or vertices. To extend an open surface instead, use **Extrude edge**.
+For example, select four vertices around an opening or a loose outline and choose **Q → Create face**. You can also select two opposite edges to use their four endpoints. A convex rim produces one quad. A triangular rim produces one triangle; concave four-sided and larger rims produce a triangulated patch with visible internal edges. Only the selected boundary is welded. The tool does not add loose edges or vertices. To extend an open surface instead, use **Extrude edge**.
 
-The new face follows the neighbouring winding. Crossed, branched, collapsed, obstructed or highly nonplanar openings are rejected before Apply. Basic filling supports up to 1,024 vertices per loop and mild nonplanarity within 5% of the rim span; it does not optimise quad flow or patch density. Advanced hole caps are tracked in [#125](https://github.com/dustyghost/clay-form/issues/125).
+Existing edges determine the new face order, and adjoining faces determine its winding. A standalone outline uses a consistent orientation. Crossed, branched, collapsed, obstructed or highly nonplanar openings are rejected without changing the mesh. Basic filling supports up to 1,024 vertices per loop and mild nonplanarity within 5% of the rim span; it does not optimise quad flow or patch density. Advanced hole caps are tracked in [#125](https://github.com/dustyghost/clay-form/issues/125).
 
 Existing masks, materials, groups, creases and unaffected UV corners remain intact. New caps have no face group and start unmapped; unwrap them before texture painting. Connecting a quad preserves compatible corner UVs and UV masks. A seam or a mixture of mapped/unmapped triangles across its internal diagonal needs repair before connecting.
 
-![A quad cap preview using the four selected boundary vertices](../images/create-face-preview.png)
+![A quad cap created from the four boundary vertices](../images/create-face-applied.png)
 
-![An explicit diagonal preview between opposite quad vertices](../images/connect-vertices-preview.png)
+![A face filled from the endpoints of two selected loose edges](../images/create-selected-face-edges-applied.png)
+
+![An explicit diagonal connecting opposite quad vertices](../images/connect-vertices-applied.png)
 
 ### Bridge two partial boundary chains
 
@@ -443,19 +556,19 @@ Use this to fill the gap between two open edge runs on the active model.
 
 1. Enable **Modeling**, choose **Edge → Select → Individual**, and use **Add** to select the edges in two separate chains. Each chain needs two endpoints and the same number of edges. Leave the rest of each opening unselected.
 2. Expand **Topology** and set **Bridge segments** (1–16). This divides the distance across the gap; it does not add edges along either source chain.
-3. Choose **Bridge partial chains**. Inspect the quad strip in wireframe, orbit to check its shape, then choose **Apply topology** or **Cancel topology preview**.
+3. Choose **Bridge partial chains** to apply the quad strip immediately. Orbit to inspect it; Undo restores the original opening in one step.
 
-Endpoints pair in opposite boundary directions so the strip shares the neighbouring winding. There is no twist offset for an open chain: reversing one pair would twist the strip or break its orientation. To change alignment, cancel and select different endpoints. Unequal counts need an explicit edge split or a revised selection. Crossings, folded strips, obstructions, shared endpoints and branching chains are rejected.
+Endpoints pair in opposite boundary directions so the strip shares the neighbouring winding. There is no twist offset for an open chain: reversing one pair would twist the strip or break its orientation. To change alignment after applying, Undo and select different endpoints. Unequal counts need an explicit edge split or a revised selection. Crossings, folded strips, obstructions, shared endpoints and branching chains are rejected.
 
-Existing vertex attributes and face UVs stay intact. New vertices interpolate masks, materials and group weights between paired endpoints; new faces have no face group and are unmapped until unwrapped. Exact mirror/radial copies must form an unambiguous set of pairs. A preview accepts at most 2,048 selected edges including symmetry copies and respects mesh capacity.
+Existing vertex attributes and face UVs stay intact. New vertices interpolate masks, materials and group weights between paired endpoints; new faces have no face group and are unmapped until unwrapped. Exact mirror/radial copies must form an unambiguous set of pairs. An edit accepts at most 2,048 selected edges including symmetry copies and respects mesh capacity.
 
-![A three-segment quad bridge between two selected open edge runs](../images/partial-chain-bridge-preview.png)
+![A three-segment quad bridge between two selected open edge runs](../images/partial-chain-bridge-applied.png)
 
 Use **Bridge boundaries** for complete equal-count loops. [Join meshes locally](#join-meshes-locally) owns full open ends on separate submodels. Partial-chain bridging does not select face regions, fuse solids or remesh the source.
 
 ### Flip or dissolve face regions
 
-In **Modeling → Face → Select**, choose the region and expand **Topology**. Both actions preview privately and use **Apply topology**, **Cancel topology preview** and one-step Undo/Redo.
+In **Modeling → Face → Select**, choose the region and expand **Topology**. Both actions apply immediately with one-step Undo/Redo. They are also available in **Q** for Face mode.
 
 | Action | How to select | What changes |
 | --- | --- | --- |
@@ -470,9 +583,9 @@ Dissolve rejects face-group boundaries, internal creases, hard shading edges and
 
 ![Selected triangles around an interior vertex before dissolution](../images/face-region-selected.png)
 
-![The same outline previewed as one quad after dissolution](../images/face-region-dissolve-preview.png)
+![The same outline after immediate dissolution into one quad](../images/face-region-dissolve-applied.png)
 
-All three operations respect hidden geometry, **Protect mask** and exact symmetry. Each face-region preview supports up to 4,096 selected faces including symmetry copies and 1,024 corners per outline. Apply replaces stored subdivision levels; Undo restores them. Changing the selection, tool, protection, symmetry or bridge segment count requires a fresh preview. Brush switching uses the same Apply/Discard/Keep editing choice as manual construction. The actions are also available in Search, shelves and configurable shortcuts.
+All three operations respect hidden geometry, **Protect mask** and exact symmetry. Each face-region edit supports up to 4,096 selected faces including symmetry copies and 1,024 corners per outline. Each successful edit replaces stored subdivision levels; Undo restores them. Failed edits preserve the selection and history. The actions are also available in Q, Search, shelves and configurable shortcuts, and support **New vertex group after each edit**.
 
 ### Slide and repair topology
 
@@ -483,18 +596,25 @@ Expand **Topology** for operations on the current selection:
 | Mode | Action | Result and limits |
 | --- | --- | --- |
 | Face | Delete faces | Removes the selected faces and opens holes |
-| Face | Flip face orientation | Previews reversed winding on complete connected shells |
-| Face | Dissolve face region | Previews a flat patch with redundant internal topology removed |
-| Edge | Fill boundary | Previews complete planar or mildly nonplanar boundaries; concave outlines are triangulated |
-| Edge | Bridge boundaries | Connects two equal-count complete open boundaries and their symmetry copies with a strip of quads |
-| Edge | Bridge partial chains | Previews two equal-count open edge runs with 1–16 segments across the gap |
+| Face | Flip face orientation | Reverses winding on complete connected shells |
+| Face | Dissolve face region | Removes redundant internal topology from flat patches |
+| Vertex | Delete vertices | Removes the selected vertices and all attached faces, leaving an opening |
+| Edge | Delete loop (keep surface) | Dissolves complete interior quad loops and joins the surrounding faces |
+| Edge | Delete loop (leave gap) | Removes the faces touching complete interior quad loops and leaves an opening |
+| Edge | Fill boundary | Immediately fills complete planar or mildly nonplanar boundaries; concave outlines are triangulated |
+| Edge | Bridge boundaries | Connects two equal-count open boundaries and their symmetry copies with a strip of quads |
+| Edge | Bridge partial chains | Connects equal-count open edge runs with 1–16 segments across the gap |
 | Edge | Split edges | Adds midpoint vertices; adjoining polygons may become triangles |
 | Edge | Collapse edges | Merges each connected set of selected edge endpoints at their average position |
-| Vertex | Connect vertices | Previews a split between two opposite corners of a quad |
-| Vertex | Create face | Previews a patch from the vertices of a complete opening |
+| Vertex | Connect vertices | Immediately splits a quad between two opposite corners |
+| Vertex or Edge | Create face | Immediately fills three or four vertices or edge endpoints; larger selections require a complete opening |
 | Vertex | Weld vertices | Merges two vertices at their midpoint, including corresponding symmetry pairs |
 
-Use **Target → Boundary** to select a complete hole. For two boundaries or vertices, use **Add** to select the second. These edits preserve surviving weights and creases, respect **Protect mask**, and reject invalid or ambiguous results as a whole. The complete-loop **Bridge boundaries** action does not detect arbitrary intersections with other surfaces; **Bridge partial chains** checks its new strip for crossings. Delete and collapse change the surface; **Dissolve selected loops** removes redundant loops while keeping it connected. Each completed edit is one Undo step.
+Use **Target → Boundary** to select a complete hole. For two boundaries or vertices, use **Add** to select the second. These edits preserve surviving weights and creases, respect **Protect mask**, and reject invalid or ambiguous results as a whole. Complete-loop Bridge boundaries does not detect arbitrary intersections with other surfaces; Bridge partial chains checks its new strip for crossings. Delete and collapse change the surface; **Delete loop (keep surface)** removes redundant loops while keeping it connected; **Delete loop (leave gap)** removes their adjoining face strips. Each completed edit is one Undo step.
+
+To remove selected components, choose **Vertex → Q → Topology → Delete vertices** or **Face → Q → Topology → Delete faces**. Vertex deletion also removes every attached face; face deletion removes only the selected faces. Both apply immediately with normal Undo/Redo, preserve protected geometry, and include matching symmetry components. Use the Z selection tools with Ctrl+Shift to select many components before deleting.
+
+![Delete vertices in the Q popup](../images/delete-vertices-options-1100.png)
 
 ### Model with symmetry
 
@@ -832,11 +952,13 @@ Open **Modeling** in the toolbar, or press **Q** over the viewport for its quick
 
 The same controls are also in **Model → Modeling** on the top bar. Use its Panel controls to pin a movable window or dock a collapsible section on the left or right. These placements are saved with your workspace. Pinned and docked controls stay open when you choose a function; the drop-down and Q popup close after a function choice. Opening or moving the menu alone does not edit the model.
 
-The Q menu shows functions for the current component mode and marks the active choices. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu and keeps the current selection. Escape, an outside click or focus loss dismisses the menu without editing geometry. Finish the current drag before opening it.
+The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Delete vertices**, **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes **Create face**, both **Delete loop** options, **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu and keeps the current selection. Escape, an outside click or focus loss dismisses the menu without editing geometry. Finish the current drag before opening it.
+
+![Q menu with topology actions beside Modeling functions](../images/modeling-topology-q-1100.png)
 
 Change or clear **Modeling quick menu** in **Settings → Key settings**. Its displayed tooltip follows the assigned shortcut; the default Q does not replace right-drag orbit or middle-drag pan. Existing custom bindings remain intact when preferences upgrade; if Q is already assigned, the new menu starts unbound.
 
-**Q** always opens Modeling. **Z** opens the Mask / Visibility / Slice chooser, whose selected tab decides whether Ctrl+Shift masks, changes visibility or slices. The shared hold and all three quick-menu bindings can be changed, cleared and reset in Key settings. Hold shortcuts support modifier-only and key-plus-modifier chords. Release the hold to restore the previous tool; unfinished gestures are cancelled. **Alt** temporarily reverses Add/Erase masking or Hide/Isolate visibility.
+**Q** always opens Modeling. **Z** opens the Select / Mask / Visibility / Slice chooser. **Select** is available while Modeling is enabled; the selected tab decides whether Ctrl+Shift selects components, masks, changes visibility or slices. The shared hold and all three quick-menu bindings can be changed, cleared and reset in Key settings. Hold shortcuts support modifier-only and key-plus-modifier chords. Release the hold to restore the previous tool; unfinished gestures are cancelled. **Alt** temporarily reverses Add/Erase masking or Hide/Isolate visibility, or removes components in Select (adds when Remove is chosen).
 
 **E** opens transform options. In Modeling it offers Move/Rotate/Scale, Free/Gizmo/Axis interaction and applicable axis choices. Otherwise it offers object transforms, World axes/Action Line, pivot controls and Respect mask. Opening the menu makes no geometry edit; choose options and then an operation to begin using it.
 

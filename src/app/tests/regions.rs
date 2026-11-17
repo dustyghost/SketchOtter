@@ -67,44 +67,66 @@ fn select(app: &mut App, bridge: bool) {
 }
 
 #[test]
-fn topology_regions_controller_previews_cancel_commit_once_undo_redo_and_save() {
+fn topology_regions_controller_commits_immediately_with_groups_undo_redo_and_save() {
     for edit in [
         TopologyEdit::BridgeChains,
         TopologyEdit::FlipFaces,
         TopologyEdit::DissolveFaces,
     ] {
-        let (mut app, ctx) = setup(edit);
-        let before = app.document.geometry_snapshot();
-        let counts = app.document.history_counts();
-        app.dispatch(Command::ModelTopology(edit), &ctx);
-        let preview = app
-            .viewport
-            .modeling
-            .preview()
-            .expect(&app.ui.status)
-            .clone();
-        assert_eq!(app.document.geometry_snapshot(), before);
-        assert_eq!(app.document.history_counts(), counts);
-        app.dispatch(Command::CancelModelTopology, &ctx);
-        assert!(app.viewport.modeling.topology_preview_label().is_none());
-        assert_eq!(app.document.history_counts(), counts);
-        app.dispatch(Command::ModelTopology(edit), &ctx);
-        app.dispatch(Command::ApplyModelTopology, &ctx);
-        assert_eq!(app.document.mesh(), &preview, "{}", app.ui.status);
-        assert_eq!(app.document.history_counts().0, counts.0 + 1);
-        app.dispatch(Command::Undo, &ctx);
-        assert_eq!(app.document.geometry_snapshot(), before);
-        app.dispatch(Command::Redo, &ctx);
-        assert_eq!(app.document.mesh(), &preview);
-        let saved = serde_json::to_vec(&app.document.project()).unwrap();
-        let reopened: crate::sculpt::Project = serde_json::from_slice(&saved).unwrap();
-        reopened.validate().unwrap();
-        assert_eq!(reopened.mesh, preview);
+        for group in [false, true] {
+            let (mut app, ctx) = setup(edit);
+            app.ui.modeling.new_group = group;
+            let before = app.document.geometry_snapshot();
+            let counts = app.document.history_counts();
+            app.dispatch(Command::ModelTopology(edit), &ctx);
+            let after = app.document.geometry_snapshot();
+            assert_ne!(after, before, "{}", app.ui.status);
+            assert!(app.viewport.modeling.preview().is_none());
+            assert_eq!(app.document.history_counts().0, counts.0 + 1);
+            assert_eq!(after.mesh.vertex_groups.len(), usize::from(group));
+            assert!(app.viewport.modeling.selected.is_empty());
+            match edit {
+                TopologyEdit::BridgeChains => assert_eq!(after.mesh.quads.len(), 5),
+                TopologyEdit::DissolveFaces => assert_eq!(after.mesh.quads.len(), 1),
+                TopologyEdit::FlipFaces => assert_eq!(after.mesh.triangles[0], [0, 4, 1]),
+                _ => unreachable!(),
+            }
+            app.dispatch(Command::Undo, &ctx);
+            assert_eq!(app.document.geometry_snapshot(), before);
+            app.dispatch(Command::Redo, &ctx);
+            assert_eq!(app.document.geometry_snapshot(), after);
+            let saved = serde_json::to_vec(&app.document.project()).unwrap();
+            let reopened: crate::sculpt::Project = serde_json::from_slice(&saved).unwrap();
+            reopened.validate().unwrap();
+            assert_eq!(reopened.mesh, after.mesh);
+            // A failed edit after Undo must preserve geometry, selection and Redo.
+            app.dispatch(Command::Undo, &ctx);
+            app.viewport.modeling.sync(&app.document);
+            let selection = if edit == TopologyEdit::BridgeChains {
+                [Component::Edge([1, 2])].into()
+            } else {
+                [Component::Face(0)].into()
+            };
+            app.viewport.modeling.selected = selection;
+            let selected = app.viewport.modeling.selected.clone();
+            let history = app.document.history_counts();
+            app.dispatch(Command::ModelTopology(edit), &ctx);
+            assert_eq!(
+                app.document.geometry_snapshot(),
+                before,
+                "{}",
+                app.ui.status
+            );
+            assert_eq!(app.document.history_counts(), history);
+            assert_eq!(app.viewport.modeling.selected, selected);
+            app.dispatch(Command::Redo, &ctx);
+            assert_eq!(app.document.geometry_snapshot(), after);
+        }
     }
 }
 
 #[test]
-fn topology_regions_controller_protection_stale_settings_selection_and_failed_retry() {
+fn topology_regions_controller_protection_and_failed_retry_are_atomic() {
     for edit in [
         TopologyEdit::BridgeChains,
         TopologyEdit::FlipFaces,
@@ -112,53 +134,41 @@ fn topology_regions_controller_protection_stale_settings_selection_and_failed_re
     ] {
         let (mut app, ctx) = setup(edit);
         let before = app.document.geometry_snapshot();
-        app.dispatch(Command::ModelTopology(edit), &ctx);
-        app.ui.modeling.protect_mask = false;
-        app.dispatch(Command::ApplyModelTopology, &ctx);
-        assert!(app.ui.status.contains("changed"));
-        assert_eq!(app.document.geometry_snapshot(), before);
-        app.dispatch(Command::ModelTopology(edit), &ctx);
-        app.viewport.modeling.selected.clear();
-        app.dispatch(Command::ApplyModelTopology, &ctx);
-        assert_eq!(app.document.geometry_snapshot(), before);
-        select(&mut app, edit == TopologyEdit::BridgeChains);
-        app.dispatch(Command::ModelTopology(edit), &ctx);
-        app.dispatch(Command::ModelTopology(TopologyEdit::CreateFace), &ctx);
-        assert!(app.viewport.modeling.topology_preview_label().is_none());
-        app.ui.modeling.protect_mask = true;
         let mut masked = before.clone();
         masked.mesh.mask.fill(1.);
-        app.document.replace_geometry(masked).unwrap();
+        app.document.replace_geometry(masked.clone()).unwrap();
         select(&mut app, edit == TopologyEdit::BridgeChains);
+        let history = app.document.history_counts();
         app.dispatch(Command::ModelTopology(edit), &ctx);
         assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
-        assert!(app.viewport.modeling.topology_preview_label().is_none());
+        assert_eq!(app.document.geometry_snapshot(), masked);
+        assert_eq!(app.document.history_counts(), history);
         app.ui.modeling.protect_mask = false;
         app.dispatch(Command::ModelTopology(edit), &ctx);
-        assert!(
-            app.viewport.modeling.topology_preview_label().is_some(),
+        assert_ne!(
+            app.document.geometry_snapshot(),
+            masked,
             "{}",
             app.ui.status
         );
         let mut hidden = before;
         hidden.mesh.hidden_faces = vec![true; hidden.mesh.triangles.len()];
-        app.document.replace_geometry(hidden).unwrap();
+        app.document.replace_geometry(hidden.clone()).unwrap();
         select(&mut app, edit == TopologyEdit::BridgeChains);
+        let history = app.document.history_counts();
         app.dispatch(Command::ModelTopology(edit), &ctx);
         assert!(app.ui.status.contains("hidden"), "{}", app.ui.status);
-        assert!(app.viewport.modeling.topology_preview_label().is_none());
+        assert_eq!(app.document.geometry_snapshot(), hidden);
+        assert_eq!(app.document.history_counts(), history);
     }
 }
 
 #[test]
-fn topology_regions_bridge_options_invalidate_preview_and_presets_remain_compatible() {
+fn topology_regions_bridge_uses_current_segments_and_presets_remain_compatible() {
     let (mut app, ctx) = setup(TopologyEdit::BridgeChains);
-    app.dispatch(Command::ModelTopology(TopologyEdit::BridgeChains), &ctx);
-    let before = app.document.geometry_snapshot();
     app.ui.modeling.bridge_segments = 4;
-    app.dispatch(Command::ApplyModelTopology, &ctx);
-    assert!(app.ui.status.contains("changed"));
-    assert_eq!(app.document.geometry_snapshot(), before);
+    app.dispatch(Command::ModelTopology(TopologyEdit::BridgeChains), &ctx);
+    assert_eq!(app.document.mesh().quads.len(), 6, "{}", app.ui.status);
     let options = app.ui.modeling.options();
     let mut legacy = serde_json::to_value(options).unwrap();
     legacy.as_object_mut().unwrap().remove("bridge_segments");
@@ -176,4 +186,36 @@ fn topology_regions_bridge_options_invalidate_preview_and_presets_remain_compati
         .validate()
         .is_err()
     );
+}
+
+#[test]
+fn topology_regions_preserve_loose_edges_and_detached_points() {
+    for edit in [
+        TopologyEdit::BridgeChains,
+        TopologyEdit::FlipFaces,
+        TopologyEdit::DissolveFaces,
+    ] {
+        let (mut app, ctx) = setup(edit);
+        let mut source = app.document.geometry_snapshot();
+        let mesh = &mut source.mesh;
+        let n = mesh.vertices.len();
+        let points = [Vec3(3., 0., 1.), Vec3(3., 1., 1.), Vec3(4., 0., 1.)];
+        mesh.vertices.extend(points);
+        mesh.mask.resize(mesh.vertices.len(), 0.);
+        mesh.loose_edges.push([n, n + 1]);
+        mesh.loose_vertices.push(n + 2);
+        app.document.replace_geometry(source.clone()).unwrap();
+        select(&mut app, edit == TopologyEdit::BridgeChains);
+        app.dispatch(Command::ModelTopology(edit), &ctx);
+        let mesh = app.document.mesh();
+        assert_ne!(mesh, &source.mesh, "{}", app.ui.status);
+        assert_eq!(mesh.loose_edges.len(), 1);
+        assert_eq!(mesh.loose_vertices.len(), 1);
+        assert_eq!(
+            mesh.loose_edges[0].map(|v| mesh.vertices[v]),
+            [points[0], points[1]]
+        );
+        assert_eq!(mesh.vertices[mesh.loose_vertices[0]], points[2]);
+        mesh.validate().unwrap();
+    }
 }

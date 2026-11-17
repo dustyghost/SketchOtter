@@ -14,6 +14,12 @@ pub struct Dab {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Mesh {
+    /// Explicit edges with no incident face, stored as sorted unique endpoint pairs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub loose_edges: Vec<[usize; 2]>,
+    /// Explicit isolated modeling points, sorted unique vertex indices.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub loose_vertices: Vec<usize>,
     /// Face-corner coordinates keep UV seams independent of sculpt vertices.
     #[serde(default, skip_serializing_if = "super::uv::UvMap::is_empty")]
     pub uv: super::uv::UvMap,
@@ -47,6 +53,8 @@ impl Mesh {
     }
     pub fn extract_masked_threshold(&self, threshold: f32) -> Result<Self, String> {
         let mut result = Self {
+            loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,
@@ -139,6 +147,8 @@ impl Mesh {
             })
             .collect();
         let mut result = Self {
+            loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,
@@ -153,6 +163,14 @@ impl Mesh {
         };
         let mut indices = vec![usize::MAX; self.vertices.len()];
         for &i in kept.iter().flatten() {
+            indices[i] = 0;
+        }
+        for &i in self
+            .loose_edges
+            .iter()
+            .flatten()
+            .chain(self.loose_vertices.iter())
+        {
             indices[i] = 0;
         }
         let mut old_vertices = Vec::new();
@@ -259,6 +277,7 @@ impl Mesh {
         {
             return Err("Invalid mesh data".into());
         }
+        self.validate_loose_edges()?;
         if !self.quads.is_empty() {
             let key = |mut t: [usize; 3]| {
                 t.sort_unstable();

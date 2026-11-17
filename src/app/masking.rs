@@ -100,6 +100,8 @@ impl App {
         }
         let preset = &mut self.ui.preferences.mask_preset;
         match action {
+            Action::TemporaryMaskRectangle => preset.shape = MaskShape::Rectangle,
+            Action::TemporaryMaskVisibleOnly(visible) => preset.visible_only = visible,
             Action::TemporaryMaskBrush => preset.shape = MaskShape::Brush,
             Action::TemporaryMaskLasso => preset.shape = MaskShape::Lasso,
             Action::TemporaryMaskLine => preset.shape = MaskShape::Line,
@@ -466,6 +468,7 @@ mod tests {
             erase: true,
             flip: true,
             brush_id: Some(brush.identity()),
+            visible_only: true,
         };
         let encoded = serde_json::to_string(&app.ui.preferences).unwrap();
         let loaded: Preferences = serde_json::from_str(&encoded).unwrap();
@@ -570,6 +573,13 @@ mod tests {
             Some(ViewportMenuContext::Mask)
         );
         assert!(app.ui.mask_active);
+        app.ui.viewport_menu.selected = app
+            .ui
+            .viewport_menu_entries(ViewportMenuContext::Mask, &app.document)
+            .iter()
+            .position(|e| e.action == Action::TemporaryMaskLasso)
+            .unwrap()
+            - 1;
         frame(
             &mut app,
             &ctx,
@@ -594,7 +604,12 @@ mod tests {
             Modifiers::ALT,
             vec![with_alt(Key::F2, true), with_alt(Key::F2, false)],
         );
-        app.ui.viewport_menu.selected = 4;
+        app.ui.viewport_menu.selected = app
+            .ui
+            .viewport_menu_entries(ViewportMenuContext::Mask, &app.document)
+            .iter()
+            .position(|e| e.action == Action::TemporaryMaskErase)
+            .unwrap();
         frame(
             &mut app,
             &ctx,
@@ -663,8 +678,17 @@ mod tests {
         render(&mut app, vec![key(Key::M, true), key(Key::Z, true)]);
         let menu = render(&mut app, vec![]);
         assert!(app.ui.viewport_menu.context.is_some());
-        app.ui.viewport_menu.selected = 2;
+        app.ui.viewport_menu.selected = app
+            .ui
+            .viewport_menu_entries(
+                crate::ui::context_menu::ViewportMenuContext::Mask,
+                &app.document,
+            )
+            .iter()
+            .position(|entry| entry.action == Action::TemporaryMaskLine)
+            .unwrap();
         render(&mut app, vec![key(Key::Enter, true)]);
+        assert_eq!(app.ui.preferences.mask_preset.shape, MaskShape::Line);
         render(&mut app, vec![]);
         let start = Pos2::new(500., 120.);
         let end = Pos2::new(500., 680.);

@@ -84,6 +84,21 @@ impl Viewport {
                                 .iter()
                                 .all(|v| polygons[f].vertices.contains(v))
                         }),
+                        Component::Vertex(v)
+                            if mesh.loose_vertices.contains(&v)
+                                || mesh.loose_edges.iter().any(|e| e.contains(&v)) =>
+                        {
+                            scene.point_unoccluded(mesh.vertices[v])
+                        }
+                        Component::Edge(edge) if mesh.loose_edges.contains(&edge) => {
+                            let start = mesh.vertices[edge[0]];
+                            let delta = mesh.vertices[edge[1]] - start;
+                            let distance = scene
+                                .axis_parameter(p, start, delta.norm())
+                                .unwrap_or(delta.len() * 0.5)
+                                .clamp(0., delta.len());
+                            scene.point_unoccluded(start + delta.norm() * distance)
+                        }
                         Component::Vertex(v) => scene.pick(p).is_some_and(|hit| {
                             (hit.0 - mesh.vertices[v]).len() < 2. / scene.scale_at(mesh.vertices[v])
                         }),
@@ -344,6 +359,7 @@ impl Viewport {
 
 impl ModelingState {
     pub fn convert_selection(&mut self, mesh: &Mesh, mode: ComponentMode, boundary: bool) {
+        self.clear_selection_history();
         let vertices: BTreeSet<_> = self.selected_vertices(mesh).into_iter().collect();
         let faces = mesh.polygons();
         self.selected = match mode {
@@ -363,7 +379,7 @@ impl ModelingState {
                         }
                     }
                 }
-                mesh.polygon_edges()
+                mesh.model_edges()
                     .into_iter()
                     .filter(|e| {
                         if boundary {
@@ -386,6 +402,41 @@ impl Viewport {
         mesh: &Mesh,
     ) -> Result<Vec<Component>, String> {
         let faces = mesh.polygons();
+        if span == SelectionSpan::Connected
+            && !matches!(seed, Component::Face(_))
+            && (!mesh.loose_edges.is_empty() || !mesh.loose_vertices.is_empty())
+        {
+            let edges: BTreeSet<_> = faces
+                .iter()
+                .filter(|p| p.visible)
+                .flat_map(|p| p.edges().map(|(a, b)| [a.min(b), a.max(b)]))
+                .chain(mesh.visible_loose_edges())
+                .collect();
+            let mut vertices: BTreeSet<_> = match seed {
+                Component::Vertex(v) => [v].into(),
+                Component::Edge(e) => e.into(),
+                _ => unreachable!(),
+            };
+            let mut pending: Vec<_> = vertices.iter().copied().collect();
+            while let Some(v) = pending.pop() {
+                for e in edges.iter().filter(|e| e.contains(&v)) {
+                    for &w in e {
+                        if vertices.insert(w) {
+                            pending.push(w);
+                        }
+                    }
+                }
+            }
+            return Ok(if matches!(seed, Component::Vertex(_)) {
+                vertices.into_iter().map(Component::Vertex).collect()
+            } else {
+                edges
+                    .into_iter()
+                    .filter(|e| e.iter().all(|v| vertices.contains(v)))
+                    .map(Component::Edge)
+                    .collect()
+            });
+        }
         let seed_face = match seed {
             Component::Face(f) => Some(f),
             Component::Edge(e) => faces
@@ -492,6 +543,8 @@ mod angle_tests {
             triangles: vec![],
             quads: vec![],
             mask: vec![],
+            loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: vec![],
             shading_seams: None,

@@ -343,11 +343,15 @@ impl App {
             Command::Path(_) | Command::Instances(_) => unreachable!(),
             command @ (Command::ModelingMode(..)
             | Command::ModelingComponent(..)
+            | Command::ModelSnap
+            | Command::ModelSnapApply
+            | Command::ModelSnapCancel
+            | Command::ModelSnapRetarget
             | Command::ClearModelSelection
+            | Command::ModelResizeSelection(_)
+            | Command::ModelSelectionHistory(_)
             | Command::ModelBoundary
             | Command::ModelTopology(..)
-            | Command::ApplyModelTopology
-            | Command::CancelModelTopology
             | Command::ModelRepeat
             | Command::ModelPreviewFuse
             | Command::ModelApply

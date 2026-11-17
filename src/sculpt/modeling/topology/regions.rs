@@ -24,7 +24,7 @@ impl Mesh {
             .flat_map(|&f| symmetry.face_copies(f))
             .collect();
         if selected.len() > 4096 {
-            return Err("Edit at most 4096 faces in one region preview".into());
+            return Err("Edit at most 4096 faces in one region edit".into());
         }
         let touched: Vec<_> = selected
             .iter()
@@ -71,20 +71,10 @@ impl Mesh {
         }
         manifold(&out)?;
         crate::sculpt::fusion::validate_surface(&out)?;
-        // Compact only dissolution's unused interior vertices, carrying hard-edge
-        // indices as well as UV seams through the same remapping.
+        // Keep the base branch's loose edges, isolated points and shared
+        // UV/hard-edge remapping when removing redundant surface vertices.
         if edit == TopologyEdit::DissolveFaces {
-            let used: BTreeSet<_> = out.triangles.iter().flatten().copied().collect();
-            let mapping: BTreeMap<_, _> = used.iter().enumerate().map(|(i, &v)| (v, i)).collect();
-            let hard: Vec<_> = out
-                .shading_edges()
-                .iter()
-                .filter_map(|&[a, b]| Some(edge(*mapping.get(&a)?, *mapping.get(&b)?)))
-                .collect();
-            out = crate::sculpt::fusion::compact(out);
-            if !hard.is_empty() {
-                out.set_shading_seams(hard);
-            }
+            out.compact_model_vertices();
         }
         symmetry.validate_result(&out)?;
         Ok(out)

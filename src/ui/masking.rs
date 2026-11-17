@@ -14,7 +14,7 @@ impl UiState {
                 self.settings_open = true;
             }
             ui.weak("Hold over a model in Sculpt or Modeling. Release to restore your tool and component selection.");
-            for (shape, action) in [(MaskShape::Brush, Action::TemporaryMaskBrush), (MaskShape::Lasso, Action::TemporaryMaskLasso), (MaskShape::Line, Action::TemporaryMaskLine)] {
+            for (shape, action) in [(MaskShape::Brush, Action::TemporaryMaskBrush), (MaskShape::Rectangle, Action::TemporaryMaskRectangle), (MaskShape::Lasso, Action::TemporaryMaskLasso), (MaskShape::Line, Action::TemporaryMaskLine)] {
                 if ui.selectable_label(self.preferences.mask_preset.shape == shape, shape.label()).customize(action.clone()).clicked() {
                     commands.push(Command::Action(action));
                 }
@@ -28,6 +28,13 @@ impl UiState {
             });
             if self.preferences.mask_preset.shape == MaskShape::Line && ui.selectable_label(self.preferences.mask_preset.flip, "Flip side").customize(Action::TemporaryMaskFlip).clicked() {
                 commands.push(Command::Action(Action::TemporaryMaskFlip));
+            }
+            if self.preferences.mask_preset.shape != MaskShape::Brush {
+                ui.horizontal_wrapped(|ui| {
+                    for (visible, label) in [(true, "Visible only"), (false, "Through mesh")] {
+                        if ui.selectable_label(self.preferences.mask_preset.visible_only == visible, label).clicked() { commands.push(Command::Action(Action::TemporaryMaskVisibleOnly(visible))); }
+                    }
+                });
             }
             let selected = self.preferences.mask_preset.brush_index(document);
             search::mark_destination(ui, "setting:Mask brush preset");
@@ -103,12 +110,57 @@ impl UiState {
         let preset = &self.preferences.mask_preset;
         let enabled = document.primitive().is_none() && document.active_visible();
         let mut entries = [
-            (Action::TemporaryMaskBrush, "Surface brush", preset.shape == MaskShape::Brush, "Paint the visible surface using the remembered Mask brush preset."),
-            (Action::TemporaryMaskLasso, "Through-depth lasso", preset.shape == MaskShape::Lasso, "Draw a closed outline to mask vertices at every depth; hidden geometry stays protected."),
-            (Action::TemporaryMaskLine, "Through-depth line", preset.shape == MaskShape::Line, "Draw a dividing line to mask one side through every depth."),
-            (Action::TemporaryMaskAdd, "Add mask", !preset.erase, "Add protection with the temporary mask tool."),
-            (Action::TemporaryMaskErase, "Erase mask", preset.erase, "Erase protection with the temporary mask tool."),
-        ].into_iter().map(|(action,label,selected,hint)| ViewportMenuEntry { action, label: label.into(), selected, enabled, hint: hint.into() }).collect::<Vec<_>>();
+            (
+                Action::TemporaryMaskBrush,
+                "Surface brush",
+                preset.shape == MaskShape::Brush,
+                "Paint the visible surface using the remembered Mask brush preset.",
+            ),
+            (
+                Action::TemporaryMaskRectangle,
+                "Rectangle",
+                preset.shape == MaskShape::Rectangle,
+                "Drag a rectangle to mask its vertices.",
+            ),
+            (
+                Action::TemporaryMaskLasso,
+                "Lasso",
+                preset.shape == MaskShape::Lasso,
+                "Draw a closed outline; use Visible only or Through mesh to choose depth.",
+            ),
+            (
+                Action::TemporaryMaskLine,
+                "Line",
+                preset.shape == MaskShape::Line,
+                "Draw a dividing line to mask one side at the chosen depth.",
+            ),
+            (
+                Action::TemporaryMaskAdd,
+                "Add mask",
+                !preset.erase,
+                "Add protection with the temporary mask tool.",
+            ),
+            (
+                Action::TemporaryMaskErase,
+                "Erase mask",
+                preset.erase,
+                "Erase protection with the temporary mask tool.",
+            ),
+        ]
+        .into_iter()
+        .map(|(action, label, selected, hint)| ViewportMenuEntry {
+            action,
+            label: label.into(),
+            selected,
+            enabled,
+            hint: hint.into(),
+        })
+        .collect::<Vec<_>>();
+        if preset.shape != MaskShape::Brush {
+            for (visible, label) in [(true, "Visible only"), (false, "Through mesh")] {
+                entries.push(ViewportMenuEntry { action: Action::TemporaryMaskVisibleOnly(visible), label: label.into(), selected: preset.visible_only == visible, enabled, hint: "Visible only protects occluded and back-facing surfaces. Through mesh includes them. Explicitly hidden geometry stays protected.".into() });
+            }
+        }
         if preset.shape == MaskShape::Line {
             entries.push(ViewportMenuEntry {
                 action: Action::TemporaryMaskFlip,

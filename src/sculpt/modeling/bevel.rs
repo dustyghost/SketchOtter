@@ -1,0 +1,461 @@
+//! Bounded edge strips and vertex corner patches on closed surface fans.
+use super::*;
+
+impl Mesh {
+    /// One segment is a flat chamfer; additional segments round the cut.
+    pub(crate) fn bevel_components(
+        &self,
+        edges: &[[usize; 2]],
+        vertices: &[usize],
+        width: f32,
+        segments: u32,
+        symmetry: &ModelingSymmetry,
+    ) -> Result<Mesh, String> {
+        manifold(self)?;
+        if !width.is_finite() || width <= 0. || !(1..=8).contains(&segments) {
+            return Err("Use a positive width and between one and eight segments".into());
+        }
+        if !self.uv.is_empty() && !self.uv.current(self) {
+            return Err("Restore or clear inactive UVs before changing this topology".into());
+        }
+        let polygons = self.polygons();
+        let selected_edges: BTreeSet<_> = symmetry.edges(edges).into_iter().collect();
+        let selected_vertices: BTreeSet<_> = vertices
+            .iter()
+            .flat_map(|&v| symmetry.vertex_copies(v))
+            .collect();
+        let affected: BTreeSet<_> = selected_edges
+            .iter()
+            .flatten()
+            .copied()
+            .chain(selected_vertices.iter().copied())
+            .collect();
+        if affected.is_empty() || affected.iter().any(|&v| v >= self.vertices.len()) {
+            return Err("Select surface edges or vertices first".into());
+        }
+        self.protect_model_vertices(&affected.iter().copied().collect::<Vec<_>>(), false)?;
+        let mut incidence = BTreeMap::<_, Vec<usize>>::new();
+        for (f, p) in polygons.iter().enumerate() {
+            for (a, b) in p.edges() {
+                incidence.entry(edge(a, b)).or_default().push(f);
+            }
+        }
+        if selected_edges.iter().any(|e| !incidence.contains_key(e))
+            || affected
+                .iter()
+                .any(|v| !incidence.keys().any(|e| e.contains(v)))
+            || incidence
+                .iter()
+                .any(|(e, fs)| e.iter().any(|v| affected.contains(v)) && fs.len() != 2)
+            || self
+                .loose_edges
+                .iter()
+                .any(|e| e.iter().any(|v| affected.contains(v)))
+        {
+            return Err("Choose edges or vertices surrounded by a closed surface; open borders and loose edges cannot be beveled".into());
+        }
+        // Each source corner either becomes a shared cut on an old edge, or an
+        // intersection of two offset lines inside that face.
+        let mut cuts = BTreeMap::<(usize, usize), f32>::new();
+        let mut inner = BTreeMap::<(usize, usize), Vec3>::new();
+        for (f, p) in polygons.iter().enumerate() {
+            let n = normal(self, p);
+            for (i, &v) in p.vertices.iter().enumerate() {
+                if !affected.contains(&v) {
+                    continue;
+                }
+                let a = p.vertices[(i + p.vertices.len() - 1) % p.vertices.len()];
+                let b = p.vertices[(i + 1) % p.vertices.len()];
+                let da = (self.vertices[a] - self.vertices[v]).norm();
+                let db = (self.vertices[b] - self.vertices[v]).norm();
+                let sin = db.cross(da).dot(n);
+                if sin < 1e-5 {
+                    return Err(
+                        "Bevel needs convex face corners; split a flat or concave corner first"
+                            .into(),
+                    );
+                }
+                let sa = selected_edges.contains(&edge(v, a));
+                let sb = selected_edges.contains(&edge(v, b));
+                if selected_vertices.contains(&v) {
+                    cuts.insert((v, a), width);
+                    cuts.insert((v, b), width);
+                } else if sa && sb {
+                    let bisector = (da + db).norm();
+                    let distance = width / bisector.cross(db).len();
+                    if distance
+                        >= 0.45
+                            * (self.vertices[a] - self.vertices[v])
+                                .len()
+                                .min((self.vertices[b] - self.vertices[v]).len())
+                    {
+                        return Err("Reduce the width: neighboring cuts would overlap".into());
+                    }
+                    inner.insert((f, v), self.vertices[v] + bisector * distance);
+                } else if sa || sb {
+                    let neighbor = if sa { b } else { a };
+                    let distance = width / sin;
+                    cuts.entry((v, neighbor))
+                        .and_modify(|d| *d = d.max(distance))
+                        .or_insert(distance);
+                }
+            }
+        }
+        if cuts
+            .iter()
+            .any(|(&(v, a), &d)| d >= 0.45 * (self.vertices[a] - self.vertices[v]).len())
+        {
+            return Err("Reduce the width: neighboring cuts would overlap".into());
+        }
+        let corners = polygons
+            .iter()
+            .map(|p| p.vertices.iter().filter(|v| affected.contains(v)).count())
+            .sum::<usize>();
+        let extra = corners
+            .saturating_mul((segments as usize + 1).pow(2))
+            .saturating_mul(4);
+        if self.vertices.len().saturating_add(extra) > max_vertices()
+            || self.triangles.len().saturating_add(extra) > max_triangles()
+        {
+            return Err(
+                "Bevel would exceed the mesh size limit; use fewer components or segments".into(),
+            );
+        }
+        let mut out = self.empty_topology();
+        out.uv = Default::default();
+        let mut owners: BTreeMap<usize, usize> = affected.iter().map(|&v| (v, v)).collect();
+        let mut cut_ids = BTreeMap::new();
+        for (&(v, a), &d) in &cuts {
+            let t = d / (self.vertices[a] - self.vertices[v]).len();
+            let id = out.append_blend(
+                self,
+                &[(v, 1. - t), (a, t)],
+                self.vertices[v] * (1. - t) + self.vertices[a] * t,
+            );
+            cut_ids.insert((v, a), id);
+            owners.insert(id, v);
+        }
+        let mut inner_ids = BTreeMap::new();
+        for (&key, &position) in &inner {
+            let id = out.append_blend(self, &[(key.1, 1.)], position);
+            inner_ids.insert(key, id);
+            owners.insert(id, key.1);
+        }
+        let mut corners = BTreeMap::<(usize, usize), Vec<usize>>::new();
+        for (f, p) in polygons.iter().enumerate() {
+            for (i, &v) in p.vertices.iter().enumerate() {
+                let a = p.vertices[(i + p.vertices.len() - 1) % p.vertices.len()];
+                let b = p.vertices[(i + 1) % p.vertices.len()];
+                let mut path = if let Some(&id) = inner_ids.get(&(f, v)) {
+                    vec![id]
+                } else if selected_edges.contains(&edge(v, a)) {
+                    vec![*cut_ids.get(&(v, b)).ok_or("Unsupported bevel junction")?]
+                } else if selected_edges.contains(&edge(v, b)) {
+                    vec![*cut_ids.get(&(v, a)).ok_or("Unsupported bevel junction")?]
+                } else {
+                    vec![
+                        cut_ids.get(&(v, a)).copied().unwrap_or(v),
+                        cut_ids.get(&(v, b)).copied().unwrap_or(v),
+                    ]
+                };
+                path.dedup();
+                if selected_vertices.contains(&v) && segments > 1 {
+                    path = rounded_path(
+                        self,
+                        &mut out,
+                        &mut owners,
+                        v,
+                        path[0],
+                        *path.last().unwrap(),
+                        segments,
+                    );
+                }
+                corners.insert((f, v), path);
+            }
+        }
+        // Preserve untouched triangle records and UV corners exactly. Edited
+        // surfaces receive unmapped UVs, without invalidating the rest of the mesh.
+        let source_triangles = crate::sculpt::uv::polygon_triangles(self);
+        let mut changed = Vec::new();
+        let mut source_records = Vec::new();
+        for (f, p) in polygons.iter().enumerate() {
+            let path: Vec<_> = p
+                .vertices
+                .iter()
+                .flat_map(|&v| corners[&(f, v)].iter().copied())
+                .collect();
+            if path == p.vertices {
+                if path.len() == 4 {
+                    out.quads.push(path.clone().try_into().unwrap());
+                }
+                for &t in &source_triangles[f] {
+                    out.triangles.push(self.triangles[t]);
+                    out.polygroups.push(p.group);
+                    out.hidden_faces.push(p.hidden);
+                    source_records.push(t);
+                }
+            } else {
+                changed.push((path, p));
+            }
+        }
+        let unchanged_count = out.triangles.len();
+        for (path, p) in changed {
+            self.component_polygon(&mut out, &path, p, false);
+        }
+        for &[a, b] in &selected_edges {
+            let fs = &incidence[&edge(a, b)];
+            let f = fs[0];
+            let g = fs[1];
+            let (a, b) = polygons[f]
+                .edges()
+                .find(|&(x, y)| edge(x, y) == edge(a, b))
+                .unwrap();
+            let ca = corners[&(f, a)][0];
+            let cb = corners[&(f, b)][0];
+            let da = corners[&(g, a)][0];
+            let db = corners[&(g, b)][0];
+            let aa = rounded_path(self, &mut out, &mut owners, a, ca, da, segments);
+            let bb = rounded_path(self, &mut out, &mut owners, b, cb, db, segments);
+            for i in 0..segments as usize {
+                out.push_polygon(
+                    &[bb[i], aa[i], aa[i + 1], bb[i + 1]],
+                    polygons[f].group,
+                    false,
+                );
+            }
+        }
+        // Remaining boundary cycles belong to the original corner they replace.
+        let mut boundaries = BTreeMap::<_, Vec<(usize, usize)>>::new();
+        for p in out.polygons() {
+            for (a, b) in p.edges() {
+                boundaries.entry(edge(a, b)).or_default().push((a, b));
+            }
+        }
+        let mut caps = BTreeMap::<usize, BTreeMap<usize, usize>>::new();
+        for uses in boundaries.values().filter(|u| u.len() == 1) {
+            let (a, b) = uses[0];
+            if let (Some(&va), Some(&vb)) = (owners.get(&a), owners.get(&b))
+                && va == vb
+                && caps.entry(va).or_default().insert(b, a).is_some()
+            {
+                return Err("This corner has overlapping fans; select a smaller region".into());
+            }
+        }
+        for (v, mut pending) in caps {
+            let start = *pending.keys().next().ok_or("Missing bevel corner")?;
+            let mut ring = vec![start];
+            let mut next = start;
+            loop {
+                next = pending
+                    .remove(&next)
+                    .ok_or("The bevel corner is not a closed loop")?;
+                if next == start {
+                    break;
+                }
+                if ring.contains(&next) {
+                    return Err("The bevel corner crosses itself".into());
+                }
+                ring.push(next);
+            }
+            if !pending.is_empty() || ring.len() < 3 {
+                return Err("This corner has disconnected surface fans".into());
+            }
+            let source = polygons.iter().find(|p| p.vertices.contains(&v)).unwrap();
+            if selected_vertices.contains(&v) && segments > 1 {
+                rounded_cap(self, &mut out, v, &ring, source, segments);
+            } else {
+                self.component_polygon(&mut out, &ring, source, true);
+            }
+        }
+        if self.uv.current(self) {
+            out.uv = self.uv.clone();
+            out.uv.corners = source_records.iter().map(|&t| self.uv.corners[t]).collect();
+            out.uv.corners.resize(out.triangles.len(), [[0.; 2]; 3]);
+            out.uv.removed = source_records.iter().map(|&t| !self.uv.mapped(t)).collect();
+            out.uv.removed.resize(out.triangles.len(), true);
+            if !self.uv.masks.is_empty() {
+                out.uv.masks = source_records.iter().map(|&t| self.uv.masks[t]).collect();
+                out.uv.masks.resize(out.triangles.len(), [0.; 3]);
+            }
+            out.uv.topology = out.triangles.clone();
+        }
+        let valid: BTreeSet<_> = out.polygon_edges().into_iter().collect();
+        out.creases = self
+            .creases
+            .iter()
+            .copied()
+            .filter(|e| valid.contains(e))
+            .collect();
+        out.uv.seams.retain(|e| valid.contains(e));
+        out.set_shading_seams(
+            self.shading_edges()
+                .iter()
+                .copied()
+                .filter(|e| valid.contains(e))
+                .collect(),
+        );
+        manifold(&out)?;
+        crate::sculpt::fusion::validate_added_faces(&out, unchanged_count, &|| false).map_err(
+            |_| "Reduce the width or selection: the bevel intersects nearby faces".to_string(),
+        )?;
+        out.compact_model_vertices();
+        symmetry.validate_result(&out)?;
+        Ok(out)
+    }
+}
+
+fn rounded_path(
+    source: &Mesh,
+    out: &mut Mesh,
+    owners: &mut BTreeMap<usize, usize>,
+    v: usize,
+    a: usize,
+    b: usize,
+    segments: u32,
+) -> Vec<usize> {
+    let mut path = vec![a];
+    for i in 1..segments {
+        let t = i as f32 / segments as f32;
+        let position = out.vertices[a] * ((1. - t) * (1. - t))
+            + source.vertices[v] * (2. * t * (1. - t))
+            + out.vertices[b] * (t * t);
+        let id = out.append_blend(source, &[(v, 1.)], position);
+        owners.insert(id, v);
+        path.push(id);
+    }
+    path.push(b);
+    path
+}
+fn rounded_cap(
+    source: &Mesh,
+    out: &mut Mesh,
+    v: usize,
+    boundary: &[usize],
+    polygon: &Polygon,
+    segments: u32,
+) {
+    let mean = boundary
+        .iter()
+        .fold(Vec3::default(), |p, &i| p + out.vertices[i])
+        * (1. / boundary.len() as f32);
+    let center = (source.vertices[v] + mean) * 0.5;
+    let normal = (source.vertices[v] - mean).norm();
+    let middle = out.append_blend(source, &[(v, 1.)], center);
+    let mut previous = Vec::new();
+    for step in 1..=segments {
+        let t = step as f32 / segments as f32;
+        let ring: Vec<_> = boundary
+            .iter()
+            .map(|&b| {
+                if step == segments {
+                    b
+                } else {
+                    let d = out.vertices[b] - center;
+                    let height = normal * d.dot(normal);
+                    out.append_blend(
+                        source,
+                        &[(v, 1.)],
+                        center + (d - height) * t + height * (t * t),
+                    )
+                }
+            })
+            .collect();
+        for i in 0..ring.len() {
+            let j = (i + 1) % ring.len();
+            if previous.is_empty() {
+                out.push_polygon(&[middle, ring[i], ring[j]], polygon.group, false);
+            } else {
+                out.push_polygon(
+                    &[previous[i], ring[i], ring[j], previous[j]],
+                    polygon.group,
+                    false,
+                );
+            }
+        }
+        previous = ring;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn cube() -> Mesh {
+        let mut p = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Cube);
+        p.divisions = [1; 3];
+        p.mesh().unwrap()
+    }
+    #[test]
+    fn component_bevel_chamfers_and_rounds_edges_vertices_and_junctions() {
+        let mesh = cube();
+        let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+        let edges = mesh.polygon_edges();
+        for selection in [
+            vec![edges[0]],
+            edges.iter().copied().filter(|e| e.contains(&0)).collect(),
+            edges.clone(),
+        ] {
+            for segments in [1, 3, 8] {
+                let out = mesh
+                    .bevel_components(&selection, &[], 0.1, segments, &symmetry)
+                    .unwrap();
+                manifold(&out).unwrap();
+                let mut counts = BTreeMap::new();
+                for p in out.polygons() {
+                    for (a, b) in p.edges() {
+                        *counts.entry(edge(a, b)).or_insert(0) += 1;
+                    }
+                }
+                assert!(counts.values().all(|&n| n == 2));
+                assert!(out.vertices.len() > mesh.vertices.len());
+            }
+        }
+        for selected in [vec![0], vec![0, 1], (0..mesh.vertices.len()).collect()] {
+            for segments in [1, 3, 8] {
+                let out = mesh
+                    .bevel_components(&[], &selected, 0.1, segments, &symmetry)
+                    .unwrap();
+                manifold(&out).unwrap();
+                assert!(!out.vertices.contains(&mesh.vertices[0]));
+            }
+        }
+    }
+    #[test]
+    fn component_bevel_mirrors_corner_and_edge_topology() {
+        let mesh = cube();
+        let settings = crate::sculpt::Symmetry {
+            enabled: true,
+            mirror: [true, false, false],
+            ..Default::default()
+        };
+        let symmetry = ModelingSymmetry::new(&mesh, &settings).unwrap();
+        for segments in [1, 3] {
+            let edges = mesh.polygon_edges();
+            for (edges, vertices) in [(&edges[..1], &[][..]), (&[][..], &[0][..])] {
+                let out = mesh
+                    .bevel_components(edges, vertices, 0.1, segments, &symmetry)
+                    .unwrap();
+                ModelingSymmetry::new(&out, &settings).unwrap();
+                out.validate_closed().unwrap();
+            }
+        }
+    }
+    #[test]
+    fn component_bevel_preserves_untouched_uvs_groups_and_protection() {
+        let mut mesh = cube();
+        mesh.uv.topology = mesh.triangles.clone();
+        mesh.uv.corners = vec![[[0., 0.], [1., 0.], [1., 1.]]; mesh.triangles.len()];
+        let sym = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+        let out = mesh.bevel_components(&[], &[0], 0.1, 3, &sym).unwrap();
+        assert!(out.uv.current(&out));
+        assert!(out.uv.removed.iter().any(|&x| x));
+        assert!(out.uv.removed.iter().any(|&x| !x));
+        mesh.mask[0] = 1.;
+        assert!(mesh.check_model_protection(&out, true).is_err());
+        assert!(mesh.bevel_components(&[], &[0], 10., 3, &sym).is_err());
+        let mut open = mesh.clone();
+        open.triangles.clear();
+        open.quads.clear();
+        open.uv = Default::default();
+        assert!(open.bevel_components(&[], &[0], 0.1, 3, &sym).is_err());
+    }
+}

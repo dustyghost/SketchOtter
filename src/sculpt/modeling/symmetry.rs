@@ -61,7 +61,7 @@ impl ModelingSymmetry {
             high = Vec3(high.0.max(p.0), high.1.max(p.1), high.2.max(p.2));
         }
         let min_edge = mesh
-            .polygon_edges()
+            .model_edges()
             .iter()
             .map(|e| (mesh.vertices[e[0]] - mesh.vertices[e[1]]).len())
             .fold(f32::INFINITY, f32::min);
@@ -115,6 +115,16 @@ impl ModelingSymmetry {
                 mapping.push(i);
             }
             let mut face_map = Vec::with_capacity(polygons.len());
+            let wires: BTreeSet<_> = mesh.loose_edges.iter().copied().collect();
+            if mesh
+                .loose_edges
+                .iter()
+                .any(|&[a, b]| !wires.contains(&edge(mapping[a], mapping[b])))
+            {
+                return Err(
+                    "Modeling symmetry requires matching loose edges on every enabled side".into(),
+                );
+            }
             for p in &polygons {
                 let mut cycle: Vec<_> = p.vertices.iter().map(|&v| mapping[v]).collect();
                 let mut key = cycle.clone();

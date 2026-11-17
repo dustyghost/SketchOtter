@@ -4,6 +4,15 @@ use crate::sculpt::Vec3;
 use eframe::egui::{Pos2, Vec2};
 
 impl Scene {
+    /// Loose geometry can lie in front of a surface or over empty background.
+    pub(super) fn point_unoccluded(&self, point: Vec3) -> bool {
+        self.visible_depth(point)
+            && self
+                .pick_model(self.project(point))
+                .is_none_or(|(_, hit, _)| {
+                    (point - hit).dot(self.view) >= -1. / self.scale_at(point).max(1.)
+                })
+    }
     pub fn visible_depth(&self, point: Vec3) -> bool {
         self.eye_distance == 0. || self.eye_distance - point.dot(self.view) >= self.near()
     }
@@ -88,6 +97,8 @@ mod tests {
 
     fn scene(camera: &Camera, vertices: Vec<Vec3>) -> Scene {
         let mesh = Mesh {
+            loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,

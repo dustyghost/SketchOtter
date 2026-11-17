@@ -205,7 +205,7 @@ Ordinary extrusion, contact fusion, vertex welding and loop dissolution have dif
 | Collapse an edge | Explicit endpoint/midpoint destination, numeric fraction, marked endpoint and pen preview; connected-set collapse remains a separate topology command |
 | Split an edge | Drag insertion along the edge or enter a fraction; neighboring faces receive matching vertices |
 | Extrude an edge | Extend an open border with a quad strip, or build a surface ridge with a visible adjacent-side choice locked at pen-down |
-| Extrude a point | Build a pointed protrusion with independent base radius, averaged-normal height, circularization and ring creasing |
+| Extrude a point | Add one vertex and one connecting edge, preserve the original surface, and retain the new endpoint for continued extrusion |
 | Split a point into a patch | Replace a closed vertex fan with a ring and center patch; radius, circularization, triangulation and crease controls; patch can be extruded into a tube |
 | Add topology inside a face | Center-point insertion and quad-preserving face split; shared edge splits propagate into neighbors without T-junctions |
 | Angle-based flat islands | Select connected visible faces within 0–180° of the first face normal, with hover feedback and a preset-compatible slider |

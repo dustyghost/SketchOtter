@@ -620,6 +620,32 @@ impl Scene {
                 );
             }
         }
+        for &v in mesh.loose_vertices.iter() {
+            if self.point_unoccluded(mesh.vertices[v]) {
+                painter.circle_filled(
+                    self.project(mesh.vertices[v]),
+                    3.5,
+                    Color32::from_rgb(170, 195, 210),
+                );
+            }
+        }
+        for &[a, b] in mesh.loose_edges.iter() {
+            let start = mesh.vertices[a];
+            let delta = mesh.vertices[b] - start;
+            let Some(line) = self.clip_segment([start, start + delta]) else {
+                continue;
+            };
+            let steps = (line[0].distance(line[1]) / 4.).ceil().clamp(1., 1024.) as usize;
+            for i in 0..steps {
+                let a = start + delta * (i as f32 / steps as f32);
+                let b = start + delta * ((i + 1) as f32 / steps as f32);
+                if self.point_unoccluded((a + b) * 0.5)
+                    && let Some(line) = self.clip_segment([a, b])
+                {
+                    painter.line_segment(line, (1.5, Color32::from_rgb(170, 195, 210)));
+                }
+            }
+        }
     }
     pub(super) fn brush_cursor(
         &self,

@@ -112,7 +112,9 @@ impl App {
                 self.ui.uv.texture_tab = action == Action::OpenTextures;
                 None
             }
-            Action::TemporaryMaskBrush
+            Action::TemporaryMaskRectangle
+            | Action::TemporaryMaskVisibleOnly(_)
+            | Action::TemporaryMaskBrush
             | Action::TemporaryMaskLasso
             | Action::TemporaryMaskLine
             | Action::TemporaryMaskAdd
@@ -227,6 +229,22 @@ impl App {
                 }
                 None
             }
+            Action::ModelRegionShape(shape) => {
+                self.viewport.cancel(&mut self.document);
+                self.ui.preferences.component_region_shape = shape;
+                self.ui.preferences.selection_mode = preferences::SelectionMode::Components;
+                None
+            }
+            Action::ModelRegionChange(change) => {
+                self.viewport.cancel(&mut self.document);
+                self.ui.preferences.component_region_change = change;
+                None
+            }
+            Action::ModelSelectThrough(through) => {
+                self.viewport.cancel(&mut self.document);
+                self.ui.preferences.component_select_through = through;
+                None
+            }
             Action::ModelTool(tool) => {
                 if !self.ui.modeling.active {
                     self.dispatch(Command::ModelingMode(true), ctx);
@@ -334,6 +352,11 @@ impl App {
                     as u32;
                 None
             }
+            Action::ModelGrowSelection => Some(Command::ModelResizeSelection(true)),
+            Action::ModelShrinkSelection => Some(Command::ModelResizeSelection(false)),
+            Action::ModelUndoSelection => Some(Command::ModelSelectionHistory(false)),
+            Action::ModelRedoSelection => Some(Command::ModelSelectionHistory(true)),
+            Action::ModelSnap => Some(Command::ModelSnap),
             Action::ModelClearSelection => Some(Command::ClearModelSelection),
             Action::ModelSelectLoop => Some(Command::ModelSelectLoop),
             Action::ModelDissolveLoops => Some(Command::ModelDissolveLoops),

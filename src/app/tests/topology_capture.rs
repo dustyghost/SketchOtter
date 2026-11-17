@@ -1,12 +1,9 @@
 use super::*;
 
 #[test]
-#[ignore = "requires Vulkan; exercises manual construction selection, preview, cancellation and Apply"]
+#[ignore = "requires Vulkan; exercises immediate construction and one-step Undo/Redo"]
 fn manual_topology_offscreen_review() {
-    use crate::{
-        sculpt::{Geometry, TopologyEdit},
-        viewport::Component,
-    };
+    use crate::{sculpt::Geometry, viewport::Component};
     let directory =
         std::env::var("CLAY_GUIDE_PREVIEW").unwrap_or_else(|_| "/tmp/clay-topology-review".into());
     let directory = std::path::Path::new(&directory);
@@ -42,12 +39,21 @@ fn manual_topology_offscreen_review() {
     reach_sidebar_control(&mut g, "Topology");
     click_guide_label(&mut g, "Topology");
     reach_sidebar_control(&mut g, "Delete faces");
+    let original = g.app.document.geometry_snapshot();
+    let history = g.app.document.history_counts().0;
     click_guide_label(&mut g, "Delete faces");
     let open = g.app.document.geometry_snapshot();
+    assert_eq!(open.mesh.quads.len(), original.mesh.quads.len() - 1);
+    assert_eq!(g.app.document.history_counts().0, history + 1);
+    click_guide_label(&mut g, "Undo");
+    assert_eq!(g.app.document.geometry_snapshot(), original);
+    click_guide_label(&mut g, "Redo");
+    assert_eq!(g.app.document.geometry_snapshot(), open);
     g.app.camera.yaw = 0.3;
     g.app.camera.pitch = -0.15;
     reach_sidebar_control(&mut g, "Vertex");
     click_guide_label(&mut g, "Vertex");
+    reach_sidebar_control(&mut g, "Add");
     click_guide_label(&mut g, "Add");
     for p in &corners {
         // Orbit to expose each adjoining wall: back-facing surfaces do not
@@ -71,51 +77,61 @@ fn manual_topology_offscreen_review() {
         g.app.viewport.modeling.selected
     );
     reach_sidebar_control(&mut g, "Create face");
+    let history = g.app.document.history_counts().0;
     click_guide_label(&mut g, "Create face");
-    assert_eq!(g.app.document.geometry_snapshot(), open);
-    let preview = g
-        .app
-        .viewport
-        .modeling
-        .preview()
-        .expect(&g.app.ui.status)
-        .clone();
-    g.app.camera.yaw = 0.3;
-    g.app.camera.pitch = -0.15;
-    reach_sidebar_control(&mut g, "Cancel topology preview");
-    g.save("create-face-preview");
-    click_guide_label(&mut g, "Cancel topology preview");
-    assert_eq!(g.app.document.geometry_snapshot(), open);
-    reach_sidebar_control(&mut g, "Create face");
-    click_guide_label(&mut g, "Create face");
-    reach_sidebar_control(&mut g, "Apply topology");
-    click_guide_label(&mut g, "Apply topology");
-    assert_eq!(g.app.document.mesh(), &preview);
+    let capped = g.app.document.geometry_snapshot();
+    assert_eq!(capped.mesh.quads.len(), open.mesh.quads.len() + 1);
+    assert_eq!(g.app.document.history_counts().0, history + 1);
+    assert!(g.app.viewport.modeling.preview().is_none());
     g.save("create-face-applied");
     click_guide_label(&mut g, "Undo");
     assert_eq!(g.app.document.geometry_snapshot(), open);
     click_guide_label(&mut g, "Redo");
-    assert_eq!(g.app.document.mesh(), &preview);
-    // Select the new cap's opposite corners and inspect the explicit diagonal.
+    assert_eq!(g.app.document.geometry_snapshot(), capped);
+    // The cap's opposite corners become a diagonal in one click.
     let q = *g.app.document.mesh().quads.last().unwrap();
     g.app.viewport.modeling.sync(&g.app.document);
     g.app.viewport.modeling.selected = [Component::Vertex(q[0]), Component::Vertex(q[2])].into();
     reach_sidebar_control(&mut g, "Connect vertices");
+    let history = g.app.document.history_counts().0;
     click_guide_label(&mut g, "Connect vertices");
-    assert_eq!(
-        g.app.viewport.modeling.topology_preview_label(),
-        Some(TopologyEdit::Connect.label())
-    );
-    reach_sidebar_control(&mut g, "Apply topology");
-    g.save("connect-vertices-preview");
-    click_guide_label(&mut g, "Apply topology");
-    assert_eq!(g.app.document.mesh().quads.len(), preview.quads.len() - 1);
+    let connected = g.app.document.geometry_snapshot();
+    assert_eq!(connected.mesh.quads.len(), capped.mesh.quads.len() - 1);
+    assert_eq!(g.app.document.history_counts().0, history + 1);
+    assert!(g.app.viewport.modeling.preview().is_none());
+    g.save("connect-vertices-applied");
     click_guide_label(&mut g, "Undo");
-    assert_eq!(g.app.document.mesh(), &preview);
+    assert_eq!(g.app.document.geometry_snapshot(), capped);
+    click_guide_label(&mut g, "Redo");
+    assert_eq!(g.app.document.geometry_snapshot(), connected);
+    click_guide_label(&mut g, "Undo");
+    click_guide_label(&mut g, "Undo");
+    assert_eq!(g.app.document.geometry_snapshot(), open);
+    reach_sidebar_control(&mut g, "Edge");
+    click_guide_label(&mut g, "Edge");
+    g.app.viewport.modeling.sync(&g.app.document);
+    g.app.viewport.modeling.selected = (0..4)
+        .map(|i| {
+            let a = q[i];
+            let b = q[(i + 1) % 4];
+            Component::Edge([a.min(b), a.max(b)])
+        })
+        .collect();
+    reach_sidebar_control(&mut g, "Fill boundary");
+    let history = g.app.document.history_counts().0;
+    click_guide_label(&mut g, "Fill boundary");
+    let filled = g.app.document.geometry_snapshot();
+    assert_eq!(filled.mesh.quads.len(), open.mesh.quads.len() + 1);
+    assert_eq!(g.app.document.history_counts().0, history + 1);
+    assert!(g.app.viewport.modeling.preview().is_none());
+    click_guide_label(&mut g, "Undo");
+    assert_eq!(g.app.document.geometry_snapshot(), open);
+    click_guide_label(&mut g, "Redo");
+    assert_eq!(g.app.document.geometry_snapshot(), filled);
     let saved = serde_json::to_vec(&g.app.document.project()).unwrap();
     let restored: crate::sculpt::Project = serde_json::from_slice(&saved).unwrap();
     restored.validate().unwrap();
-    assert_eq!(restored.mesh, preview);
+    assert_eq!(restored.mesh, filled.mesh);
 }
 
 #[test]
@@ -142,6 +158,7 @@ fn topology_regions_offscreen_review() {
     click_guide_modeling_checkbox(&mut g);
     reach_sidebar_control(&mut g, "Edge");
     click_guide_label(&mut g, "Edge");
+    reach_sidebar_control(&mut g, "Add");
     click_guide_label(&mut g, "Add");
     // Select the two inner border edges with actual viewport clicks.
     for x in [-1., 1.] {
@@ -159,25 +176,14 @@ fn topology_regions_offscreen_review() {
     click_guide_label(&mut g, "Topology");
     g.app.ui.modeling.bridge_segments = 3;
     reach_sidebar_control(&mut g, "Bridge partial chains");
-    click_guide_label(&mut g, "Bridge partial chains");
     let original = g.app.document.geometry_snapshot();
-    let bridge = g
-        .app
-        .viewport
-        .modeling
-        .preview()
-        .expect(&g.app.ui.status)
-        .clone();
-    assert_eq!(bridge.quads.len(), 5);
-    reach_sidebar_control(&mut g, "Cancel topology preview");
-    g.save("partial-chain-bridge-preview");
-    click_guide_label(&mut g, "Cancel topology preview");
-    assert_eq!(g.app.document.geometry_snapshot(), original);
-    reach_sidebar_control(&mut g, "Bridge partial chains");
+    let count = g.app.document.history_counts().0;
     click_guide_label(&mut g, "Bridge partial chains");
-    reach_sidebar_control(&mut g, "Apply topology");
-    click_guide_label(&mut g, "Apply topology");
-    assert_eq!(g.app.document.mesh(), &bridge);
+    let bridge = g.app.document.mesh().clone();
+    assert_eq!(bridge.quads.len(), 5, "{}", g.app.ui.status);
+    assert_eq!(g.app.document.history_counts().0, count + 1);
+    assert!(g.app.viewport.modeling.preview().is_none());
+    g.save("partial-chain-bridge-applied");
     click_guide_label(&mut g, "Undo");
     assert_eq!(g.app.document.geometry_snapshot(), original);
     click_guide_label(&mut g, "Redo");
@@ -189,6 +195,7 @@ fn topology_regions_offscreen_review() {
         .unwrap();
     reach_sidebar_control(&mut g, "Face");
     click_guide_label(&mut g, "Face");
+    reach_sidebar_control(&mut g, "Add");
     click_guide_label(&mut g, "Add");
     for (x, y) in [(0., -0.6), (0.6, 0.), (0., 0.6), (-0.6, 0.)] {
         let rect = g.frame(vec![]).0;
@@ -204,34 +211,19 @@ fn topology_regions_offscreen_review() {
     reach_sidebar_control(&mut g, "Dissolve face region");
     g.save("face-region-selected");
     click_guide_label(&mut g, "Dissolve face region");
-    let dissolved = g
-        .app
-        .viewport
-        .modeling
-        .preview()
-        .expect(&g.app.ui.status)
-        .clone();
-    assert_eq!(dissolved.quads.len(), 1);
-    reach_sidebar_control(&mut g, "Apply topology");
-    g.save("face-region-dissolve-preview");
-    click_guide_label(&mut g, "Apply topology");
-    assert_eq!(g.app.document.mesh(), &dissolved);
+    let dissolved = g.app.document.mesh().clone();
+    assert_eq!(dissolved.quads.len(), 1, "{}", g.app.ui.status);
+    assert!(g.app.viewport.modeling.preview().is_none());
+    g.save("face-region-dissolve-applied");
     click_guide_label(&mut g, "Undo");
     // Re-select the connected fan, then reverse its complete orientation.
     g.app.viewport.modeling.sync(&g.app.document);
     g.app.viewport.modeling.selected = (0..4).map(crate::viewport::Component::Face).collect();
     reach_sidebar_control(&mut g, "Flip face orientation");
     click_guide_label(&mut g, "Flip face orientation");
-    let flipped = g
-        .app
-        .viewport
-        .modeling
-        .preview()
-        .expect(&g.app.ui.status)
-        .clone();
-    reach_sidebar_control(&mut g, "Apply topology");
-    click_guide_label(&mut g, "Apply topology");
-    assert_eq!(g.app.document.mesh(), &flipped);
+    let flipped = g.app.document.mesh().clone();
+    assert_eq!(flipped.triangles[0], [0, 4, 1], "{}", g.app.ui.status);
+    assert!(g.app.viewport.modeling.preview().is_none());
     g.app.camera.yaw = std::f32::consts::PI;
     g.save("face-region-flipped-back-view");
     click_guide_label(&mut g, "Undo");
