@@ -195,3 +195,38 @@ fn modeling_notes_asymmetric_protection_skips_whole_symmetry_orbits() {
     assert_ne!(out, mesh);
     mesh.check_model_protection(&out, true).unwrap();
 }
+
+#[test]
+fn modeling_notes_loop_slide_keeps_protected_vertices_fixed() {
+    for hidden in [false, true] {
+        let mut mesh = grid();
+        let edges: Vec<_> = mesh
+            .polygon_edges()
+            .into_iter()
+            .filter(|e| e.iter().all(|&v| (mesh.vertices[v].0 - 0.2).abs() < 1e-5))
+            .collect();
+        if hidden {
+            mesh.hidden_faces = mesh
+                .triangles
+                .iter()
+                .map(|t| t.iter().any(|&v| mesh.vertices[v].1 > 0.8))
+                .collect();
+        } else {
+            mesh.mask[edges[0][0]] = 1.;
+        }
+        let symmetry = ModelingSymmetry::new(&mesh, &Symmetry::default()).unwrap();
+        let out = mesh
+            .slide_model_edges(
+                &edges,
+                0.2,
+                Vec3(1., 0., 0.),
+                Vec3::default(),
+                true,
+                &symmetry,
+            )
+            .unwrap();
+        assert_ne!(out.vertices, mesh.vertices);
+        assert_eq!(out.triangles, mesh.triangles);
+        mesh.check_model_protection(&out, true).unwrap();
+    }
+}

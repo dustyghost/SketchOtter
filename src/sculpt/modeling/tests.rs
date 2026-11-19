@@ -62,6 +62,17 @@ fn review_extruded_uv_plane_can_be_filled_and_retains_cap_mapping() {
             .unwrap();
         filled.validate_closed().unwrap();
         assert!(filled.uv.current(&filled));
+        // Old projects may already contain the pre-fix inactive map. Filling
+        // must repair that state too, without assigning old corners to new faces.
+        let mut legacy = out.clone();
+        legacy.uv = mesh.uv.clone();
+        assert!(!legacy.uv.current(&legacy));
+        let repaired = legacy
+            .edit_model_topology(TopologyEdit::Fill, &[], &edges, &[], &symmetry)
+            .unwrap();
+        repaired.validate_closed().unwrap();
+        assert!(repaired.uv.current(&repaired));
+        assert!(repaired.uv.removed.iter().all(|&removed| removed));
     }
 }
 #[test]

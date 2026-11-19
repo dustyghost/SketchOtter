@@ -493,15 +493,18 @@ impl Mesh {
         if selected.is_empty() {
             return Err("Select an interior edge loop to slide".into());
         }
+        let blocked = self.protected_model_vertices(protect);
         let expanded: BTreeSet<_> = self
             .expand_edge_loop(&selected.iter().copied().collect::<Vec<_>>())?
             .into_iter()
             .collect();
-        if expanded != selected {
+        if expanded
+            .symmetric_difference(&selected)
+            .any(|e| e.iter().all(|v| !blocked.contains(v)))
+        {
             return Err("Select the complete loop before sliding".into());
         }
         let polygons = self.polygons();
-        let blocked = self.protected_model_vertices(protect);
         let vertices: BTreeSet<_> = selected.iter().flatten().copied().collect();
         let mut rails = BTreeMap::<usize, usize>::new();
         let mut pending = selected.clone();
