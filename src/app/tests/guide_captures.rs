@@ -13,6 +13,8 @@ mod deformation_stack_review;
 mod detached_capture;
 #[path = "grouped_path_capture.rs"]
 mod grouped_path_capture;
+#[path = "modeling_notes_capture.rs"]
+mod modeling_notes_capture;
 #[path = "move_snap_capture.rs"]
 mod move_snap_capture;
 #[path = "object_kits.rs"]

@@ -206,6 +206,11 @@ impl App {
                 let tool = match action {
                     Action::ModelExtrude => Tool::Extrude,
                     Action::ModelLoopCut => Tool::LoopCut,
+                    Action::ModelFaces | Action::ModelEdges | Action::ModelVertices
+                        if matches!(self.ui.modeling.tool, Tool::Delete | Tool::SurfaceSlide) =>
+                    {
+                        self.ui.modeling.tool
+                    }
                     _ => Tool::Select,
                 };
                 self.ui.modeling.set_tool(tool);

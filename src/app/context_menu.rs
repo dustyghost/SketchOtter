@@ -106,8 +106,7 @@ impl App {
     }
     pub(crate) fn show_viewport_menu(&mut self, ctx: &egui::Context) {
         let context = self.ui.viewport_menu.context;
-        let was_open = context.is_some();
-        let (action, closed) = self.ui.viewport_menu_popup(ctx, &self.document);
+        let (action, _) = self.ui.viewport_menu_popup(ctx, &self.document);
         if let Some(action) = action {
             if context == Some(ViewportMenuContext::Visibility)
                 && matches!(
@@ -132,7 +131,10 @@ impl App {
                 self.execute_action(action, ctx);
             }
         }
-        if was_open || closed {
+        for command in std::mem::take(&mut self.ui.viewport_menu.commands) {
+            self.dispatch(command, ctx);
+        }
+        if self.ui.viewport_menu.consumed_input {
             self.viewport.wait_for_release();
         }
     }
@@ -190,6 +192,87 @@ mod tests {
                 egui::CentralPanel::default().show(ctx, |ui| app.show_viewport(ui));
             },
         )
+    }
+    #[test]
+    fn modeling_notes_quick_menu_first_viewport_click_selects_and_pin_stays_open() {
+        for pinned in [false, true] {
+            let (mut app, ctx) = setup();
+            frame(
+                &mut app,
+                &ctx,
+                egui::Modifiers::NONE,
+                vec![key(egui::Key::Q, egui::Modifiers::NONE)],
+            );
+            app.ui.viewport_menu.position = Some(egui::pos2(20., 20.));
+            app.ui.viewport_menu.pinned = pinned;
+            frame(&mut app, &ctx, egui::Modifiers::NONE, vec![]);
+            let pos = app.ui.viewport_menu.viewport_rect.unwrap().center();
+            assert!(!app.ui.viewport_menu.rect.unwrap().contains(pos));
+            for pressed in [true, false] {
+                frame(
+                    &mut app,
+                    &ctx,
+                    egui::Modifiers::NONE,
+                    vec![
+                        egui::Event::PointerMoved(pos),
+                        egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                );
+            }
+            assert!(app.ui.modeling.count > 0, "First click should select");
+            assert_eq!(app.ui.viewport_menu.context.is_some(), pinned);
+            if pinned {
+                let before = app.ui.viewport_menu.rect.unwrap();
+                let start = before.left_top() + egui::vec2(100., 12.);
+                let end = start + egui::vec2(80., 30.);
+                let button = |pos, pressed| egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                };
+                frame(
+                    &mut app,
+                    &ctx,
+                    egui::Modifiers::NONE,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                frame(
+                    &mut app,
+                    &ctx,
+                    egui::Modifiers::NONE,
+                    vec![egui::Event::PointerMoved(end)],
+                );
+                frame(
+                    &mut app,
+                    &ctx,
+                    egui::Modifiers::NONE,
+                    vec![button(end, false)],
+                );
+                frame(
+                    &mut app,
+                    &ctx,
+                    egui::Modifiers::NONE,
+                    vec![egui::Event::PointerMoved(pos)],
+                );
+                assert!(app.ui.viewport_menu.rect.unwrap().left() > before.left() + 50.);
+                frame(
+                    &mut app,
+                    &ctx,
+                    egui::Modifiers::NONE,
+                    vec![key(egui::Key::E, egui::Modifiers::NONE)],
+                );
+                assert_eq!(
+                    app.ui.viewport_menu.context,
+                    Some(ViewportMenuContext::Transform)
+                );
+            }
+        }
     }
     #[test]
     fn viewport_menu_keeps_modeling_selection_and_history_for_each_mode() {

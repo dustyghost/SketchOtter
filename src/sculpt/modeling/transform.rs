@@ -7,8 +7,74 @@ pub enum ComponentTransform {
     Scale(Vec3, f32),
 }
 impl Mesh {
+    /// Slide on the original incident surface, stopping at its boundary. Each
+    /// preview starts from the source mesh, so cancellation has no accumulated drift.
+    pub(crate) fn slide_components(
+        &self,
+        selected: &[usize],
+        anchor: Vec3,
+        displacement: Vec3,
+        protect: bool,
+        symmetry: &ModelingSymmetry,
+    ) -> Result<Mesh, String> {
+        let mut out = self.transform_components(
+            selected,
+            anchor,
+            ComponentTransform::Move(displacement),
+            protect,
+            symmetry,
+        )?;
+        let hidden = &self.hidden_faces;
+        let mut incident = vec![Vec::new(); self.vertices.len()];
+        for (i, t) in self.triangles.iter().enumerate() {
+            if hidden.get(i).copied().unwrap_or(false) {
+                continue;
+            }
+            for &v in t {
+                incident[v].push(i);
+            }
+        }
+        for (v, triangles) in incident.iter().enumerate() {
+            if out.vertices[v] == self.vertices[v] {
+                continue;
+            }
+            let target = out.vertices[v];
+            let point = triangles
+                .iter()
+                .map(|&t| {
+                    let [a, b, c] = self.triangles[t].map(|i| self.vertices[i]);
+                    crate::sculpt::math::closest_triangle(target, a, b, c)
+                })
+                .min_by(|a, b| (*a - target).len().total_cmp(&(*b - target).len()));
+            out.vertices[v] = point.unwrap_or(self.vertices[v]);
+        }
+        for t in &self.triangles {
+            let [a, b, c] = t.map(|v| self.vertices[v]);
+            let [x, y, z] = t.map(|v| out.vertices[v]);
+            if (b - a).cross(c - a).dot((y - x).cross(z - x)) <= 0. {
+                return Err("Slide reaches the next edge; use a shorter movement".into());
+            }
+        }
+        manifold(&out)?;
+        symmetry.validate_result(&out)?;
+        Ok(out)
+    }
+
     /// Protected source polygons must survive with the same oriented corners.
     pub fn check_model_protection(&self, out: &Mesh, mask: bool) -> Result<(), String> {
+        if self.triangles == out.triangles
+            && self.quads == out.quads
+            && self.loose_edges == out.loose_edges
+            && self.loose_vertices == out.loose_vertices
+            && self.vertices.len() == out.vertices.len()
+        {
+            for v in self.protected_model_vertices(mask) {
+                if self.vertices[v] != out.vertices[v] {
+                    return Err("This edit moves protected vertices".into());
+                }
+            }
+            return Ok(());
+        }
         let key = |mesh: &Mesh, p: &Polygon| {
             let points: Vec<_> = p
                 .vertices
@@ -75,6 +141,28 @@ impl Mesh {
         Ok(())
     }
 
+    pub(crate) fn protected_model_vertices(&self, mask: bool) -> BTreeSet<usize> {
+        let visible_wires: BTreeSet<_> = self.visible_loose_edges().into_iter().collect();
+        self.polygons()
+            .into_iter()
+            .filter(|p| !p.visible)
+            .flat_map(|p| p.vertices)
+            .chain(
+                self.loose_edges
+                    .iter()
+                    .filter(|e| !visible_wires.contains(*e))
+                    .flatten()
+                    .copied(),
+            )
+            .chain(
+                self.mask
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(v, &m)| (mask && m > 0.).then_some(v)),
+            )
+            .collect()
+    }
+
     pub fn protect_model_vertices(&self, vertices: &[usize], mask: bool) -> Result<(), String> {
         if vertices.is_empty() || vertices.iter().any(|&v| v >= self.vertices.len()) {
             return Err("Select components on the current mesh".into());
@@ -137,12 +225,21 @@ impl Mesh {
         protect: bool,
         symmetry: &ModelingSymmetry,
     ) -> Result<Mesh, String> {
-        let all: BTreeSet<_> = selected
+        if selected.iter().any(|&v| v >= self.vertices.len()) {
+            return Err("Select components on the current mesh".into());
+        }
+        let blocked = self.protected_model_vertices(protect);
+        let selected: Vec<_> = selected
             .iter()
-            .flat_map(|&v| symmetry.vertex_copies(v))
+            .copied()
+            .filter(|&v| {
+                symmetry
+                    .vertex_copies(v)
+                    .iter()
+                    .all(|v| !blocked.contains(v))
+            })
             .collect();
-        self.protect_model_vertices(&all.iter().copied().collect::<Vec<_>>(), protect)?;
-        let (seeds, pivot) = self.component_transform_frame(selected, anchor, symmetry);
+        let (seeds, pivot) = self.component_transform_frame(&selected, anchor, symmetry);
         let mut out = self.clone();
         for seed in seeds {
             let p = self.vertices[seed];

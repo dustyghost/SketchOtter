@@ -6,9 +6,14 @@ struct QuadLoopSelection {
     degree: BTreeMap<usize, usize>,
     neighbors: Vec<Vec<usize>>,
     closed: bool,
+    retained: BTreeSet<usize>,
 }
 impl Mesh {
-    fn quad_loop_selection(&self, selected: &[[usize; 2]]) -> Result<QuadLoopSelection, String> {
+    fn quad_loop_selection(
+        &self,
+        selected: &[[usize; 2]],
+        protected: Option<&BTreeSet<usize>>,
+    ) -> Result<QuadLoopSelection, String> {
         manifold(self)?;
         let selected: BTreeSet<_> = selected.iter().map(|e| edge(e[0], e[1])).collect();
         if selected.is_empty() {
@@ -47,10 +52,23 @@ impl Mesh {
             neighbors[fs[0]].push(fs[1]);
             neighbors[fs[1]].push(fs[0]);
         }
+        let mut retained = BTreeSet::new();
         for (&v, &n) in &degree {
             let edges = &at_vertex[&v];
             let borders = edges.iter().filter(|e| incidence[*e].len() == 1).count();
-            if !((n == 2 && edges.len() == 4 && borders == 0)
+            let stop = n == 1
+                && borders == 0
+                && protected.is_some_and(|blocked| {
+                    edges
+                        .iter()
+                        .flat_map(|e| &incidence[e])
+                        .any(|&f| polygons[f].vertices.iter().any(|v| blocked.contains(v)))
+                });
+            if stop {
+                retained.insert(v);
+            }
+            if !(stop
+                || (n == 2 && edges.len() == 4 && borders == 0)
                 || (n == 1 && edges.len() == 3 && borders == 2))
             {
                 return Err(
@@ -58,10 +76,11 @@ impl Mesh {
                         .into(),
                 );
             }
-            if edges
-                .iter()
-                .flat_map(|e| &incidence[e])
-                .any(|&f| !polygons[f].visible || polygons[f].vertices.len() != 4)
+            if protected.is_none()
+                && edges
+                    .iter()
+                    .flat_map(|e| &incidence[e])
+                    .any(|&f| !polygons[f].visible || polygons[f].vertices.len() != 4)
             {
                 return Err("Show all adjoining faces and use complete quad loops".into());
             }
@@ -72,6 +91,7 @@ impl Mesh {
             degree,
             neighbors,
             closed: incidence.values().all(|fs| fs.len() == 2),
+            retained,
         })
     }
 
@@ -81,7 +101,7 @@ impl Mesh {
         &self,
         selected: &[[usize; 2]],
     ) -> Result<BTreeSet<usize>, String> {
-        let loops = self.quad_loop_selection(selected)?;
+        let loops = self.quad_loop_selection(selected, None)?;
         Ok(loops
             .neighbors
             .iter()
@@ -91,13 +111,71 @@ impl Mesh {
     }
 
     pub fn dissolve_loops(&self, selected: &[[usize; 2]]) -> Result<Mesh, String> {
+        self.dissolve_loop_selection(self.quad_loop_selection(selected, None)?)
+    }
+
+    /// Stop a removal at protected faces. Retain interior end vertices so that
+    /// the untouched neighbouring faces keep their complete shared boundary.
+    pub(crate) fn remove_protected_loops(
+        &self,
+        selected: &[[usize; 2]],
+        gap: bool,
+        protect: bool,
+        symmetry: &ModelingSymmetry,
+    ) -> Result<Mesh, String> {
+        if selected.is_empty() {
+            return Err("Select edge loops first".into());
+        }
+        let blocked: BTreeSet<_> = self
+            .protected_model_vertices(protect)
+            .into_iter()
+            .flat_map(|v| symmetry.vertex_copies(v))
+            .collect();
+        let polygons = self.polygons();
+        let allowed = |e: &[usize; 2]| {
+            !polygons
+                .iter()
+                .filter(|p| p.edges().any(|(a, b)| edge(a, b) == *e))
+                .any(|p| p.vertices.iter().any(|v| blocked.contains(v)))
+        };
+        let selected: Vec<_> = selected
+            .iter()
+            .filter(|&&e| symmetry.edges(&[e]).iter().all(allowed))
+            .flat_map(|&e| symmetry.edges(&[e]))
+            .collect();
+        if selected.is_empty() {
+            return Ok(self.clone());
+        }
+        let loops = self.quad_loop_selection(&selected, Some(&blocked))?;
+        let out = if gap {
+            let mut out = self.empty_topology();
+            for (f, p) in loops.polygons.iter().enumerate() {
+                if loops.neighbors[f].is_empty() {
+                    out.push_polygon(&p.vertices, p.group, p.hidden);
+                }
+            }
+            out.retain_creases();
+            out.preserve_model_uvs(self, &BTreeMap::new());
+            out.compact_model_vertices();
+            manifold(&out)?;
+            out
+        } else {
+            self.dissolve_loop_selection(loops)?
+        };
+        self.check_model_protection(&out, protect)?;
+        symmetry.validate_result(&out)?;
+        Ok(out)
+    }
+
+    fn dissolve_loop_selection(&self, loops: QuadLoopSelection) -> Result<Mesh, String> {
         let QuadLoopSelection {
             polygons,
             selected,
             degree,
             neighbors,
             closed,
-        } = self.quad_loop_selection(selected)?;
+            retained,
+        } = loops;
         let mut out = self.empty_topology();
         let mut visited = BTreeSet::new();
         for first in 0..polygons.len() {
@@ -154,9 +232,9 @@ impl Mesh {
             let corners: Vec<_> = boundary
                 .iter()
                 .copied()
-                .filter(|v| !degree.contains_key(v))
+                .filter(|v| !degree.contains_key(v) || retained.contains(v))
                 .collect();
-            if corners.len() != 4 {
+            if corners.len() != 4 && !corners.iter().any(|v| retained.contains(v)) {
                 return Err("These loops cannot be dissolved into regular quads".into());
             }
             // Follow each old boundary path to carry its crease onto the new edge.
@@ -174,7 +252,25 @@ impl Mesh {
                     out.creases.push(edge(a, b));
                 }
             }
-            out.push_polygon(&corners, group, false);
+            if corners.iter().any(|v| retained.contains(v)) {
+                // A fan from the centre retains collinear end vertices; ear
+                // clipping may discard them and leave a T junction at the stop.
+                let weight = 1. / corners.len() as f32;
+                let center = corners
+                    .iter()
+                    .fold(Vec3::default(), |p, &v| p + self.vertices[v] * weight);
+                let weights: Vec<_> = corners.iter().map(|&v| (v, weight)).collect();
+                let mid = out.append_blend(self, &weights, center);
+                for i in 0..corners.len() {
+                    out.push_polygon(
+                        &[corners[i], corners[(i + 1) % corners.len()], mid],
+                        group,
+                        false,
+                    );
+                }
+            } else {
+                out.push_polygon(&corners, group, false);
+            }
         }
         out.creases.extend(
             self.creases
@@ -183,6 +279,7 @@ impl Mesh {
                 .filter(|e| !degree.contains_key(&e[0]) && !degree.contains_key(&e[1])),
         );
         out.retain_creases();
+        out.preserve_model_uvs(self, &BTreeMap::new());
         out.compact_model_vertices();
         manifold(&out)?;
         // Every old boundary stays a boundary; closed input must remain closed.

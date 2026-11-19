@@ -1550,14 +1550,20 @@ impl UiState {
             let mut thickness=model.metadata.temporary_thickness;
             let mut enabled=thickness>0.;
             ui.add_enabled_ui(!model.mesh.triangles.is_empty(),|ui| {
-                if design::checkbox(ui, &mut enabled,"Thickness modifier").on_hover_text("Preview a centered shell with closed edges. The sculpting surface stays unchanged until Apply.").changed() {
+                if design::checkbox(ui, &mut enabled,"Thickness modifier").on_hover_text("Preview a shell with closed edges. Choose inward, outward or both directions; the sculpting surface stays unchanged until Apply.").changed() {
                     commands.push(Command::SetTemporaryThickness(if enabled {0.05}else{0.}));
                 }
                 if thickness>0. {
-                    if ui.add(egui::DragValue::new(&mut thickness).speed(0.005).range(0.0001..=100.).prefix("Thickness ")).on_hover_text("Total shell thickness in model units, centered on the surface.").changed() {
+                    if ui.add(egui::DragValue::new(&mut thickness).speed(0.005).range(0.0001..=100.).prefix("Thickness ")).on_hover_text("Total shell thickness in model units.").changed() {
                         commands.push(Command::SetTemporaryThickness(thickness));
                     }
                     let mut metadata = model.metadata.clone();
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Direction");
+                        for (direction, label) in [(crate::sculpt::ThicknessDirection::Inward, "Inward"), (crate::sculpt::ThicknessDirection::Outward, "Outward"), (crate::sculpt::ThicknessDirection::Both, "Both")] {
+                            ui.selectable_value(&mut metadata.thickness_direction, direction, label);
+                        }
+                    });
                     design::help(ui.add(egui::Slider::new(&mut metadata.thickness_loops,0..=8).text("Rim loops")), "Add loops through the shell wall. Updates the preview immediately; set to 0 to remove them before applying.");
                     design::help(design::checkbox(ui, &mut metadata.thickness_crease,"Crease rim edges"), "Keep the front/rim and back/rim joins sharp during later smooth subdivision. Updates the preview immediately; turn off to remove these marks before applying.");
                     design::checkbox(ui, &mut metadata.thickness_groups, "Group front / back / rim");

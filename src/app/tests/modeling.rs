@@ -26,6 +26,190 @@ fn tap(app: &mut App, ctx: &egui::Context, p: Pos2) {
     navigation_frame(app, ctx, vec![primary_event(p, false)]);
 }
 #[test]
+fn review_new_modeling_cube_supports_symmetry_selection() {
+    let (mut app, ctx, _) = setup();
+    app.dispatch(Command::RequestModelingPrimitive, &ctx);
+    app.dispatch(Command::ConfirmPrimitive, &ctx);
+    app.dispatch(
+        Command::SetSymmetry(crate::sculpt::Symmetry {
+            enabled: true,
+            ..Default::default()
+        }),
+        &ctx,
+    );
+    let rect = navigation_frame(&mut app, &ctx, vec![]);
+    tap(&mut app, &ctx, rect.center());
+    assert!(app.ui.modeling.count > 0, "{}", app.ui.status);
+}
+#[test]
+fn modeling_notes_parametric_cube_symmetry_after_conversion() {
+    let (mut app, ctx, _) = setup();
+    app.dispatch(Command::RequestPrimitive, &ctx);
+    app.dispatch(Command::ConfirmPrimitive, &ctx);
+    let mut primitive = app.document.primitive().unwrap().clone();
+    primitive.divisions = [3; 3];
+    app.dispatch(Command::UpdatePrimitive(primitive), &ctx);
+    app.dispatch(Command::ConvertPrimitive, &ctx);
+    app.dispatch(Command::ModelingMode(true), &ctx);
+    app.dispatch(
+        Command::SetSymmetry(crate::sculpt::Symmetry {
+            enabled: true,
+            ..Default::default()
+        }),
+        &ctx,
+    );
+    let rect = navigation_frame(&mut app, &ctx, vec![]);
+    tap(&mut app, &ctx, rect.center());
+    assert!(app.ui.modeling.count > 0, "{}", app.ui.status);
+    app.ui.modeling.set_tool(ModelTool::Extrude);
+    app.ui.modeling.amount = 0.2;
+    let before = app.document.geometry_snapshot();
+    app.dispatch(Command::ModelApply, &ctx);
+    assert_ne!(
+        app.document.geometry_snapshot(),
+        before,
+        "{}",
+        app.ui.status
+    );
+}
+
+#[test]
+fn modeling_notes_ctrl_switches_extrusion_during_drag() {
+    for detached_at_release in [false, true] {
+        let (mut app, ctx, rect) = setup();
+        app.ui.modeling.set_tool(ModelTool::Extrude);
+        let before = app.document.geometry_snapshot();
+        let start = rect.center();
+        let end = start + Vec2::new(0., -50.);
+        navigation_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), primary_event(start, true)],
+        );
+        navigation_frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        navigation_frame_with_modifiers(&mut app, &ctx, vec![], egui::Modifiers::CTRL);
+        let detached = app.viewport.modeling.preview().unwrap().clone();
+        assert_eq!(detached.quads.len(), before.mesh.quads.len() + 1);
+        let modifiers = if detached_at_release {
+            egui::Modifiers::CTRL
+        } else {
+            egui::Modifiers::NONE
+        };
+        navigation_frame_with_modifiers(&mut app, &ctx, vec![primary_event(end, false)], modifiers);
+        assert_eq!(
+            app.document.mesh().quads.len(),
+            before.mesh.quads.len() + if detached_at_release { 1 } else { 4 }
+        );
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+    }
+}
+
+#[test]
+fn modeling_notes_click_delete_surface_slide_and_vertex_loops() {
+    for mode in [ComponentMode::Face, ComponentMode::Edge] {
+        let (mut app, ctx, rect) = selection_grid();
+        app.execute_action(Action::ModelTool(ModelTool::Delete), &ctx);
+        app.dispatch(Command::ModelingComponent(mode), &ctx);
+        let before = app.document.geometry_snapshot();
+        let scale = rect.width().min(rect.height()) * 0.35;
+        let p = rect.center()
+            + Vec2::new(
+                if mode == ComponentMode::Edge {
+                    scale * 0.2
+                } else {
+                    0.
+                },
+                0.,
+            );
+        tap(&mut app, &ctx, p);
+        assert_eq!(
+            app.document.mesh().quads.len(),
+            before.mesh.quads.len() - if mode == ComponentMode::Edge { 2 } else { 1 },
+            "{}",
+            app.ui.status
+        );
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.execute_action(Action::ModelTool(ModelTool::SurfaceSlide), &ctx);
+        pen_drag(&mut app, &ctx, p, p + Vec2::new(8., 4.));
+        assert_ne!(
+            app.document.mesh().vertices,
+            before.mesh.vertices,
+            "{}",
+            app.ui.status
+        );
+        assert_eq!(app.document.mesh().triangles, before.mesh.triangles);
+        assert!(app.document.mesh().vertices.iter().all(|p| p.2 == 0.));
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+    }
+    let (mut app, ctx, rect) = selection_grid();
+    app.execute_action(Action::ModelVertices, &ctx);
+    app.execute_action(
+        Action::ModelTarget(crate::viewport::SelectionSpan::Loop),
+        &ctx,
+    );
+    let scale = rect.width().min(rect.height()) * 0.35;
+    tap(
+        &mut app,
+        &ctx,
+        rect.center() + Vec2::new(scale * 0.2 + 2., scale * 0.2),
+    );
+    let selected = app.viewport.modeling.selected_vertices(app.document.mesh());
+    assert_eq!(selected.len(), 6, "{}", app.ui.status);
+    let y = app.document.mesh().vertices[selected[0]].1;
+    assert!(
+        selected
+            .iter()
+            .all(|&v| app.document.mesh().vertices[v].1 == y)
+    );
+}
+
+#[test]
+fn modeling_notes_ctrl_switches_point_extrusion_during_drag() {
+    for detached in [false, true] {
+        let (mut app, ctx, rect) = selection_grid();
+        app.execute_action(Action::ModelTool(ModelTool::PointExtrude), &ctx);
+        let scale = rect.width().min(rect.height()) * 0.35;
+        let start = rect.center() + Vec2::new(scale * 0.2, scale * 0.2);
+        let end = start + Vec2::new(30., -20.);
+        let before = app.document.geometry_snapshot();
+        navigation_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), primary_event(start, true)],
+        );
+        navigation_frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        navigation_frame_with_modifiers(&mut app, &ctx, vec![], egui::Modifiers::CTRL);
+        let preview = app.viewport.modeling.preview().unwrap();
+        assert!(preview.loose_edges.is_empty());
+        assert_eq!(preview.loose_vertices.len(), 1);
+        navigation_frame_with_modifiers(
+            &mut app,
+            &ctx,
+            vec![primary_event(end, false)],
+            if detached {
+                egui::Modifiers::CTRL
+            } else {
+                egui::Modifiers::NONE
+            },
+        );
+        assert_eq!(
+            app.document.mesh().loose_edges.len(),
+            usize::from(!detached),
+            "{}",
+            app.ui.status
+        );
+        assert_eq!(
+            app.document.mesh().loose_vertices.len(),
+            usize::from(detached)
+        );
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+    }
+}
+#[test]
 fn modeling_face_edge_vertex_selection_and_groups_are_explicit() {
     let (mut app, ctx, rect) = setup();
     let before = app.document.geometry_snapshot();
@@ -600,7 +784,8 @@ fn modeling_symmetry_extrudes_both_sides_and_mismatch_blocks_edits() {
     assert_eq!(app.document.history_counts(), history);
     app.dispatch(Command::Action(Action::ModelSelect), &ctx);
     tap(&mut app, &ctx, p);
-    assert_eq!(app.ui.modeling.count, 0);
+    assert!(app.ui.modeling.count > 0);
+    assert!(app.ui.modeling.symmetry_error.is_some());
 }
 #[test]
 fn modeling_dissolve_partial_loop_is_atomic_and_keeps_selection() {
@@ -2546,9 +2731,19 @@ fn modeling_delete_loop_options_preserve_masked_geometry() {
         navigation_frame(&mut app, &ctx, vec![]);
         let history = app.document.history_counts();
         app.execute_action(action, &ctx);
+        assert_ne!(
+            app.document.geometry_snapshot(),
+            geometry,
+            "{}",
+            app.ui.status
+        );
+        geometry
+            .mesh
+            .check_model_protection(app.document.mesh(), true)
+            .unwrap();
+        assert_eq!(app.document.history_counts().0, history.0 + 1);
+        app.dispatch(Command::Undo, &ctx);
         assert_eq!(app.document.geometry_snapshot(), geometry);
-        assert_eq!(app.document.history_counts(), history);
-        assert!(app.ui.status.contains("masked"), "{}", app.ui.status);
     }
 }
 

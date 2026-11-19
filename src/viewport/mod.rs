@@ -365,6 +365,7 @@ impl Viewport {
             pending.pressure = options.pressure;
             pending.invert = options.reverse.active(modifiers);
         }
+        self.modeling.set_detached(ui.input(|i| i.modifiers.ctrl));
         self.modeling.update_preview(
             document,
             ui.input(|i| i.pointer.interact_pos()),

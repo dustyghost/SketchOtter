@@ -23,6 +23,10 @@ pub(crate) struct ViewportMenuState {
     pub visibility_was_active: bool,
     pub slice_was_active: bool,
     pub components_were_active: bool,
+    pub pinned: bool,
+    pub rect: Option<egui::Rect>,
+    pub consumed_input: bool,
+    pub commands: Vec<Command>,
 }
 fn consume_menu_key(input: &mut egui::InputState, key: egui::Key) -> bool {
     let pressed = input.key_pressed(key);
@@ -338,6 +342,8 @@ impl UiState {
                 ModelTool::VertexBevel,
                 ModelTool::FacePoint,
                 ModelTool::FaceSplit,
+                ModelTool::Delete,
+                ModelTool::SurfaceSlide,
             ]
             .into_iter()
             .filter(|tool| {
@@ -573,31 +579,39 @@ impl UiState {
         document: &Document,
     ) -> (Option<Action>, bool) {
         let Some(context) = self.viewport_menu.context else {
+            self.viewport_menu.consumed_input = false;
             return (None, false);
         };
+        self.viewport_menu.consumed_input = false;
         let just_opened = std::mem::take(&mut self.viewport_menu.just_opened);
         let entries = self.viewport_menu_entries(context, document);
         let cancelled = ctx.input(|i| {
             !i.focused
                 || i.key_pressed(egui::Key::Escape)
-                || self
-                    .viewport_menu
-                    .hold
-                    .as_ref()
-                    .is_some_and(|hold| !hold.active(i))
+                || (!self.viewport_menu.pinned
+                    && self
+                        .viewport_menu
+                        .hold
+                        .as_ref()
+                        .is_some_and(|hold| !hold.active(i)))
         });
         if cancelled {
             ctx.input_mut(|i| {
                 consume_menu_key(i, egui::Key::Escape);
             });
             self.viewport_menu.context = None;
+            self.viewport_menu.consumed_input = true;
             return (None, true);
         }
         let mut action = None;
         let count = entries.len();
         let mut index = self.viewport_menu.selected.min(count.saturating_sub(1));
         let mut navigated = false;
-        let editing_value = ctx.wants_keyboard_input();
+        let editing_value = ctx.wants_keyboard_input()
+            || (self.viewport_menu.pinned
+                && !ctx
+                    .pointer_hover_pos()
+                    .is_some_and(|p| self.viewport_menu.rect.is_some_and(|r| r.contains(p))));
         ctx.input_mut(|i| {
             if count > 0 && !editing_value {
                 if consume_menu_key(i, egui::Key::ArrowDown) {
@@ -644,7 +658,7 @@ impl UiState {
         })
         .id(egui::Id::new("viewport_tool_menu"))
         .open(&mut open)
-        .fixed_pos(position)
+        .current_pos(position)
         .resizable(false)
         .collapsible(false)
         .default_width(280.)
@@ -657,6 +671,10 @@ impl UiState {
         .vscroll(true)
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
+            ui.checkbox(&mut self.viewport_menu.pinned, "Keep open")
+                .on_hover_text(
+                    "Keep this menu open while working in the viewport. Drag its title to move it.",
+                );
             ui.weak("Up/Down choose · Enter apply · Escape close");
             if let Some(entry) = entries.get(index) {
                 ui.label(format!("{}: {}", entry.label, entry.hint));
@@ -752,15 +770,25 @@ impl UiState {
                 });
             }
             if context == ViewportMenuContext::Modeling {
+                if self.modeling.tool == ModelTool::Delete {
+                    ui.checkbox(
+                        &mut self.modeling.delete_keep_vertices,
+                        "Keep unused vertices",
+                    );
+                }
                 if let Some((i, chosen)) = modeling_choices(ui, &entries, Some(index), navigated) {
                     self.viewport_menu.selected = i;
                     action = Some(chosen);
                 }
-                if (self.modeling.tool == ModelTool::PointSplit && self.point_split_controls(ui))
-                    || (self.modeling.tool.is_component_bevel() && self.bevel_controls(ui))
-                {
-                    action = Some(Action::ModelApply);
+                if self.modeling.mode == ComponentMode::Edge {
+                    ui.add(
+                        egui::Slider::new(&mut self.modeling.bridge_segments, 1..=16)
+                            .text("Bridge segments"),
+                    );
                 }
+                let mut commands = Vec::new();
+                self.modeling_tool_options(ui, document, &mut commands);
+                self.viewport_menu.commands.extend(commands);
             } else if context == ViewportMenuContext::Components {
                 ui.label(format!("Active component: {:?}", self.modeling.mode));
                 if let Some(chosen) = component_selection_choices(ui, &entries, index, navigated) {
@@ -774,7 +802,12 @@ impl UiState {
                 }
             }
         });
+        if let Some(response) = &response {
+            self.viewport_menu.position = Some(response.response.rect.min);
+            self.viewport_menu.rect = Some(response.response.rect);
+        }
         let outside = !just_opened
+            && !self.viewport_menu.pinned
             && response.is_some_and(|r| {
                 ctx.input(|i| {
                     i.pointer.any_pressed()
@@ -805,7 +838,11 @@ impl UiState {
                     | Action::ShowAllFaces
             )
         );
-        let closed = !open || outside || (action.is_some() && !selection_option);
+        self.viewport_menu.consumed_input =
+            action.is_some() || !open || !self.viewport_menu.commands.is_empty();
+        let closed = !open
+            || outside
+            || (action.is_some() && !selection_option && !self.viewport_menu.pinned);
         if closed {
             self.viewport_menu.context = None;
         }

@@ -264,7 +264,37 @@ impl Mesh {
             if selected_vertices.contains(&v) && segments > 1 {
                 rounded_cap(self, &mut out, v, &ring, source, segments);
             } else {
-                self.component_polygon(&mut out, &ring, source, true);
+                let patch = Polygon {
+                    vertices: ring.clone(),
+                    ..source.clone()
+                };
+                let n = normal(&out, &patch);
+                let origin = out.vertices[ring[0]];
+                let scale = ring
+                    .iter()
+                    .map(|&v| (out.vertices[v] - origin).len())
+                    .fold(0_f32, f32::max);
+                let planar = n.len() > 0.9
+                    && ring
+                        .iter()
+                        .all(|&v| (out.vertices[v] - origin).dot(n).abs() <= scale * 1e-5);
+                let concave = (0..ring.len()).any(|i| {
+                    let a = out.vertices[ring[i]];
+                    let b = out.vertices[ring[(i + 1) % ring.len()]];
+                    let c = out.vertices[ring[(i + 2) % ring.len()]];
+                    (b - a).cross(c - b).dot(n) < -scale * scale * 1e-7
+                });
+                if planar && concave {
+                    // A rounded strip ending along a straight cube edge leaves a
+                    // concave cap. Its vertex average lies outside the patch;
+                    // a center fan would cross the new bevel surface.
+                    let (triangles, _) = topology::manual::triangulate_boundary(&out, &ring)?;
+                    for t in triangles {
+                        out.push_polygon(&t, source.group, source.hidden);
+                    }
+                } else {
+                    self.component_polygon(&mut out, &ring, source, true);
+                }
             }
         }
         if self.uv.current(self) {
@@ -379,6 +409,29 @@ fn rounded_cap(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn review_subdivided_cube_bevels_every_sharp_edge() {
+        let mut p = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Cube);
+        p.divisions = [3; 3];
+        let mesh = p.mesh().unwrap();
+        let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+        let polygons = mesh.polygons();
+        for e in mesh.polygon_edges() {
+            let faces: Vec<_> = polygons
+                .iter()
+                .filter(|p| p.edges().any(|(a, b)| edge(a, b) == e))
+                .collect();
+            if normal(&mesh, faces[0]).dot(normal(&mesh, faces[1])) > 0.9 {
+                continue;
+            }
+            for segments in [2, 8] {
+                let out = mesh
+                    .bevel_components(&[e], &[], 0.05, segments, &symmetry)
+                    .unwrap_or_else(|err| panic!("edge {e:?}, segments {segments}: {err}"));
+                out.validate_closed().unwrap();
+            }
+        }
+    }
     fn cube() -> Mesh {
         let mut p = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Cube);
         p.divisions = [1; 3];

@@ -256,6 +256,7 @@ impl Mesh {
         );
         out.retain_creases();
         manifold(&out)?;
+        out.preserve_model_uvs(self, &mapping);
         out.compact_model_vertices();
         Ok(out)
     }

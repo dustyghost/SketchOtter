@@ -222,7 +222,7 @@ impl App {
         {
             return;
         }
-        if self.ui.viewport_menu.context.is_some() {
+        if self.ui.viewport_menu.context.is_some() && !self.ui.viewport_menu.pinned {
             return;
         }
         // Exact history chords win over quick-menu matching with hold modifiers
@@ -452,6 +452,8 @@ impl App {
         }
         self.viewport.modeling.sync(&self.document);
         self.ui.modeling.count = self.viewport.modeling.selection().len();
+        self.ui.modeling.symmetry_error =
+            self.viewport.modeling.symmetry_error().map(str::to_owned);
         self.ui.modeling.selection_undo = self
             .viewport
             .modeling
@@ -488,8 +490,12 @@ impl App {
             && !self.ui.search_blocks_frame
             && !self.ui.customization.popup_blocks_viewport
             && self.ui.customization.popup_menu.is_none()
-            && !menu_was_open
-            && self.ui.viewport_menu.context.is_none()
+            && !self.ui.viewport_menu.consumed_input
+            && !(self.ui.viewport_menu.context.is_some()
+                && ui
+                    .ctx()
+                    .pointer_hover_pos()
+                    .is_some_and(|p| self.ui.viewport_menu.rect.is_some_and(|r| r.contains(p))))
             && self.ui.alphas.draft.is_none()
             && self.ui.alphas.overwrite.is_none()
             && !self.ui.icon_capture_open()
@@ -1137,7 +1143,7 @@ impl App {
             && !self.ui.icon_capture_open()
             && self.ui.alphas.draft.is_none()
             && self.ui.alphas.overwrite.is_none()
-            && self.ui.viewport_menu.context.is_none()
+            && (self.ui.viewport_menu.context.is_none() || self.ui.viewport_menu.pinned)
             && self.ui.customization.popup_menu.is_none()
             && !egui::Popup::is_any_open(ctx)
             && !ctx.input(|i| i.pointer.any_down());

@@ -7,6 +7,7 @@ use super::{
 use std::collections::{BTreeMap, BTreeSet};
 mod bevel;
 mod components;
+mod delete;
 mod detached;
 mod move_weld;
 mod snap_join;
@@ -96,6 +97,56 @@ fn manifold(mesh: &Mesh) -> Result<(), String> {
 }
 
 impl Mesh {
+    /// Keep corner data on unchanged faces and translated cap copies. Newly
+    /// constructed faces are explicitly unmapped. Inactive maps cannot safely
+    /// identify corners after earlier compaction; retain their textures, with
+    /// the original map remaining available in the geometry Undo snapshot.
+    fn preserve_model_uvs(&mut self, source: &Mesh, copies: &BTreeMap<usize, usize>) {
+        if source.uv.is_empty() {
+            return;
+        }
+        let origin: BTreeMap<_, _> = copies
+            .iter()
+            .filter(|(_, b)| **b >= source.vertices.len())
+            .map(|(&a, &b)| (b, a))
+            .collect();
+        let key = |mut t: [usize; 3]| {
+            t.sort_unstable();
+            t
+        };
+        let records: BTreeMap<_, _> = if source.uv.current(source) {
+            source
+                .triangles
+                .iter()
+                .enumerate()
+                .map(|(i, &t)| (key(t), i))
+                .collect()
+        } else {
+            BTreeMap::new()
+        };
+        self.uv = source.uv.clone();
+        self.uv.corners.clear();
+        self.uv.masks.clear();
+        self.uv.removed.clear();
+        for &triangle in &self.triangles {
+            let old = triangle.map(|v| origin.get(&v).copied().unwrap_or(v));
+            let record = records.get(&key(old)).copied();
+            if let Some(i) = record {
+                let order = old.map(|v| source.triangles[i].iter().position(|&w| w == v).unwrap());
+                self.uv.corners.push(order.map(|c| source.uv.corners[i][c]));
+                self.uv.masks.push(order.map(|c| source.uv.mask(i, c)));
+                self.uv.removed.push(!source.uv.mapped(i));
+            } else {
+                self.uv.corners.push([[0.; 2]; 3]);
+                self.uv.masks.push([0.; 3]);
+                self.uv.removed.push(true);
+            }
+        }
+        self.uv.topology = self.triangles.clone();
+        let edges: BTreeSet<_> = self.polygon_edges().into_iter().collect();
+        self.uv.seams.retain(|e| edges.contains(e));
+    }
+
     pub fn extrude_faces(
         &self,
         selected: &[usize],
@@ -317,6 +368,7 @@ impl Mesh {
         if collapsed {
             preview.loop_edges.clone_from(&rim);
         }
+        out.preserve_model_uvs(self, &mapping);
         out.compact_model_vertices();
         Ok(Extrusion {
             mesh: out,
@@ -398,5 +450,7 @@ impl Mesh {
     }
 }
 
+#[cfg(test)]
+mod notes_tests;
 #[cfg(test)]
 mod tests;

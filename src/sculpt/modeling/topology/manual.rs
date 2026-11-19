@@ -19,8 +19,10 @@ impl Mesh {
             return Err("The component selection is stale; select it again".into());
         }
         manifold(self)?;
-        if !self.uv.is_empty() && !self.uv.current(self) {
-            return Err("Restore or clear the inactive UV map before constructing faces".into());
+        if !self.uv.is_empty() && !self.uv.current(self) && !self.triangles.is_empty() {
+            let mut source = self.clone();
+            source.preserve_model_uvs(self, &BTreeMap::new());
+            return source.manual_topology(edit, edges, vertices, symmetry);
         }
         let points: Vec<_> = vertices
             .iter()
@@ -238,7 +240,7 @@ impl Mesh {
     }
 }
 
-pub(super) fn triangulate_boundary(
+pub(in crate::sculpt::modeling) fn triangulate_boundary(
     mesh: &Mesh,
     cycle: &[usize],
 ) -> Result<(Vec<[usize; 3]>, bool), String> {

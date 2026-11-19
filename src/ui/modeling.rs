@@ -10,6 +10,7 @@ pub(crate) struct ModelingControls {
     pub flat_angle: f32,
     pub erase_radius: f32,
     pub count: usize,
+    pub symmetry_error: Option<String>,
     pub selection_undo: bool,
     pub selection_redo: bool,
     pub loop_count: u32,
@@ -29,6 +30,7 @@ pub(crate) struct ModelingControls {
     pub extrude_snap: Option<bool>,
     pub move_snap: crate::viewport::MoveSnap,
     pub new_group: bool,
+    pub delete_keep_vertices: bool,
     pub bevel_segments: Option<u32>,
     pub snap_active: bool,
     pub snap_ready: bool,
@@ -87,6 +89,7 @@ impl ModelingControls {
         self.extrude_snap = Some(o.extrude_snap);
         self.move_snap = o.move_snap;
         self.new_group = o.new_group;
+        self.delete_keep_vertices = o.delete_keep_vertices;
         self.bevel_segments = Some(o.bevel_segments);
         self.construction = o.construction;
         self.tap_repeat = o.tap_repeat;
@@ -116,6 +119,7 @@ impl ModelingControls {
             extrude_snap: self.extrude_snap.unwrap_or(true),
             move_snap: self.move_snap,
             new_group: self.new_group,
+            delete_keep_vertices: self.delete_keep_vertices,
             bevel_segments: self.bevel_segments.unwrap_or(3),
             construction: self.construction,
             tap_repeat: self.tap_repeat,
@@ -208,6 +212,727 @@ impl UiState {
         ui.add_enabled(self.modeling.count > 0, egui::Button::new("Apply amount"))
             .customize(Action::ModelApply)
             .clicked()
+    }
+
+    pub(super) fn modeling_presets(&mut self, ui: &mut egui::Ui, commands: &mut Vec<Command>) {
+        egui::CollapsingHeader::new("Tool presets")
+            .open(search::requested_section(ui.ctx(), "model_presets"))
+            .show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.modeling.preset_name)
+                        .hint_text("Preset name"),
+                );
+                if ui
+                    .button("Save tool preset")
+                    .customize(Action::ModelSavePreset)
+                    .clicked()
+                {
+                    commands.push(Command::Action(Action::ModelSavePreset));
+                }
+                for preset in &self.preferences.modeling_presets {
+                    ui.horizontal(|ui| {
+                        if ui
+                            .selectable_label(
+                                self.modeling.preset == Some(preset.id),
+                                format!("Use {}", preset.name),
+                            )
+                            .customize(Action::ModelPreset(preset.id))
+                            .clicked()
+                        {
+                            commands.push(Command::Action(Action::ModelPreset(preset.id)));
+                        }
+                        if ui.small_button("Delete").clicked() {
+                            commands.push(Command::Action(Action::ModelDeletePreset(preset.id)));
+                        }
+                    });
+                }
+                ui.weak(
+                    "Saves action, target and options. Right-click a preset to add it to a shelf.",
+                );
+            });
+    }
+
+    pub(super) fn modeling_tool_options(
+        &mut self,
+        ui: &mut egui::Ui,
+        document: &Document,
+        commands: &mut Vec<Command>,
+    ) {
+        if document.symmetry().enabled
+            && let Some(error) = &self.modeling.symmetry_error
+        {
+            ui.colored_label(
+                ui.visuals().warn_fg_color,
+                "Symmetry cannot match this mesh",
+            );
+            ui.label(error);
+            ui.label("Select still works. Check the mirror axes, radial settings and centre in Symmetry before editing.");
+            if ui.button("Turn symmetry off").clicked() {
+                commands.push(Command::Action(Action::Symmetry));
+            }
+        }
+        design::checkbox(ui, &mut self.modeling.protect_mask, "Protect mask")
+            .customize(Action::ModelProtectMask);
+        ui.weak("Hidden faces are protected · topology edits replace stored levels");
+        match self.modeling.tool {
+            ModelTool::Delete => {}
+            ModelTool::SurfaceSlide => {
+                ui.weak("Drag individual faces, edges or vertices along the original surface. Stops at the next boundary; masked and hidden vertices stay fixed.");
+                ui.add(
+                    egui::DragValue::new(&mut self.modeling.amount)
+                        .speed(0.01)
+                        .prefix("Distance "),
+                );
+                ui.horizontal(|ui| {
+                    for (axis, name) in [
+                        (crate::viewport::ModelAxis::X, "X"),
+                        (crate::viewport::ModelAxis::Y, "Y"),
+                        (crate::viewport::ModelAxis::Z, "Z"),
+                    ] {
+                        ui.selectable_value(&mut self.modeling.axis, axis, name);
+                    }
+                });
+                if ui
+                    .add_enabled(self.modeling.count > 0, egui::Button::new("Apply amount"))
+                    .clicked()
+                {
+                    commands.push(Command::ModelApply);
+                }
+            }
+            ModelTool::EdgeChamfer
+            | ModelTool::EdgeBevel
+            | ModelTool::VertexChamfer
+            | ModelTool::VertexBevel => {
+                if self.bevel_controls(ui) {
+                    commands.push(Command::ModelApply);
+                }
+            }
+            ModelTool::PointSplit => {
+                if self.point_split_controls(ui) {
+                    commands.push(Command::ModelApply);
+                }
+            }
+            ModelTool::EdgeExtrude
+            | ModelTool::EdgeSplit
+            | ModelTool::EdgeCollapse
+            | ModelTool::PointExtrude
+            | ModelTool::FacePoint
+            | ModelTool::FaceSplit => {
+                let tool = self.modeling.tool;
+                if matches!(tool, ModelTool::EdgeSplit | ModelTool::EdgeCollapse) {
+                    ui.label("Position from marked endpoint (0–1)");
+                    let range = if tool == ModelTool::EdgeSplit {
+                        0.001..=0.999
+                    } else {
+                        0.0..=1.0
+                    };
+                    search::setting_response(
+                        ui.add(
+                            egui::DragValue::new(&mut self.modeling.amount)
+                                .range(range)
+                                .speed(0.01),
+                        ),
+                        "Modeling amount",
+                    );
+                    if tool == ModelTool::EdgeCollapse {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.selectable_value(&mut self.modeling.amount, 0., "Marked end");
+                            ui.selectable_value(&mut self.modeling.amount, 0.5, "Midpoint");
+                            ui.selectable_value(&mut self.modeling.amount, 1., "Other end");
+                        });
+                    }
+                    ui.weak("Drag along the edge to place the point · Esc cancels");
+                } else if !tool.instant() {
+                    ui.label(if tool == ModelTool::PointSplit {
+                        "Radius"
+                    } else {
+                        "Distance"
+                    });
+                    search::setting_response(
+                        ui.add(egui::DragValue::new(&mut self.modeling.amount).speed(0.01)),
+                        "Modeling amount",
+                    );
+                    ui.weak(if tool == ModelTool::PointExtrude {
+                        "Drag in the screen plane · release applies · Esc cancels"
+                    } else {
+                        "Drag up/down to adjust · release applies · Esc cancels"
+                    });
+                }
+                if tool == ModelTool::EdgeExtrude {
+                    design::checkbox(
+                        ui,
+                        &mut self.modeling.construction.other_side,
+                        "Other adjacent side",
+                    );
+                    ui.weak("Border: extend outward · surface: extrude the highlighted side");
+                }
+                if tool == ModelTool::PointExtrude {
+                    ui.weak("Creates one vertex joined to the original by an edge. The new endpoint follows your drag in the screen plane and stays selected.");
+                    ui.weak("Drag first to set the direction for Apply amount and tap to repeat.");
+                    ui.weak("Hold Ctrl during a drag for a detached vertex copy; release Ctrl to restore its connecting edge.");
+                }
+                if matches!(tool, ModelTool::PointExtrude | ModelTool::EdgeExtrude) {
+                    search::setting_response(
+                        ui.checkbox(
+                            self.modeling.extrude_snap.get_or_insert(true),
+                            "Snap and join",
+                        ),
+                        "Extrusion snap and join",
+                    );
+                    search::setting_response(
+                        ui.add(
+                            egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.))
+                                .range(4. ..=40.)
+                                .prefix("Snap radius ")
+                                .suffix(" px"),
+                        ),
+                        "Snap pick radius",
+                    );
+                    ui.weak("Nearby visible targets on this mesh · hold Shift for free extrusion");
+                    ui.weak(if tool == ModelTool::PointExtrude { "One point (plus symmetry copies) connects to an existing vertex. Gold marks the join before release." } else { "One open edge (plus symmetry copies) joins another open edge. Gold marks the join before release." });
+                }
+                if tool == ModelTool::PointSplit {
+                    search::setting_response(
+                        design::checkbox(
+                            ui,
+                            &mut self.modeling.construction.round,
+                            "Circularize ring",
+                        ),
+                        "Circularize ring",
+                    );
+                    search::setting_response(
+                        design::checkbox(ui, &mut self.modeling.construction.crease, "Crease ring"),
+                        "Crease ring",
+                    );
+                    ui.weak("Closed point fan · radius below half the shortest edge");
+                }
+                if tool.instant() {
+                    ui.weak(if tool == ModelTool::FacePoint {
+                        "Tap: connect a center point to each corner"
+                    } else {
+                        "Tap: split into quads and connect neighboring edges"
+                    });
+                }
+                if ui
+                    .add_enabled(
+                        self.modeling.count > 0
+                            && (tool != ModelTool::PointExtrude
+                                || self.modeling.transform_direction.len() > 1e-6),
+                        egui::Button::new(if tool.instant() {
+                            "Apply to selection"
+                        } else {
+                            "Apply amount"
+                        }),
+                    )
+                    .customize(Action::ModelApply)
+                    .clicked()
+                {
+                    commands.push(Command::ModelApply);
+                }
+            }
+
+            ModelTool::Select => {
+                ui.horizontal_wrapped(|ui| {
+                    for (change, action) in [
+                        (SelectionChange::Replace, Action::ModelReplace),
+                        (SelectionChange::Add, Action::ModelAdd),
+                        (SelectionChange::Remove, Action::ModelRemove),
+                    ] {
+                        if ui
+                            .selectable_label(
+                                self.modeling.erase_radius == 0. && self.modeling.change == change,
+                                format!("{change:?}"),
+                            )
+                            .customize(action.clone())
+                            .clicked()
+                        {
+                            commands.push(Command::Action(action));
+                        }
+                    }
+                });
+                let mut erase = self.modeling.erase_radius > 0.;
+                if search::setting_response(
+                    ui.checkbox(&mut erase, "Paint away selection"),
+                    "Paint away selection",
+                )
+                .changed()
+                {
+                    self.modeling.erase_radius = if erase { 32. } else { 0. };
+                }
+                if erase {
+                    search::setting_response(
+                        ui.add(
+                            egui::Slider::new(&mut self.modeling.erase_radius, 4. ..=160.)
+                                .text("Eraser radius (px)"),
+                        ),
+                        "Eraser radius",
+                    );
+                    ui.weak("Brush visible selected components · Esc restores the selection");
+                } else {
+                    ui.weak("Tap or drag to select · Shift adds · Ctrl removes");
+                }
+                match (self.modeling.mode, self.modeling.span) {
+                    (ComponentMode::Face, SelectionSpan::Loop) => {
+                        ui.weak("Hover near a face edge to choose the loop direction.");
+                    }
+                    (ComponentMode::Edge, SelectionSpan::Loop) => {
+                        ui.weak("Follows connected edges along the loop.");
+                    }
+                    (ComponentMode::Edge, SelectionSpan::Ring) => {
+                        ui.weak("Follows opposite edges across a quad strip.");
+                    }
+                    _ => {}
+                }
+                if !erase {
+                    ui.weak("Replace clears once per stroke · Esc cancels");
+                }
+            }
+            ModelTool::CutCell => {
+                ui.weak(if self.modeling.mode == ComponentMode::Face {
+                    "Press a rectangular grid face to preview a one-cell recess."
+                } else {
+                    "Press a right-angle ridge edge to preview a one-cell notch."
+                });
+                ui.weak("Release to cut. Esc cancels the preview.");
+                if ui
+                    .add_enabled(
+                        self.modeling.count > 0,
+                        egui::Button::new("Apply to selection"),
+                    )
+                    .customize(Action::ModelApply)
+                    .clicked()
+                {
+                    commands.push(Command::ModelApply);
+                }
+            }
+            ModelTool::Extrude | ModelTool::Fuse => {
+                if self.modeling.tool == ModelTool::Fuse {
+                    ui.label("Snap range (fraction of local edge)");
+                    search::setting_response(
+                        ui.add(
+                            egui::DragValue::new(&mut self.modeling.snap)
+                                .range(0.0..=0.25)
+                                .speed(0.005),
+                        ),
+                        "Snap range",
+                    );
+                    ui.weak("Each separate flat region snaps to its own compatible loop or cap.");
+                }
+                if self.modeling.tool == ModelTool::Extrude {
+                    search::setting_response(
+                        design::checkbox(ui, &mut self.modeling.individual, "Individual faces"),
+                        "Individual faces",
+                    );
+                }
+                search::setting_response(
+                    ui.add(
+                        egui::DragValue::new(&mut self.modeling.amount)
+                            .prefix("Distance ")
+                            .speed(0.01),
+                    ),
+                    "Modeling amount",
+                );
+                ui.horizontal_wrapped(|ui| {
+                    if self.modeling.tool == ModelTool::Fuse
+                        && ui
+                            .add_enabled(self.modeling.count > 0, egui::Button::new("Preview"))
+                            .clicked()
+                    {
+                        commands.push(Command::ModelPreviewFuse);
+                    }
+                    if ui
+                        .add_enabled(self.modeling.count > 0, egui::Button::new("Apply amount"))
+                        .customize(Action::ModelApply)
+                        .clicked()
+                    {
+                        commands.push(Command::ModelApply);
+                    }
+                });
+
+                design::help(
+                    design::checkbox(ui, &mut self.modeling.join, "Join matching faces")
+                        .customize(Action::ModelJoin),
+                    "Snap to an aligned opposite cap with matching face layout and remove both caps to open a tunnel.",
+                );
+                ui.weak("Drag up: out · down: in · release: apply · Esc: cancel");
+                if self.modeling.tool == ModelTool::Fuse {
+                    ui.weak("Gold marks the target face or loop. Coral walls will be removed.");
+                } else {
+                    ui.weak("Connected regions share walls; Individual faces extrude separately.");
+                    ui.weak("Hold Ctrl during a drag for detached face copies. Release Ctrl to restore attached extrusion.");
+                }
+            }
+            ModelTool::Inset | ModelTool::Bevel => {
+                search::setting_response(
+                    design::checkbox(ui, &mut self.modeling.individual, "Individual faces"),
+                    "Individual faces",
+                );
+                search::setting_response(
+                    ui.add(
+                        egui::DragValue::new(&mut self.modeling.amount)
+                            .prefix("Width ")
+                            .range(0.0..=1000.)
+                            .speed(0.01),
+                    ),
+                    "Modeling amount",
+                );
+                if ui
+                    .add_enabled(self.modeling.count > 0, egui::Button::new("Apply amount"))
+                    .customize(Action::ModelApply)
+                    .clicked()
+                {
+                    commands.push(Command::ModelApply);
+                }
+                ui.weak("Drag up to increase width · release applies · Esc cancels");
+                if self.modeling.tool == ModelTool::Bevel {
+                    ui.weak("Flat region with one exterior edge at each corner.");
+                }
+            }
+            ModelTool::Move | ModelTool::Rotate | ModelTool::Scale | ModelTool::Slide => {
+                use crate::viewport::ModelInteraction;
+                let direct = self.modeling.tool.is_transform();
+                if direct {
+                    ui.horizontal_wrapped(|ui| {
+                        for mode in [
+                            ModelInteraction::Free,
+                            ModelInteraction::Gizmo,
+                            ModelInteraction::Axis,
+                        ] {
+                            if ui
+                                .selectable_label(self.modeling.interaction == mode, mode.label())
+                                .customize(Action::ModelInteraction(mode))
+                                .clicked()
+                            {
+                                commands.push(Command::Action(Action::ModelInteraction(mode)));
+                            }
+                        }
+                    });
+                }
+                if !direct || self.modeling.interaction == ModelInteraction::Axis {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Axis");
+                        for axis in crate::viewport::ModelAxis::ALL {
+                            if axis == crate::viewport::ModelAxis::Uniform
+                                && self.modeling.tool != ModelTool::Scale
+                            {
+                                continue;
+                            }
+                            ui.selectable_value(&mut self.modeling.axis, axis, format!("{axis:?}"));
+                        }
+                    });
+                } else {
+                    ui.weak(if self.modeling.interaction==ModelInteraction::Gizmo {"Select components, then drag the handles. Center: free / uniform. Colors: X, Y, Z."}else{match self.modeling.tool {ModelTool::Move=>"Drag a target freely in the view plane",ModelTool::Rotate=>"Drag a target to rotate with the trackball",_=>"Drag up/down to scale uniformly"}});
+                    let d = self.modeling.transform_direction;
+                    if d.len() < 1e-6 {
+                        ui.weak(if self.modeling.tool == ModelTool::Scale {
+                            "Uniform scale"
+                        } else {
+                            "Drag first to set the direction for Apply amount"
+                        });
+                    } else {
+                        ui.weak(format!(
+                            "Direction: X {:.2}, Y {:.2}, Z {:.2}",
+                            d.0, d.1, d.2
+                        ));
+                    }
+                }
+                ui.label(match self.modeling.tool {
+                    ModelTool::Slide => "Slide fraction (-1 to 1)",
+                    ModelTool::Rotate => "Angle (degrees)",
+                    ModelTool::Scale => "Scale factor",
+                    _ => "Distance",
+                });
+                search::setting_response(
+                    ui.add(egui::DragValue::new(&mut self.modeling.amount).speed(0.01)),
+                    "Modeling amount",
+                );
+                let has_direction = !direct
+                    || self.modeling.interaction == ModelInteraction::Axis
+                    || self.modeling.tool == ModelTool::Scale
+                    || self.modeling.transform_direction.len() > 1e-6;
+                if ui
+                    .add_enabled(
+                        self.modeling.count > 0 && has_direction,
+                        egui::Button::new("Apply amount"),
+                    )
+                    .customize(Action::ModelApply)
+                    .clicked()
+                {
+                    commands.push(Command::ModelApply);
+                }
+                ui.weak("Release applies · Esc cancels · one Undo per drag");
+                if self.modeling.tool == ModelTool::Move {
+                    ui.strong("Snap and weld on move");
+                    ui.horizontal_wrapped(|ui| {
+                        use crate::viewport::MoveSnap;
+                        for (option, label) in [
+                            (MoveSnap::Off, "Off"),
+                            (MoveSnap::Vertex, "Vertex"),
+                            (MoveSnap::Edge, "Edge"),
+                        ] {
+                            search::setting_response(
+                                ui.selectable_value(&mut self.modeling.move_snap, option, label),
+                                "Move snap and weld",
+                            );
+                        }
+                    });
+                    ui.weak("Vertex welds a moved point to an existing vertex. Edge also welds both ends of a parallel edge when both are nearby.");
+                    search::setting_response(
+                        ui.add(
+                            egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.))
+                                .range(4. ..=40.)
+                                .prefix("Snap radius ")
+                                .suffix(" px"),
+                        ),
+                        "Snap pick radius",
+                    );
+                    ui.weak("Free drag or gizmo center · hold Shift for free movement · release to weld");
+                }
+
+                ui.weak("Rotate and scale around the selection center");
+                if direct {
+                    ui.separator();
+                    ui.strong("Align without welding");
+                    ui.horizontal_wrapped(|ui| {
+                        use crate::viewport::SnapTarget;
+                        for target in [SnapTarget::Vertex, SnapTarget::Edge, SnapTarget::Surface] {
+                            search::setting_response(
+                                ui.selectable_value(
+                                    &mut self.modeling.snap_target,
+                                    target,
+                                    target.label(),
+                                ),
+                                "Snap target type",
+                            );
+                        }
+                    });
+                    search::setting_response(
+                        ui.add(
+                            egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.))
+                                .range(4. ..=40.)
+                                .prefix("Pick radius ")
+                                .suffix(" px"),
+                        ),
+                        "Snap pick radius",
+                    );
+                    ui.weak("Active mesh · visible, unselected targets").on_hover_text("Selected vertices, symmetry copies and incident target geometry are excluded. Free/Gizmo snap freely; Axis / amount uses the chosen axis.");
+                    ui.weak(match self.modeling.tool {
+                            ModelTool::Move => "Move aligns the source to the target; an axis projects that movement.",
+                            ModelTool::Rotate => "Rotate aims the source direction at the target around the selection center; distance stays fixed.",
+                            _ => "Scale matches distance from the selection center, or its chosen axis component; direction stays fixed.",
+                        });
+                    if let Some(hint) = &self.modeling.snap_hint {
+                        ui.label(hint);
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
+                            .add_enabled(
+                                self.modeling.count > 0,
+                                egui::Button::new("Pick snap source"),
+                            )
+                            .customize(Action::ModelSnap)
+                            .clicked()
+                        {
+                            commands.push(Command::ModelSnap);
+                        }
+                        if self.modeling.snap_active {
+                            if ui.button("Pick another target").clicked() {
+                                commands.push(Command::ModelSnapRetarget);
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.modeling.snap_ready,
+                                    egui::Button::new("Apply snap"),
+                                )
+                                .clicked()
+                            {
+                                commands.push(Command::ModelSnapApply);
+                            }
+                            if ui.button("Cancel snap").clicked() {
+                                commands.push(Command::ModelSnapCancel);
+                            }
+                        }
+                    });
+                    ui.weak("Click source, then target. Orbit/zoom to inspect.").on_hover_text("Apply amount uses the numeric value without snapping and discards this preview.");
+                }
+            }
+            ModelTool::LoopCut => {
+                use crate::sculpt::LoopCut;
+                self.modeling.loop_count = self.modeling.loop_count.clamp(1, LoopCut::MAX_COUNT);
+                ui.horizontal(|ui| {
+                    ui.label("Loops");
+                    if design::help(
+                        ui.button("−").customize(Action::ModelFewerLoops),
+                        "Fewer loop cuts (minimum 1)",
+                    )
+                    .clicked()
+                    {
+                        self.modeling.loop_count =
+                            self.modeling.loop_count.saturating_sub(1).max(1);
+                    }
+                    ui.add(
+                        egui::DragValue::new(&mut self.modeling.loop_count)
+                            .range(1..=LoopCut::MAX_COUNT),
+                    );
+                    if design::help(
+                        ui.button("+").customize(Action::ModelMoreLoops),
+                        "More loop cuts (maximum 16)",
+                    )
+                    .clicked()
+                    {
+                        self.modeling.loop_count =
+                            (self.modeling.loop_count + 1).min(LoopCut::MAX_COUNT);
+                    }
+                });
+                ui.weak("Tap: centered · drag along edge: slide · release: apply");
+                ui.weak("Wheel while dragging: loop count · Esc: cancel");
+                ui.weak("Follows visible quads. Edits replace stored levels.");
+            }
+        }
+        if ((self.modeling.tool.is_edit() && !self.modeling.tool.instant())
+            || self.modeling.tool == ModelTool::Extrude)
+            && !(self.modeling.tool.is_transform()
+                && self.modeling.interaction == crate::viewport::ModelInteraction::Gizmo)
+        {
+            design::checkbox(ui, &mut self.modeling.tap_repeat,"Tap to repeat").customize(Action::ModelTapRepeat)
+                    .on_hover_text("Tap a target to apply the displayed amount and options. Drag to set a new amount. Select and centered loop cuts are unchanged.");
+            if self.modeling.tap_repeat {
+                ui.weak(format!(
+                    "Tap applies {:.3} · drag sets a new amount",
+                    self.modeling.amount
+                ));
+            }
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Clear selection")
+                .customize(Action::ModelClearSelection)
+                .clicked()
+            {
+                commands.push(Command::ClearModelSelection);
+            }
+            if self.modeling.mode == ComponentMode::Edge
+                && ui
+                    .button("Select loop")
+                    .customize(Action::ModelSelectLoop)
+                    .clicked()
+            {
+                commands.push(Command::ModelSelectLoop);
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            for (label, action) in [
+                ("Grow selection", Action::ModelGrowSelection),
+                ("Shrink selection", Action::ModelShrinkSelection),
+            ] {
+                if ui
+                    .add_enabled(self.modeling.count > 0, egui::Button::new(label))
+                    .customize(action.clone())
+                    .clicked()
+                {
+                    commands.push(Command::Action(action));
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            for (label, action, enabled) in [
+                (
+                    "Undo selection change",
+                    Action::ModelUndoSelection,
+                    self.modeling.selection_undo,
+                ),
+                (
+                    "Redo selection change",
+                    Action::ModelRedoSelection,
+                    self.modeling.selection_redo,
+                ),
+            ] {
+                if ui
+                    .add_enabled(enabled, egui::Button::new(label))
+                    .customize(action.clone())
+                    .clicked()
+                {
+                    commands.push(Command::Action(action));
+                }
+            }
+        });
+        ui.weak("One polygon step. Hidden/protected geometry blocks growth. Selection Undo/Redo is separate from geometry history.");
+        if self.modeling.mode == ComponentMode::Face
+            && ui
+                .button("Select region boundary")
+                .customize(Action::ModelBoundary)
+                .clicked()
+        {
+            commands.push(Command::ModelBoundary);
+        }
+        if self.modeling.mode == ComponentMode::Edge {
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .add_enabled(self.modeling.count > 0, egui::Button::new("Mark UV seams"))
+                    .clicked()
+                {
+                    commands.push(Command::UvSeams(true));
+                }
+                if ui
+                    .add_enabled(self.modeling.count > 0, egui::Button::new("Clear UV seams"))
+                    .clicked()
+                {
+                    commands.push(Command::UvSeams(false));
+                }
+            });
+            ui.weak("Select edges, then mark or clear seams. Unwrap uses the marked seams.");
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    self.modeling.can_repeat && self.modeling.count > 0,
+                    egui::Button::new("Repeat last edit"),
+                )
+                .customize(Action::ModelRepeat)
+                .on_hover_text(&self.modeling.repeat_label)
+                .clicked()
+            {
+                commands.push(Command::ModelRepeat);
+            }
+            design::checkbox(ui, &mut self.modeling.smooth_preview, "Smooth preview")
+                .customize(Action::ModelSmoothPreview);
+        });
+        if self.modeling.smooth_preview {
+            ui.weak("One smooth level · cage stays editable · preview pauses during a drag");
+        }
+        self.modeling_presets(ui, commands);
+        egui::CollapsingHeader::new("Selection to vertex group").open(search::requested_section(ui.ctx(), "model_groups")).show(ui, |ui| {
+                ui.text_edit_singleline(&mut self.modeling.group_name);
+                let enabled = self.modeling.count > 0 && document.mesh_settings().levels() == 1;
+                let help = "Use a single subdivision level and select components first. Face colors use only selected faces; vertex weights include their corners. Edges include both ends. Creating or adding replaces previous membership; partial regions remain, fully replaced groups disappear. Masks stay unchanged.";
+                if design::help(
+                    ui.add_enabled(enabled, egui::Button::new("Create group from selection")).customize(Action::ModelCreateGroup), help,
+                ).clicked() {
+                    commands.push(Command::GroupModelSelection(None, false));
+                }
+                let groups = &document.mesh().vertex_groups;
+                self.modeling.group = self.modeling.group.min(groups.len().saturating_sub(1));
+                if let Some(first) = groups.iter().position(|g| g.purpose.is_selection()) {
+                    if !groups[self.modeling.group].purpose.is_selection() { self.modeling.group = first; }
+                    egui::ComboBox::from_id_salt("modeling_group")
+                        .selected_text(&groups[self.modeling.group].name)
+                        .show_ui(ui, |ui| {
+                            for (i, group) in groups.iter().enumerate().filter(|(_, g)| g.purpose.is_selection()) {
+                                ui.selectable_value(&mut self.modeling.group, i, &group.name);
+                            }
+                        });
+                    ui.horizontal_wrapped(|ui| {
+                        for (label, remove, action) in [
+                            ("Add to group", false, Action::ModelAddToGroup),
+                            ("Remove from group", true, Action::ModelRemoveFromGroup),
+                        ] {
+                            if design::help(ui.add_enabled(enabled, egui::Button::new(label)).customize(action), help).clicked() {
+                                commands.push(Command::GroupModelSelection(Some(self.modeling.group), remove));
+                            }
+                        }
+                    });
+                }
+            });
     }
 
     pub(super) fn modeling_controls(
@@ -316,10 +1041,17 @@ impl UiState {
                 }
             });
             ui.horizontal_wrapped(|ui| {
-                for tool in [ModelTool::Move,ModelTool::Rotate,ModelTool::Scale] {
+                for tool in [ModelTool::Move,ModelTool::Rotate,ModelTool::Scale,ModelTool::SurfaceSlide] {
                     if ui.selectable_label(self.modeling.tool==tool,match tool {ModelTool::Move=>"Move",ModelTool::Rotate=>"Rotate",ModelTool::Scale=>"Scale",_=>tool.label()}).customize(Action::ModelTool(tool)).clicked() { commands.push(Command::Action(Action::ModelTool(tool))); }
                 }
             });
+            if ui.selectable_label(self.modeling.tool == ModelTool::Delete, ModelTool::Delete.label()).clicked() {
+                commands.push(Command::Action(Action::ModelTool(ModelTool::Delete)));
+            }
+            if self.modeling.tool == ModelTool::Delete {
+                ui.checkbox(&mut self.modeling.delete_keep_vertices, "Keep unused vertices");
+                ui.weak("Click a face, edge or vertex to delete the chosen target. Deleting an edge also removes its attached faces; protected borders stay intact.");
+            }
             if self.modeling.mode==ComponentMode::Face { ui.horizontal_wrapped(|ui| { for tool in [ModelTool::Inset,ModelTool::Bevel,ModelTool::Fuse] { if ui.selectable_label(self.modeling.tool==tool,match tool {ModelTool::Move=>"Move",ModelTool::Rotate=>"Rotate",ModelTool::Scale=>"Scale",_=>tool.label()}).customize(Action::ModelTool(tool)).clicked() {commands.push(Command::Action(Action::ModelTool(tool)));} } }); }
             if self.modeling.mode==ComponentMode::Edge && ui.selectable_label(self.modeling.tool==ModelTool::Slide,"Slide loop").customize(Action::ModelTool(ModelTool::Slide)).clicked(){commands.push(Command::Action(Action::ModelTool(ModelTool::Slide)));}
             ui.horizontal_wrapped(|ui| {
@@ -350,7 +1082,7 @@ impl UiState {
                     if (self.modeling.mode==mode || (edit==T::CreateFace && self.modeling.mode==ComponentMode::Edge)) && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
                 }
                 ui.weak("Create face fills three or four selected vertices, including endpoints of selected edges and loose outlines. For larger openings, select the complete boundary. Fill boundary uses its complete edge loop. Connect vertices splits a quad. These actions apply immediately as one Undo step. New faces need unwrapping before texture painting.");
-                ui.weak("Delete loop: Keep surface joins the adjoining faces; Leave gap removes the faces touching the loop. Select complete interior quad loops. Weld uses the midpoint.");
+                ui.weak("Delete loop: Keep surface joins the adjoining faces; Leave gap removes the faces touching the loop. Loops stop before masked or hidden areas. Weld uses the midpoint.");
                 if self.modeling.mode == ComponentMode::Vertex {
                     ui.weak("Delete vertices also removes every face attached to them.");
                 }
@@ -367,291 +1099,7 @@ impl UiState {
                 ui.weak("Connected faces within this angle of the first face");
             }
             }
-            design::checkbox(ui, &mut self.modeling.protect_mask,"Protect mask").customize(Action::ModelProtectMask);
-            ui.weak("Hidden faces are protected · topology edits replace stored levels");
-            match self.modeling.tool {
-                ModelTool::EdgeChamfer | ModelTool::EdgeBevel | ModelTool::VertexChamfer | ModelTool::VertexBevel => {
-                    if self.bevel_controls(ui) { commands.push(Command::ModelApply); }
-                }
-                ModelTool::PointSplit => {
-                    if self.point_split_controls(ui) { commands.push(Command::ModelApply); }
-                }
-                ModelTool::EdgeExtrude | ModelTool::EdgeSplit | ModelTool::EdgeCollapse | ModelTool::PointExtrude | ModelTool::FacePoint | ModelTool::FaceSplit => {
-                    let tool=self.modeling.tool;
-                    if matches!(tool,ModelTool::EdgeSplit|ModelTool::EdgeCollapse) {
-                        ui.label("Position from marked endpoint (0–1)");
-                        let range=if tool==ModelTool::EdgeSplit {0.001..=0.999}else{0.0..=1.0};
-                        search::setting_response(ui.add(egui::DragValue::new(&mut self.modeling.amount).range(range).speed(0.01)), "Modeling amount");
-                        if tool==ModelTool::EdgeCollapse {ui.horizontal_wrapped(|ui|{ui.selectable_value(&mut self.modeling.amount,0.,"Marked end");ui.selectable_value(&mut self.modeling.amount,0.5,"Midpoint");ui.selectable_value(&mut self.modeling.amount,1.,"Other end");});}
-                        ui.weak("Drag along the edge to place the point · Esc cancels");
-                    } else if !tool.instant() {
-                        ui.label(if tool==ModelTool::PointSplit {"Radius"}else{"Distance"});
-                        search::setting_response(ui.add(egui::DragValue::new(&mut self.modeling.amount).speed(0.01)), "Modeling amount");
-                        ui.weak(if tool == ModelTool::PointExtrude {"Drag in the screen plane · release applies · Esc cancels"} else {"Drag up/down to adjust · release applies · Esc cancels"});
-                    }
-                    if tool==ModelTool::EdgeExtrude {
-                        design::checkbox(ui, &mut self.modeling.construction.other_side,"Other adjacent side");
-                        ui.weak("Border: extend outward · surface: extrude the highlighted side");
-                    }
-                    if tool==ModelTool::PointExtrude {
-                        ui.weak("Creates one vertex joined to the original by an edge. The new endpoint follows your drag in the screen plane and stays selected.");
-                        ui.weak("Drag first to set the direction for Apply amount and tap to repeat.");
-                        ui.weak("Hold Ctrl when starting a drag to move a detached vertex copy, with no connecting edge.");
-                    }
-                    if matches!(tool, ModelTool::PointExtrude | ModelTool::EdgeExtrude) {
-                        search::setting_response(ui.checkbox(self.modeling.extrude_snap.get_or_insert(true), "Snap and join"), "Extrusion snap and join");
-                        search::setting_response(ui.add(egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.)).range(4. ..=40.).prefix("Snap radius ").suffix(" px")), "Snap pick radius");
-                        ui.weak("Nearby visible targets on this mesh · hold Shift for free extrusion");
-                        ui.weak(if tool == ModelTool::PointExtrude { "One point (plus symmetry copies) connects to an existing vertex. Gold marks the join before release." } else { "One open edge (plus symmetry copies) joins another open edge. Gold marks the join before release." });
-                    }
-                    if tool==ModelTool::PointSplit {
-                        search::setting_response(design::checkbox(ui, &mut self.modeling.construction.round,"Circularize ring"), "Circularize ring");
-                        search::setting_response(design::checkbox(ui, &mut self.modeling.construction.crease,"Crease ring"), "Crease ring");
-                        ui.weak("Closed point fan · radius below half the shortest edge");
-                    }
-                    if tool.instant(){ui.weak(if tool==ModelTool::FacePoint {"Tap: connect a center point to each corner"}else{"Tap: split into quads and connect neighboring edges"});}
-                    if ui.add_enabled(self.modeling.count>0 && (tool != ModelTool::PointExtrude || self.modeling.transform_direction.len()>1e-6),egui::Button::new(if tool.instant(){"Apply to selection"}else{"Apply amount"})).customize(Action::ModelApply).clicked(){commands.push(Command::ModelApply);}
-                }
-
-                ModelTool::Select => {
-                    ui.horizontal_wrapped(|ui| {
-                        for (change, action) in [
-                            (SelectionChange::Replace, Action::ModelReplace),
-                            (SelectionChange::Add, Action::ModelAdd),
-                            (SelectionChange::Remove, Action::ModelRemove),
-                        ] {
-                            if ui.selectable_label(self.modeling.erase_radius == 0. && self.modeling.change == change, format!("{change:?}"))
-                                .customize(action.clone()).clicked() {
-                                commands.push(Command::Action(action));
-                            }
-                        }
-                    });
-                    let mut erase = self.modeling.erase_radius > 0.;
-                    if search::setting_response(ui.checkbox(&mut erase, "Paint away selection"), "Paint away selection").changed() {
-                        self.modeling.erase_radius = if erase { 32. } else { 0. };
-                    }
-                    if erase {
-                        search::setting_response(ui.add(egui::Slider::new(&mut self.modeling.erase_radius,4. ..=160.).text("Eraser radius (px)")), "Eraser radius");
-                        ui.weak("Brush visible selected components · Esc restores the selection");
-                    } else { ui.weak("Tap or drag to select · Shift adds · Ctrl removes"); }
-                    match (self.modeling.mode,self.modeling.span) {
-                        (ComponentMode::Face,SelectionSpan::Loop) => {ui.weak("Hover near a face edge to choose the loop direction.");}
-                        (ComponentMode::Edge,SelectionSpan::Loop) => {ui.weak("Follows connected edges along the loop.");}
-                        (ComponentMode::Edge,SelectionSpan::Ring) => {ui.weak("Follows opposite edges across a quad strip.");}
-                        _ => {}
-                    }
-                    if !erase { ui.weak("Replace clears once per stroke · Esc cancels"); }
-                }
-                ModelTool::CutCell => {
-                    ui.weak(if self.modeling.mode == ComponentMode::Face { "Press a rectangular grid face to preview a one-cell recess." } else { "Press a right-angle ridge edge to preview a one-cell notch." });
-                    ui.weak("Release to cut. Esc cancels the preview.");
-                    if ui.add_enabled(self.modeling.count>0, egui::Button::new("Apply to selection")).customize(Action::ModelApply).clicked() {
-                        commands.push(Command::ModelApply);
-                    }
-                }
-                ModelTool::Extrude | ModelTool::Fuse => {
-                    if self.modeling.tool==ModelTool::Fuse {
-                        ui.label("Snap range (fraction of local edge)");
-                        search::setting_response(ui.add(egui::DragValue::new(&mut self.modeling.snap).range(0.0..=0.25).speed(0.005)), "Snap range");
-                        ui.weak("Each separate flat region snaps to its own compatible loop or cap.");
-                    }
-                    if self.modeling.tool==ModelTool::Extrude {search::setting_response(design::checkbox(ui, &mut self.modeling.individual,"Individual faces"), "Individual faces");}
-                    search::setting_response(ui.add(egui::DragValue::new(&mut self.modeling.amount).prefix("Distance ").speed(0.01)), "Modeling amount");
-                    ui.horizontal_wrapped(|ui| {
-                        if self.modeling.tool == ModelTool::Fuse && ui.add_enabled(self.modeling.count>0, egui::Button::new("Preview")).clicked() { commands.push(Command::ModelPreviewFuse); }
-                        if ui.add_enabled(self.modeling.count>0, egui::Button::new("Apply amount")).customize(Action::ModelApply).clicked(){commands.push(Command::ModelApply);}
-                    });
-
-                    design::help(
-                        design::checkbox(ui, &mut self.modeling.join, "Join matching faces").customize(Action::ModelJoin),
-                        "Snap to an aligned opposite cap with matching face layout and remove both caps to open a tunnel.",
-                    );
-                    ui.weak("Drag up: out · down: in · release: apply · Esc: cancel");
-                    if self.modeling.tool == ModelTool::Fuse {
-                        ui.weak("Gold marks the target face or loop. Coral walls will be removed.");
-                    } else {
-                        ui.weak("Connected regions share walls; Individual faces extrude separately.");
-                        ui.weak("Hold Ctrl when starting a drag to move detached face copies. Originals stay; no side walls are created.");
-                    }
-                }
-                ModelTool::Inset | ModelTool::Bevel => {
-                    search::setting_response(design::checkbox(ui, &mut self.modeling.individual,"Individual faces"), "Individual faces");
-                    search::setting_response(ui.add(egui::DragValue::new(&mut self.modeling.amount).prefix("Width ").range(0.0..=1000.).speed(0.01)), "Modeling amount");
-                    if ui.add_enabled(self.modeling.count>0,egui::Button::new("Apply amount")).customize(Action::ModelApply).clicked(){commands.push(Command::ModelApply);}
-                    ui.weak("Drag up to increase width · release applies · Esc cancels");
-                    if self.modeling.tool==ModelTool::Bevel {ui.weak("Flat region with one exterior edge at each corner.");}
-                }
-                ModelTool::Move | ModelTool::Rotate | ModelTool::Scale | ModelTool::Slide => {
-                    use crate::viewport::ModelInteraction;
-                    let direct = self.modeling.tool.is_transform();
-                    if direct {
-                        ui.horizontal_wrapped(|ui| {
-                            for mode in [ModelInteraction::Free,ModelInteraction::Gizmo,ModelInteraction::Axis] {
-                                if ui.selectable_label(self.modeling.interaction==mode,mode.label()).customize(Action::ModelInteraction(mode)).clicked() { commands.push(Command::Action(Action::ModelInteraction(mode))); }
-                            }
-                        });
-                    }
-                    if !direct || self.modeling.interaction==ModelInteraction::Axis { ui.horizontal_wrapped(|ui| {
-                        ui.label("Axis");
-                        for axis in crate::viewport::ModelAxis::ALL {
-                            if axis==crate::viewport::ModelAxis::Uniform && self.modeling.tool!=ModelTool::Scale {continue;}
-                            ui.selectable_value(&mut self.modeling.axis,axis,format!("{axis:?}"));
-                        }
-                    });
-                    } else {
-                        ui.weak(if self.modeling.interaction==ModelInteraction::Gizmo {"Select components, then drag the handles. Center: free / uniform. Colors: X, Y, Z."}else{match self.modeling.tool {ModelTool::Move=>"Drag a target freely in the view plane",ModelTool::Rotate=>"Drag a target to rotate with the trackball",_=>"Drag up/down to scale uniformly"}});
-                        let d=self.modeling.transform_direction;
-                        if d.len()<1e-6 {
-                            ui.weak(if self.modeling.tool==ModelTool::Scale {"Uniform scale"}else{"Drag first to set the direction for Apply amount"});
-                        } else { ui.weak(format!("Direction: X {:.2}, Y {:.2}, Z {:.2}",d.0,d.1,d.2)); }
-                    }
-                    ui.label(match self.modeling.tool { ModelTool::Slide=>"Slide fraction (-1 to 1)", ModelTool::Rotate=>"Angle (degrees)",ModelTool::Scale=>"Scale factor",_=>"Distance" });
-                    search::setting_response(ui.add(egui::DragValue::new(&mut self.modeling.amount).speed(0.01)), "Modeling amount");
-                    let has_direction=!direct || self.modeling.interaction==ModelInteraction::Axis || self.modeling.tool==ModelTool::Scale || self.modeling.transform_direction.len()>1e-6;
-                    if ui.add_enabled(self.modeling.count>0 && has_direction,egui::Button::new("Apply amount")).customize(Action::ModelApply).clicked() { commands.push(Command::ModelApply); }
-                    ui.weak("Release applies · Esc cancels · one Undo per drag");
-                    if self.modeling.tool == ModelTool::Move {
-                        ui.strong("Snap and weld on move");
-                        ui.horizontal_wrapped(|ui| {
-                            use crate::viewport::MoveSnap;
-                            for (option,label) in [(MoveSnap::Off,"Off"),(MoveSnap::Vertex,"Vertex"),(MoveSnap::Edge,"Edge")] {
-                                search::setting_response(ui.selectable_value(&mut self.modeling.move_snap,option,label),"Move snap and weld");
-                            }
-                        });
-                        ui.weak("Vertex welds a moved point to an existing vertex. Edge also welds both ends of a parallel edge when both are nearby.");
-                        search::setting_response(ui.add(egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.)).range(4. ..=40.).prefix("Snap radius ").suffix(" px")),"Snap pick radius");
-                        ui.weak("Free drag or gizmo center · hold Shift for free movement · release to weld");
-                    }
-
-                    ui.weak("Rotate and scale around the selection center");
-                    if direct {
-                        ui.separator();
-                        ui.strong("Align without welding");
-                        ui.horizontal_wrapped(|ui| {
-                            use crate::viewport::SnapTarget;
-                            for target in [SnapTarget::Vertex, SnapTarget::Edge, SnapTarget::Surface] {
-                                search::setting_response(ui.selectable_value(&mut self.modeling.snap_target, target, target.label()), "Snap target type");
-                            }
-                        });
-                        search::setting_response(ui.add(egui::DragValue::new(self.modeling.snap_radius.get_or_insert(12.)).range(4. ..=40.).prefix("Pick radius ").suffix(" px")), "Snap pick radius");
-                        ui.weak("Active mesh · visible, unselected targets").on_hover_text("Selected vertices, symmetry copies and incident target geometry are excluded. Free/Gizmo snap freely; Axis / amount uses the chosen axis.");
-                        ui.weak(match self.modeling.tool {
-                            ModelTool::Move => "Move aligns the source to the target; an axis projects that movement.",
-                            ModelTool::Rotate => "Rotate aims the source direction at the target around the selection center; distance stays fixed.",
-                            _ => "Scale matches distance from the selection center, or its chosen axis component; direction stays fixed.",
-                        });
-                        if let Some(hint) = &self.modeling.snap_hint { ui.label(hint); }
-                        ui.horizontal_wrapped(|ui| {
-                            if ui.add_enabled(self.modeling.count>0,egui::Button::new("Pick snap source")).customize(Action::ModelSnap).clicked() { commands.push(Command::ModelSnap); }
-                            if self.modeling.snap_active {
-                                if ui.button("Pick another target").clicked() { commands.push(Command::ModelSnapRetarget); }
-                                if ui.add_enabled(self.modeling.snap_ready,egui::Button::new("Apply snap")).clicked() { commands.push(Command::ModelSnapApply); }
-                                if ui.button("Cancel snap").clicked() { commands.push(Command::ModelSnapCancel); }
-                            }
-                        });
-                        ui.weak("Click source, then target. Orbit/zoom to inspect.").on_hover_text("Apply amount uses the numeric value without snapping and discards this preview.");
-                    }
-
-                }
-                ModelTool::LoopCut => {
-                    use crate::sculpt::LoopCut;
-                    self.modeling.loop_count = self.modeling.loop_count.clamp(1, LoopCut::MAX_COUNT);
-                    ui.horizontal(|ui| {
-                        ui.label("Loops");
-                        if design::help(ui.button("−").customize(Action::ModelFewerLoops), "Fewer loop cuts (minimum 1)").clicked() {
-                            self.modeling.loop_count = self.modeling.loop_count.saturating_sub(1).max(1);
-                        }
-                        ui.add(egui::DragValue::new(&mut self.modeling.loop_count).range(1..=LoopCut::MAX_COUNT));
-                        if design::help(ui.button("+").customize(Action::ModelMoreLoops), "More loop cuts (maximum 16)").clicked() {
-                            self.modeling.loop_count = (self.modeling.loop_count+1).min(LoopCut::MAX_COUNT);
-                        }
-                    });
-                    ui.weak("Tap: centered · drag along edge: slide · release: apply");
-                    ui.weak("Wheel while dragging: loop count · Esc: cancel");
-                    ui.weak("Follows visible quads. Edits replace stored levels.");
-                }
-            }
-            if ((self.modeling.tool.is_edit() && !self.modeling.tool.instant()) || self.modeling.tool==ModelTool::Extrude) && !(self.modeling.tool.is_transform() && self.modeling.interaction==crate::viewport::ModelInteraction::Gizmo) {
-                design::checkbox(ui, &mut self.modeling.tap_repeat,"Tap to repeat").customize(Action::ModelTapRepeat)
-                    .on_hover_text("Tap a target to apply the displayed amount and options. Drag to set a new amount. Select and centered loop cuts are unchanged.");
-                if self.modeling.tap_repeat {ui.weak(format!("Tap applies {:.3} · drag sets a new amount",self.modeling.amount));}
-            }
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("Clear selection").customize(Action::ModelClearSelection).clicked() {
-                    commands.push(Command::ClearModelSelection);
-                }
-                if self.modeling.mode == ComponentMode::Edge
-                    && ui.button("Select loop").customize(Action::ModelSelectLoop).clicked() {
-                    commands.push(Command::ModelSelectLoop);
-                }
-            });
-            ui.horizontal_wrapped(|ui| {
-                for (label, action) in [("Grow selection", Action::ModelGrowSelection), ("Shrink selection", Action::ModelShrinkSelection)] {
-                    if ui.add_enabled(self.modeling.count > 0, egui::Button::new(label)).customize(action.clone()).clicked() { commands.push(Command::Action(action)); }
-                }
-            });
-            ui.horizontal_wrapped(|ui| {
-                for (label, action, enabled) in [("Undo selection change", Action::ModelUndoSelection, self.modeling.selection_undo), ("Redo selection change", Action::ModelRedoSelection, self.modeling.selection_redo)] {
-                    if ui.add_enabled(enabled, egui::Button::new(label)).customize(action.clone()).clicked() { commands.push(Command::Action(action)); }
-                }
-            });
-            ui.weak("One polygon step. Hidden/protected geometry blocks growth. Selection Undo/Redo is separate from geometry history.");
-            if self.modeling.mode==ComponentMode::Face && ui.button("Select region boundary").customize(Action::ModelBoundary).clicked() { commands.push(Command::ModelBoundary); }
-            if self.modeling.mode==ComponentMode::Edge {
-                ui.horizontal_wrapped(|ui| {
-                    if ui.add_enabled(self.modeling.count>0,egui::Button::new("Mark UV seams")).clicked() { commands.push(Command::UvSeams(true)); }
-                    if ui.add_enabled(self.modeling.count>0,egui::Button::new("Clear UV seams")).clicked() { commands.push(Command::UvSeams(false)); }
-                });
-                ui.weak("Select edges, then mark or clear seams. Unwrap uses the marked seams.");
-            }
-            ui.horizontal_wrapped(|ui|{
-                if ui.add_enabled(self.modeling.can_repeat && self.modeling.count>0,egui::Button::new("Repeat last edit")).customize(Action::ModelRepeat).on_hover_text(&self.modeling.repeat_label).clicked(){commands.push(Command::ModelRepeat);}
-                design::checkbox(ui, &mut self.modeling.smooth_preview,"Smooth preview").customize(Action::ModelSmoothPreview);
-            });
-            if self.modeling.smooth_preview {ui.weak("One smooth level · cage stays editable · preview pauses during a drag");}
-            egui::CollapsingHeader::new("Tool presets").open(search::requested_section(ui.ctx(), "model_presets")).show(ui,|ui|{
-                ui.add(egui::TextEdit::singleline(&mut self.modeling.preset_name).hint_text("Preset name"));
-                if ui.button("Save tool preset").customize(Action::ModelSavePreset).clicked(){commands.push(Command::Action(Action::ModelSavePreset));}
-                for preset in &self.preferences.modeling_presets {
-                    ui.horizontal(|ui|{
-                        if ui.selectable_label(self.modeling.preset==Some(preset.id),format!("Use {}",preset.name)).customize(Action::ModelPreset(preset.id)).clicked(){commands.push(Command::Action(Action::ModelPreset(preset.id)));}
-                        if ui.small_button("Delete").clicked(){commands.push(Command::Action(Action::ModelDeletePreset(preset.id)));}
-                    });
-                }
-                ui.weak("Saves action, target and options. Right-click a preset to add it to a shelf.");
-            });
-            egui::CollapsingHeader::new("Selection to vertex group").open(search::requested_section(ui.ctx(), "model_groups")).show(ui, |ui| {
-                ui.text_edit_singleline(&mut self.modeling.group_name);
-                let enabled = self.modeling.count > 0 && document.mesh_settings().levels() == 1;
-                let help = "Use a single subdivision level and select components first. Face colors use only selected faces; vertex weights include their corners. Edges include both ends. Creating or adding replaces previous membership; partial regions remain, fully replaced groups disappear. Masks stay unchanged.";
-                if design::help(
-                    ui.add_enabled(enabled, egui::Button::new("Create group from selection")).customize(Action::ModelCreateGroup), help,
-                ).clicked() {
-                    commands.push(Command::GroupModelSelection(None, false));
-                }
-                let groups = &document.mesh().vertex_groups;
-                self.modeling.group = self.modeling.group.min(groups.len().saturating_sub(1));
-                if let Some(first) = groups.iter().position(|g| g.purpose.is_selection()) {
-                    if !groups[self.modeling.group].purpose.is_selection() { self.modeling.group = first; }
-                    egui::ComboBox::from_id_salt("modeling_group")
-                        .selected_text(&groups[self.modeling.group].name)
-                        .show_ui(ui, |ui| {
-                            for (i, group) in groups.iter().enumerate().filter(|(_, g)| g.purpose.is_selection()) {
-                                ui.selectable_value(&mut self.modeling.group, i, &group.name);
-                            }
-                        });
-                    ui.horizontal_wrapped(|ui| {
-                        for (label, remove, action) in [
-                            ("Add to group", false, Action::ModelAddToGroup),
-                            ("Remove from group", true, Action::ModelRemoveFromGroup),
-                        ] {
-                            if design::help(ui.add_enabled(enabled, egui::Button::new(label)).customize(action), help).clicked() {
-                                commands.push(Command::GroupModelSelection(Some(self.modeling.group), remove));
-                            }
-                        }
-                    });
-                }
-            });
+            self.modeling_tool_options(ui, document, commands);
         });
     }
 }

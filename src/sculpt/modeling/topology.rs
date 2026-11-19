@@ -1,7 +1,7 @@
 //! Explicit topology operations. Each builds a separate mesh and validates before return.
 use super::*;
 mod chains;
-mod manual;
+pub(super) mod manual;
 mod points;
 mod regions;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -483,6 +483,7 @@ impl Mesh {
         amount: f32,
         axis: Vec3,
         anchor: Vec3,
+        protect: bool,
         symmetry: &ModelingSymmetry,
     ) -> Result<Mesh, String> {
         if !amount.is_finite() || amount.abs() >= 1. {
@@ -500,6 +501,7 @@ impl Mesh {
             return Err("Select the complete loop before sliding".into());
         }
         let polygons = self.polygons();
+        let blocked = self.protected_model_vertices(protect);
         let vertices: BTreeSet<_> = selected.iter().flatten().copied().collect();
         let mut rails = BTreeMap::<usize, usize>::new();
         let mut pending = selected.clone();
@@ -507,6 +509,9 @@ impl Mesh {
             let mut queue = vec![seed];
             while let Some(e) = queue.pop() {
                 if !pending.remove(&e) {
+                    continue;
+                }
+                if e.iter().all(|v| blocked.contains(v)) {
                     continue;
                 }
                 let incident: Vec<_> = polygons
@@ -596,6 +601,13 @@ impl Mesh {
                 continue;
             }
             let copies = symmetry.vertex_copies(v);
+            if copies.iter().any(|v| blocked.contains(v)) {
+                for &v in &copies {
+                    out.vertices[v] = self.vertices[v];
+                }
+                visited.extend(copies);
+                continue;
+            }
             let seed = *copies
                 .iter()
                 .min_by(|&&a, &&b| {
