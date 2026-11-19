@@ -17,6 +17,8 @@ This change follows PR #165 and addresses the notes from the November acceptance
 
 Focused geometry and controller regressions cover these changes, including live pointer/modifier events, undo, saved settings, protected loop termination without cracks, and symmetry. Existing bevel, thickness, loop-removal and symmetry interaction checks passed locally. Full tests, lint, GPU interactions and packages run in PR CI.
 
+Thin sliced hemispheres were also checked in all three directions at thicknesses 0.01–0.4, with surface/rim orientation preserved. A Vulkan check confirms preview and applied shell match. Local normal relaxation repairs folded slivers without changing the already-valid box result.
+
 The saved thickness example was rendered using Vulkan/llvmpipe at thickness 0.3, 0.9 and 1.2. The 1.2 result was inspected against the original distorted capture. Q was rendered at 1100×900, including its scrolled settings and presets. Physical tablet input still needs acceptance testing.
 
 ![Corrected saved open box at thickness 1.2](thickness-1.2.png)

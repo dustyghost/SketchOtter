@@ -3046,7 +3046,7 @@ mod pinned_menus {
         for _ in 0..8 {
             if output.shapes.iter().any(|shape| {
                 matches!(&shape.shape,
-                    egui::Shape::Text(text) if text.galley.text() == "Move components"
+                    egui::Shape::Text(text) if text.galley.text() == "Move"
                         && shape.clip_rect.contains(text.pos + text.galley.size() * 0.5)
                 )
             }) {
@@ -3063,7 +3063,7 @@ mod pinned_menus {
             );
             output = frame(&mut app, &ctx, vec![]);
         }
-        click(&mut app, &ctx, text_point(&output, "Move components"));
+        click(&mut app, &ctx, text_point(&output, "Move"));
         assert_eq!(app.ui.modeling.tool, ModelTool::Move);
         assert!(!egui::Popup::is_any_open(&ctx));
         let output = frame(&mut app, &ctx, vec![]);

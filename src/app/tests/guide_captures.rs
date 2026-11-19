@@ -3873,6 +3873,7 @@ fn mesh_refinement_offscreen_review() {
         .preferences
         .dock_menu(BuiltinMenu::Modeling, Dock::Right);
     g.app.ui.modeling.construction.crease = true;
+    reach_sidebar_control(&mut g, "Double ring sides (4 to 8)");
     g.save("split-point-controls");
     click_guide_label(&mut g, "Double ring sides (4 to 8)");
     assert!(g.app.ui.modeling.construction.double_ring);

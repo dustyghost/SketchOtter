@@ -710,22 +710,26 @@ fn component_transforms_preserve_attributes_and_mirror_displacements() {
     );
 }
 #[test]
-fn modeling_protection_rejects_whole_edits() {
+fn modeling_protection_freezes_transforms_and_rejects_unsafe_topology() {
     let mut mesh = cube(3);
     let f = front_center(&mesh);
     let vertices = mesh.polygons()[f].vertices.clone();
     mesh.mask[vertices[0]] = 1.;
     let sym = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
-    assert!(
-        mesh.transform_components(
+    let moved = mesh
+        .transform_components(
             &vertices,
             Vec3::default(),
             ComponentTransform::Move(Vec3(0., 0., 0.1)),
             true,
-            &sym
+            &sym,
         )
-        .is_err()
-    );
+        .unwrap();
+    assert_eq!(moved.vertices[vertices[0]], mesh.vertices[vertices[0]]);
+    for &v in &vertices[1..] {
+        assert_eq!(moved.vertices[v], mesh.vertices[v] + Vec3(0., 0., 0.1));
+    }
+    mesh.check_model_protection(&moved, true).unwrap();
     let extruded = mesh.extrude_faces(&[f], 0.1, false).unwrap();
     assert!(mesh.check_model_protection(&extruded.mesh, true).is_err());
     mesh.check_model_protection(&extruded.mesh, false).unwrap();

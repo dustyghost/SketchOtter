@@ -89,7 +89,7 @@ impl Mesh {
             .map(|[a, b]| ((self.vertices[b] - self.vertices[a]).len(), a, b))
             .collect();
         normal_edges.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
-        for _ in 0..32 {
+        for _ in 0..64 {
             let mut changed = false;
             let mut corrections = vec![super::Vec3::default(); normals.len()];
             let mut counts = vec![0_u32; normals.len()];
@@ -119,6 +119,57 @@ impl Mesh {
             for (v, &count) in counts.iter().enumerate() {
                 if count > 0 {
                     normals[v] = (normals[v] + corrections[v] * (1. / count as f32)).norm();
+                }
+            }
+        }
+        // Slivers can fold even when their edge-wise offset variation is small:
+        // their altitude, rather than edge length, controls that constraint.
+        // Relax only normals incident to a folded face/rim, then recheck the
+        // complete surface. Simultaneous updates preserve symmetric results.
+        for _ in 0..64 {
+            let point = |v: usize, offset: f32| self.vertices[v] + normals[v] * offset;
+            let mut corrections = vec![super::Vec3::default(); normals.len()];
+            let mut counts = vec![0_u32; normals.len()];
+            let mut relax = |vertices: &[usize]| {
+                let mean = vertices
+                    .iter()
+                    .fold(super::Vec3::default(), |sum, &v| sum + normals[v])
+                    .norm();
+                for &v in vertices {
+                    corrections[v] = corrections[v] + mean - normals[v];
+                    counts[v] += 1;
+                }
+            };
+            for t in &self.triangles {
+                let [a, b, c] = *t;
+                let original = (self.vertices[b] - self.vertices[a])
+                    .cross(self.vertices[c] - self.vertices[a]);
+                if [front, back].into_iter().any(|offset| {
+                    (point(b, offset) - point(a, offset))
+                        .cross(point(c, offset) - point(a, offset))
+                        .dot(original)
+                        <= 0.
+                }) {
+                    relax(t);
+                }
+            }
+            for &(a, b) in &boundary {
+                let [af, ab, bf, bb] = [
+                    point(a, front),
+                    point(a, back),
+                    point(b, front),
+                    point(b, back),
+                ];
+                if (ab - af).cross(bb - af).dot((bb - af).cross(bf - af)) <= 0. {
+                    relax(&[a, b]);
+                }
+            }
+            if counts.iter().all(|&count| count == 0) {
+                break;
+            }
+            for (v, &count) in counts.iter().enumerate() {
+                if count > 0 {
+                    normals[v] = (normals[v] + corrections[v] * (0.5 / count as f32)).norm();
                 }
             }
         }
@@ -532,6 +583,19 @@ mod slice_rim_tests {
                     );
                 }
                 shell.validate_closed().unwrap();
+                for direction in [
+                    super::super::ThicknessDirection::Inward,
+                    super::super::ThicknessDirection::Outward,
+                ] {
+                    mesh.solidify_with_metadata(&super::super::ModelMetadata {
+                        temporary_thickness: thickness,
+                        thickness_direction: direction,
+                        ..Default::default()
+                    })
+                    .unwrap_or_else(|error| {
+                        panic!("{direction:?} thickness {thickness} at height {height}: {error}")
+                    });
+                }
             }
         }
     }
