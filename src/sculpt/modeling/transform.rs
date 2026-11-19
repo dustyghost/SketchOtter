@@ -229,19 +229,18 @@ impl Mesh {
             return Err("Select components on the current mesh".into());
         }
         let blocked = self.protected_model_vertices(protect);
-        let selected: Vec<_> = selected
-            .iter()
-            .copied()
-            .filter(|&v| {
-                symmetry
-                    .vertex_copies(v)
-                    .iter()
-                    .all(|v| !blocked.contains(v))
-            })
-            .collect();
-        let (seeds, pivot) = self.component_transform_frame(&selected, anchor, symmetry);
+        // Keep the same selection centre shown by the gizmo. Protection freezes
+        // vertices; it must not silently move the rotation/scale pivot.
+        let (seeds, pivot) = self.component_transform_frame(selected, anchor, symmetry);
         let mut out = self.clone();
         for seed in seeds {
+            if symmetry
+                .vertex_copies(seed)
+                .iter()
+                .any(|v| blocked.contains(v))
+            {
+                continue;
+            }
             let p = self.vertices[seed];
             let delta = match transform {
                 ComponentTransform::Move(v) => v,

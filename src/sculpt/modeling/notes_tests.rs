@@ -30,6 +30,24 @@ fn modeling_notes_transforms_and_slides_leave_protected_vertices_fixed() {
         assert_eq!(moved.vertices[v] == mesh.vertices[v], blocked.contains(&v));
     }
     mesh.check_model_protection(&moved, true).unwrap();
+    let scaled = mesh
+        .transform_components(
+            &selected,
+            Vec3::default(),
+            ComponentTransform::Scale(Vec3::default(), 1.05),
+            true,
+            &symmetry,
+        )
+        .unwrap();
+    let (_, pivot) = mesh.component_transform_frame(&selected, Vec3::default(), &symmetry);
+    for (v, p) in scaled.vertices.iter().enumerate() {
+        let expected = if blocked.contains(&v) {
+            mesh.vertices[v]
+        } else {
+            pivot + (mesh.vertices[v] - pivot) * 1.05
+        };
+        assert!((*p - expected).len() < 1e-6);
+    }
     let corners = mesh.quads[12].to_vec();
     let slide = mesh
         .slide_components(
