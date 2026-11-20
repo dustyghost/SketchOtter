@@ -84,6 +84,21 @@ Known retopology feature/quality limits continue under #10.
 
 ## Focused reproduction
 
+Local checks passed: 128 modeling regressions (13 optional captures ignored),
+eight solver validation/fitting/cancellation tests, the visibility-cache test,
+CPU and Vulkan frame tests, and all 17 Python harness tests. The actual input
+trace observed one initial dab, nine dabs for the pointer jump, no release dab
+and five matching callbacks. Undo/Redo restored exact geometry; Redo restored
+the settled framebuffer byte-for-byte. [Raw trace and executable provenance](frame-trace.json)
+retain the sequence. Vulkan used llvmpipe / Mesa 26.2.7, one software-rendering
+thread, at 1000×800. This is correctness evidence, not hardware latency data.
+
+The framebuffer fixture disables egui's control fade-in animation: an initial
+comparison differed only at the fading viewport controls, outside the sculpt.
+The geometry comparison remains exact, with no pixel tolerance. Local builds
+used one compiler, the shared lock and disabled debug symbols; full builds were
+not repeated beyond the focused test binary needed for these checks.
+
 Run Cargo commands sequentially under the shared build lock with available RAM
 checked first; use one compiler on the 8 GiB laptop when resources are tight.
 The Python runner acquires the lock itself and must not be wrapped in another
