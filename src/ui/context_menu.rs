@@ -291,7 +291,7 @@ impl UiState {
                             use crate::sculpt::TopologyEdit as T;
                             (edit == &T::CreateFace && self.modeling.mode == ComponentMode::Edge) || self.modeling.mode
                                 == match edit {
-                                    T::DeleteFaces => ComponentMode::Face,
+                                    T::DeleteFaces | T::FlipFaces | T::DissolveFaces => ComponentMode::Face,
                                     T::Connect | T::Weld | T::CreateFace | T::DeleteVertices => ComponentMode::Vertex,
                                     _ => ComponentMode::Edge,
                                 }

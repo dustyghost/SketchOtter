@@ -107,10 +107,17 @@ Presets have stable `Action` identities shared by buttons, shelves and shortcuts
 
 Face-mode group assignment carries explicit polygon IDs into `Document::group_model_selection`. Symmetry expands faces and vertices separately: vertex weights receive selected corners, while categorical group labels update only triangles belonging to the selected polygons. Mask-based grouping remains available for vertex/edge selections; face selections never infer additional faces from shared corners.
 
-### Manual construction previews
+### Immediate topology transactions
 
 `sculpt/modeling/topology/manual.rs` extends the existing Connect/Fill actions and adds Create face. It preserves surviving vertex indices and triangle-corner attributes, derives cap winding from directed boundaries, rejects intersecting projected rims, and uses the existing fusion triangle index to reject new-patch intersections. Convex quadrilateral caps retain quad topology; other caps use earcut triangles. New UV faces are explicitly unmapped.
 
-`viewport/modeling/topology.rs` stores an immutable result bound to the document revision, exact selection, symmetry and mask-protection setting. Navigation does not rebuild it. Apply validates the captured context and commits once; cancellation never changes history. These persistent previews survive interrupted pointer gestures and participate in `app/tool_change.rs`'s Apply/Discard/Keep editing decision. The capability inventory and deferred operations are recorded in [the modelling audit](../research/modeling-capabilities-2026-11-15.md).
+`viewport/modeling/edit.rs` builds and validates a private result from the current selection and options, then commits it immediately through `Document::commit_modeling`. A failed action preserves the mesh, selection and Undo/Redo; a successful action is one history step, including its optional new vertex group. No persistent topology preview or Apply/Cancel stage is retained. The capability inventory is in [the modelling audit](../research/modeling-capabilities-2026-11-15.md).
 
 Point extrusion appends one vertex and one persistent `Mesh::loose_edges` pair per symmetry target without changing faces or UV corners. The outcome retains its new tips as the component selection. Loose edges use their own display payload, depth-aware painting/picking and region candidates; polygon-only adjacency remains separate. Compaction, subdivision, merging and adaptive index remapping preserve their endpoints. `.clay` serialization defaults missing edge arrays for older files, and OBJ uses line records. Unsupported surface reconstruction and export paths reject loose edges instead of silently dropping them.
+
+
+### Partial chains and face regions
+
+`topology/chains.rs` constructs directed open chains from selected manifold border edges. One pair plus exact symmetry copies is required; the second chain reverses to preserve winding. Equal-count chains generate 1–16 interpolated rows, bounded by 2,048 selected edges and mesh capacity. Crossed/folded strips and intersections reject the private result. New vertices blend source attributes; new faces are unmapped.
+
+`topology/regions.rs` flips complete edge-connected shells with their UV corner order. Dissolve requires flat patches with one perimeter, a single face group, uniform vertex channels and affine UV/UV-mask interpolation. Internal seams/creases/hard edges, curvature and holes are rejected. Shared modeling compaction preserves loose edges, isolated points, UVs and shading seams. The selection is bounded to 4,096 faces and 1,024 outline corners. All three actions use the immediate topology transaction; missing preset bridge-segment counts default to one.

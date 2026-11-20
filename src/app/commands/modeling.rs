@@ -92,12 +92,7 @@ impl App {
             }
             Command::ModelTopology(edit) => {
                 self.viewport.cancel(&mut self.document);
-                if matches!(
-                    edit,
-                    crate::sculpt::TopologyEdit::Connect
-                        | crate::sculpt::TopologyEdit::Fill
-                        | crate::sculpt::TopologyEdit::CreateFace
-                ) {
+                if edit.can_start_modeling() {
                     // Search and shelf actions also work with a retained selection
                     // after leaving Modeling.
                     if !self.ui.modeling.active {
@@ -112,6 +107,7 @@ impl App {
                     edit,
                     self.ui.modeling.protect_mask,
                     self.ui.modeling.new_group,
+                    self.ui.modeling.bridge_segments,
                 )
             }
             Command::ModelRepeat => {

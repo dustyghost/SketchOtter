@@ -213,6 +213,9 @@ impl ModelInteraction {
         }
     }
 }
+fn bridge_segments_default() -> u32 {
+    1
+}
 fn legacy_interaction() -> ModelInteraction {
     ModelInteraction::Axis
 }
@@ -250,6 +253,8 @@ pub(crate) struct ModelingOptions {
     pub erase_radius: f32,
     pub join: bool,
     pub loop_count: u32,
+    #[serde(default = "bridge_segments_default")]
+    pub bridge_segments: u32,
     pub axis: ModelAxis,
     #[serde(default = "legacy_interaction")]
     pub interaction: ModelInteraction,
@@ -1478,6 +1483,7 @@ impl ModelingOptions {
             || !self.snap.is_finite()
             || !(0.0..=0.25).contains(&self.snap)
             || !(1..=LoopCut::MAX_COUNT).contains(&self.loop_count)
+            || !(1..=16).contains(&self.bridge_segments)
             || !(2..=8).contains(&self.bevel_segments)
             || !self.span.available(self.mode)
         {

@@ -1,0 +1,28 @@
+   Compiling clay-form v0.1.0-alpha.3 (/home/mark/Documents/ChatGPT/Clay From/clay-form-regions)
+    Finished `test` profile [unoptimized] target(s) in 1m 10s
+     Running unittests src/lib.rs (/home/mark/Documents/ChatGPT/Clay From/review-build-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 13 tests
+test app::tests::guide_captures::topology_capture::topology_regions_offscreen_review ... ignored, requires Vulkan; exercises chain bridging and face-region controls
+test app::tests::regions::topology_regions_bridge_uses_current_segments_and_presets_remain_compatible ... ok
+test app::tests::regions::topology_regions_controller_commits_immediately_with_groups_undo_redo_and_save ... ok
+test app::tests::regions::topology_regions_controller_protection_and_failed_retry_are_atomic ... ok
+test app::tests::regions::topology_regions_preserve_loose_edges_and_detached_points ... ok
+test sculpt::modeling::topology::region_tests::topology_regions_bridge_and_dissolve_respect_exact_symmetry ... ok
+test sculpt::modeling::topology::region_tests::topology_regions_bridge_rejects_wrong_counts_loops_stale_protection_and_obstructions ... ok
+test sculpt::modeling::topology::region_tests::topology_regions_bridge_segments_preserve_source_and_interpolate_attributes ... ok
+test sculpt::modeling::topology::region_tests::topology_regions_dissolve_protects_internal_quad_seams_and_mapped_boundaries ... ok
+test sculpt::modeling::topology::region_tests::topology_regions_dissolve_rejects_detail_seams_groups_hidden_and_nonplanarity ... ok
+test sculpt::modeling::topology::region_tests::topology_regions_dissolve_removes_planar_interior_and_preserves_unrelated_attributes ... ok
+test sculpt::modeling::topology::region_tests::topology_regions_dissolve_tessellates_concavity_and_rejects_holes ... ok
+test sculpt::modeling::topology::region_tests::topology_regions_flip_whole_shell_preserves_uv_corner_identity_and_is_reversible ... ok
+
+test result: ok. 12 passed; 0 failed; 1 ignored; 0 measured; 1387 filtered out; finished in 4.27s
+
+    Finished `test` profile [unoptimized] target(s) in 0.54s
+     Running unittests src/lib.rs (/home/mark/Documents/ChatGPT/Clay From/review-build-target/debug/deps/clay_form-06a52e5cabd81481)
+
+running 1 test
+test app::tests::guide_captures::topology_capture::topology_regions_offscreen_review ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1399 filtered out; finished in 20.51s

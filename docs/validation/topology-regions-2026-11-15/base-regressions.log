@@ -1,0 +1,16 @@
+
+running 6 tests
+test app::tests::modeling::modeling_manual_topology_actions_reopen_modeling_and_commit_from_other_tools ... ok
+test app::tests::modeling::modeling_manual_topology_caps_protect_masked_hidden_and_incomplete_boundaries ... ok
+test app::tests::modeling::modeling_manual_topology_connect_is_immediate_undoable_and_leaves_no_draft ... ok
+test app::tests::modeling::modeling_manual_topology_delete_create_and_fill_each_commit_one_history_step ... ok
+test app::tests::modeling::modeling_manual_topology_failed_connect_preserves_geometry_history_and_redo ... ok
+test app::tests::modeling::modeling_manual_topology_interacts_with_selection_history_and_snapping ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 1394 filtered out; finished in 4.30s
+
+
+running 1 test
+test app::tests::modeling::modeling_construction_presets_roundtrip_and_keep_older_preferences_compatible ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1399 filtered out; finished in 3.32s

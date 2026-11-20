@@ -84,6 +84,9 @@ See [Development](../development.md#update-guide-screenshots) for prerequisites 
 
 | `point-extrude-orthographic.png` | [Extrude a vertex connected by an edge](../guide/modeling.md#construct-from-edges-points-and-face-centers) | `point_extrude_offscreen_review` |
 
+| `partial-chain-bridge-applied.png` | [Bridge two partial boundary chains](../guide/modeling.md#bridge-two-partial-boundary-chains) | `topology_regions_offscreen_review` |
+| `face-region-selected.png`, `face-region-dissolve-applied.png` | [Flip or dissolve face regions](../guide/modeling.md#flip-or-dissolve-face-regions) | `topology_regions_offscreen_review` |
+
 ## Example assets
 
 [pyramid.obj](../examples/pyramid.obj) contains the imported sample. [Front study](../examples/front-study.png) and [Side study](../examples/side-study.png) are original renders of a scaled UV sphere, exported by the same model-icon renderer used in the app. They are input assets, not screenshots of controls.

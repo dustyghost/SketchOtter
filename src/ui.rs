@@ -181,6 +181,7 @@ impl Default for UiState {
                 tap_repeat: true,
                 join: true,
                 loop_count: 1,
+                bridge_segments: 1,
                 ..Default::default()
             },
             mirror_axis: Axis::X,

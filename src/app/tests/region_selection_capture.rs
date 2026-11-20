@@ -532,6 +532,30 @@ fn create_selected_face_offscreen_review() {
         let history = g.app.document.history_counts();
         g.app.open_quick_menu(&g.ctx, Action::ViewportContextMenu);
         g.app.ui.viewport_menu.position = Some(rect.min + egui::vec2(15., 15.));
+        // The edge menu has more topology actions than fit at once. Reach
+        // Create face through the real scroll area before clicking it.
+        for _ in 0..8 {
+            g.frame(vec![]);
+            let menu = g
+                .ctx
+                .memory(|memory| memory.area_rect(egui::Id::new("viewport_tool_menu")))
+                .expect("Modeling menu is open");
+            if g.text_positions
+                .iter()
+                .any(|(text, point)| text == "Create face" && menu.shrink(20.).contains(*point))
+            {
+                break;
+            }
+            g.frame(vec![
+                egui::Event::PointerMoved(menu.center()),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(0., -100.),
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]);
+            g.frame(vec![egui::Event::PointerGone]);
+        }
         g.save(&format!("create-selected-face-{name}-q"));
         click_guide_label(&mut g, "Create face");
         assert!(g.app.viewport.modeling.preview().is_none());

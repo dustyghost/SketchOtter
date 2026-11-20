@@ -550,6 +550,43 @@ Existing masks, materials, groups, creases and unaffected UV corners remain inta
 
 ![An explicit diagonal connecting opposite quad vertices](../images/connect-vertices-applied.png)
 
+### Bridge two partial boundary chains
+
+Use this to fill the gap between two open edge runs on the active model.
+
+1. Enable **Modeling**, choose **Edge → Select → Individual**, and use **Add** to select the edges in two separate chains. Each chain needs two endpoints and the same number of edges. Leave the rest of each opening unselected.
+2. Expand **Topology** and set **Bridge segments** (1–16). This divides the distance across the gap; it does not add edges along either source chain.
+3. Choose **Bridge partial chains** to apply the quad strip immediately. Orbit to inspect it; Undo restores the original opening in one step.
+
+Endpoints pair in opposite boundary directions so the strip shares the neighbouring winding. There is no twist offset for an open chain: reversing one pair would twist the strip or break its orientation. To change alignment after applying, Undo and select different endpoints. Unequal counts need an explicit edge split or a revised selection. Crossings, folded strips, obstructions, shared endpoints and branching chains are rejected.
+
+Existing vertex attributes and face UVs stay intact. New vertices interpolate masks, materials and group weights between paired endpoints; new faces have no face group and are unmapped until unwrapped. Exact mirror/radial copies must form an unambiguous set of pairs. An edit accepts at most 2,048 selected edges including symmetry copies and respects mesh capacity.
+
+![A three-segment quad bridge between two selected open edge runs](../images/partial-chain-bridge-applied.png)
+
+Use **Bridge boundaries** for complete equal-count loops. [Join meshes locally](#join-meshes-locally) owns full open ends on separate submodels. Partial-chain bridging does not select face regions, fuse solids or remesh the source.
+
+### Flip or dissolve face regions
+
+In **Modeling → Face → Select**, choose the region and expand **Topology**. Both actions apply immediately with one-step Undo/Redo. They are also available in **Q** for Face mode.
+
+| Action | How to select | What changes |
+| --- | --- | --- |
+| **Flip face orientation** | Use **Connected** to select every face of an open or closed shell | Reverse its winding and normals, keeping corner UVs attached to the same vertices |
+| **Dissolve face region** | Use **Add** or **Flat island** to select at least two adjoining flat faces | Remove their internal boundaries and redundant interior vertices, retaining the outer outline |
+
+Flipping only part of an attached surface is rejected because it would make its shared edges disagree. After a flip, orbit to the opposite side to inspect a sheet that previously faced the camera. Flipping twice restores the original orientation.
+
+Dissolve preserves the surface rather than deleting a hole. A convex four-corner outline becomes one quad; concave and larger outlines are tessellated into triangles, so some internal edges remain. Separate selected islands are handled independently. Holes, branches and curvature are rejected. If a boundary cannot be tessellated while retaining every corner, select a smaller region.
+
+Dissolve rejects face-group boundaries, internal creases, hard shading edges and UV seams. Masks, painted materials and vertex-group weights must be uniform within each region; this prevents the new triangulation from changing painted detail. Mapped UVs and UV masks must form one continuous affine map across the flat region. Unmapped regions remain unmapped. Unrelated faces and their attributes are preserved.
+
+![Selected triangles around an interior vertex before dissolution](../images/face-region-selected.png)
+
+![The same outline after immediate dissolution into one quad](../images/face-region-dissolve-applied.png)
+
+All three operations respect hidden geometry, **Protect mask** and exact symmetry. Each face-region edit supports up to 4,096 selected faces including symmetry copies and 1,024 corners per outline. Each successful edit replaces stored subdivision levels; Undo restores them. Failed edits preserve the selection and history. The actions are also available in Q, Search, shelves and configurable shortcuts, and support **New vertex group after each edit**.
+
 ### Slide and repair topology
 
 Use **Edge → Select → Loop**, then **Slide loop**. Drag to preview, or enter a fraction between -1 and 1 and choose **Apply amount**. The chosen axis determines the positive rail on the reference side; symmetry mirrors that movement. Sliding keeps the same topology and selection. It requires a complete interior quad loop with unambiguous rails; selected loops must not share a face.
@@ -559,18 +596,21 @@ Expand **Topology** for operations on the current selection:
 | Mode | Action | Result and limits |
 | --- | --- | --- |
 | Face | Delete faces | Removes the selected faces and opens holes |
+| Face | Flip face orientation | Reverses winding on complete connected shells |
+| Face | Dissolve face region | Removes redundant internal topology from flat patches |
 | Vertex | Delete vertices | Removes the selected vertices and all attached faces, leaving an opening |
 | Edge | Delete loop (keep surface) | Dissolves complete interior quad loops and joins the surrounding faces |
 | Edge | Delete loop (leave gap) | Removes the faces touching complete interior quad loops and leaves an opening |
 | Edge | Fill boundary | Immediately fills complete planar or mildly nonplanar boundaries; concave outlines are triangulated |
 | Edge | Bridge boundaries | Connects two equal-count open boundaries and their symmetry copies with a strip of quads |
+| Edge | Bridge partial chains | Connects equal-count open edge runs with 1–16 segments across the gap |
 | Edge | Split edges | Adds midpoint vertices; adjoining polygons may become triangles |
 | Edge | Collapse edges | Merges each connected set of selected edge endpoints at their average position |
 | Vertex | Connect vertices | Immediately splits a quad between two opposite corners |
 | Vertex or Edge | Create face | Immediately fills three or four vertices or edge endpoints; larger selections require a complete opening |
 | Vertex | Weld vertices | Merges two vertices at their midpoint, including corresponding symmetry pairs |
 
-Use **Target → Boundary** to select a complete hole. For two boundaries or vertices, use **Add** to select the second. These edits preserve surviving weights and creases, respect **Protect mask**, and reject invalid or ambiguous results as a whole. Bridge does not detect arbitrary intersections with other surfaces. Delete and collapse change the surface; **Delete loop (keep surface)** removes redundant loops while keeping it connected; **Delete loop (leave gap)** removes their adjoining face strips. Each completed edit is one Undo step.
+Use **Target → Boundary** to select a complete hole. For two boundaries or vertices, use **Add** to select the second. These edits preserve surviving weights and creases, respect **Protect mask**, and reject invalid or ambiguous results as a whole. Complete-loop Bridge boundaries does not detect arbitrary intersections with other surfaces; Bridge partial chains checks its new strip for crossings. Delete and collapse change the surface; **Delete loop (keep surface)** removes redundant loops while keeping it connected; **Delete loop (leave gap)** removes their adjoining face strips. Each completed edit is one Undo step.
 
 To remove selected components, choose **Vertex → Q → Topology → Delete vertices** or **Face → Q → Topology → Delete faces**. Vertex deletion also removes every attached face; face deletion removes only the selected faces. Both apply immediately with normal Undo/Redo, preserve protected geometry, and include matching symmetry components. Use the Z selection tools with Ctrl+Shift to select many components before deleting.
 

@@ -13,6 +13,7 @@ pub(crate) struct ModelingControls {
     pub selection_undo: bool,
     pub selection_redo: bool,
     pub loop_count: u32,
+    pub bridge_segments: u32,
     pub join: bool,
     pub axis: crate::viewport::ModelAxis,
     pub interaction: crate::viewport::ModelInteraction,
@@ -75,6 +76,7 @@ impl ModelingControls {
         self.erase_radius = o.erase_radius;
         self.join = o.join;
         self.loop_count = o.loop_count;
+        self.bridge_segments = o.bridge_segments;
         self.axis = o.axis;
         self.amount = o.amount;
         self.protect_mask = o.protect_mask;
@@ -101,6 +103,7 @@ impl ModelingControls {
             erase_radius: self.erase_radius,
             join: self.join,
             loop_count: self.loop_count,
+            bridge_segments: self.bridge_segments,
             axis: self.axis,
             interaction: self.interaction,
             transform_direction: self.transform_direction,
@@ -327,6 +330,14 @@ impl UiState {
             search::setting_response(ui.checkbox(&mut self.modeling.new_group,"New vertex group after each edit"),"Modeling new vertex group").on_hover_text("Put created or changed geometry in a named group. Undo removes the edit and group together. Selection alone creates no group.");
             egui::CollapsingHeader::new("Topology").open(search::requested_section(ui.ctx(), "model_topology")).show(ui,|ui|{
                 if self.modeling.mode == ComponentMode::Edge {
+                    ui.add(egui::Slider::new(&mut self.modeling.bridge_segments,1..=16).text("Bridge segments"));
+                    ui.weak("Partial chains: select two open chains with equal edge counts. Segments divide the gap. Applies immediately; Undo restores the opening.");
+                }
+                if self.modeling.mode == ComponentMode::Face {
+                    ui.weak("Flip needs complete connected shells. Dissolve joins flat faces while protecting curvature, seams, creases and painted detail.");
+                }
+
+                if self.modeling.mode == ComponentMode::Edge {
                     let action = Action::ModelDissolveLoops;
                     if ui.add_enabled(self.modeling.count > 0, egui::Button::new(action.label())).customize(action)
                         .on_hover_text("Remove complete interior quad loops and merge the surrounding faces. Keeps the surface joined. One Undo step.").clicked() {
@@ -335,7 +346,7 @@ impl UiState {
                 }
                 for edit in crate::sculpt::TopologyEdit::ALL {
                     use crate::sculpt::TopologyEdit as T;
-                    let mode=match edit {T::DeleteFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace|T::DeleteVertices=>ComponentMode::Vertex,_=>ComponentMode::Edge};
+                    let mode=match edit {T::DeleteFaces|T::FlipFaces|T::DissolveFaces=>ComponentMode::Face,T::Connect|T::Weld|T::CreateFace|T::DeleteVertices=>ComponentMode::Vertex,_=>ComponentMode::Edge};
                     if (self.modeling.mode==mode || (edit==T::CreateFace && self.modeling.mode==ComponentMode::Edge)) && ui.add_enabled(self.modeling.count>0,egui::Button::new(edit.label())).customize(Action::ModelTopology(edit)).clicked(){commands.push(Command::ModelTopology(edit));}
                 }
                 ui.weak("Create face fills three or four selected vertices, including endpoints of selected edges and loose outlines. For larger openings, select the complete boundary. Fill boundary uses its complete edge loop. Connect vertices splits a quad. These actions apply immediately as one Undo step. New faces need unwrapping before texture painting.");

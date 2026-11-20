@@ -833,6 +833,7 @@ impl ModelingState {
         edit: crate::sculpt::TopologyEdit,
         protect: bool,
         new_group: bool,
+        bridge_segments: u32,
     ) -> Result<(), String> {
         self.sync(document);
         document.require_modeling()?;
@@ -852,6 +853,7 @@ impl ModelingState {
             crate::sculpt::TopologyEdit::Connect
                 | crate::sculpt::TopologyEdit::Fill
                 | crate::sculpt::TopologyEdit::CreateFace
+                | crate::sculpt::TopologyEdit::BridgeChains
         ) {
             // Caps add faces without removing existing polygons, so also check
             // their boundary vertices, including all symmetry copies.
@@ -864,9 +866,15 @@ impl ModelingState {
                 .collect();
             document.mesh().protect_model_vertices(&touched, protect)?;
         }
-        let result = document
-            .mesh()
-            .edit_model_topology(edit, &faces, &edges, &vertices, &symmetry)?;
+        let result = if edit == crate::sculpt::TopologyEdit::BridgeChains {
+            document
+                .mesh()
+                .bridge_model_chains(&edges, bridge_segments, &symmetry)?
+        } else {
+            document
+                .mesh()
+                .edit_model_topology(edit, &faces, &edges, &vertices, &symmetry)?
+        };
         document.mesh().check_model_protection(&result, protect)?;
         document.commit_modeling(result, edit.label(), self.revision, new_group)?;
         self.sync(document);

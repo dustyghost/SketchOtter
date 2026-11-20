@@ -41,3 +41,8 @@ The user-facing guide and focused geometry/controller/rendered-interaction check
 1. #125: advanced caps, reusing boundary validation and the history contract.
 2. #121: reconcile remaining open-end joining acceptance without duplicating its implemented connector.
 3. The audit's follow-up tickets #153–#157 are tracked in the development project; #153 and #154 are now delivered through #164. Extend only a separately scoped remaining operation from the matrix after its interaction and validation cases have been agreed. Bevels, partial bridges and face-region editing are independent changes and are not completion criteria for this first implementation batch.
+
+
+## Stack integration — 17 November 2026
+
+PR #165 now follows the updated #158 base: equal-count partial-chain bridges (1–16 segments), complete-shell orientation flips and conservative planar dissolution apply immediately with one Undo/Redo step. Their invalid-input, attribute and protection checks remain. New vertex groups are included in the same transaction when enabled; unrelated loose edges and isolated points survive region edits. The old topology preview module is removed, and the controls share the current Mesh/Q menus. The [guide](../guide/modeling.md#bridge-two-partial-boundary-chains) documents the supported limits. #156/#157 remain In progress while awaiting review and merge.

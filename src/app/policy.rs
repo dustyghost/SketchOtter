@@ -592,13 +592,7 @@ impl<'a> EditorPolicy<'a> {
             }
             Action::ModelTopology(edit) => {
                 self.edge_unavailable(action).is_none()
-                    && (self.ui.modeling.active
-                        || matches!(
-                            edit,
-                            crate::sculpt::TopologyEdit::Connect
-                                | crate::sculpt::TopologyEdit::Fill
-                                | crate::sculpt::TopologyEdit::CreateFace
-                        ))
+                    && (self.ui.modeling.active || edit.can_start_modeling())
                     && self.ui.modeling.count > 0
                     && (*edit != crate::sculpt::TopologyEdit::DeleteLoop
                         || self.ui.modeling.mode == crate::viewport::ComponentMode::Edge)

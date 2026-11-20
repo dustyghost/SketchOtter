@@ -1,7 +1,9 @@
 //! Explicit topology operations. Each builds a separate mesh and validates before return.
 use super::*;
+mod chains;
 mod manual;
 mod points;
+mod regions;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TopologyEdit {
     DeleteFaces,
@@ -9,6 +11,9 @@ pub enum TopologyEdit {
     DeleteLoop,
     Fill,
     Bridge,
+    BridgeChains,
+    FlipFaces,
+    DissolveFaces,
     Connect,
     CreateFace,
     Split,
@@ -16,18 +21,32 @@ pub enum TopologyEdit {
     Collapse,
 }
 impl TopologyEdit {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 13] = [
         Self::DeleteFaces,
         Self::DeleteVertices,
         Self::DeleteLoop,
         Self::Fill,
         Self::Bridge,
+        Self::BridgeChains,
+        Self::FlipFaces,
+        Self::DissolveFaces,
         Self::Connect,
         Self::CreateFace,
         Self::Split,
         Self::Weld,
         Self::Collapse,
     ];
+    pub fn can_start_modeling(self) -> bool {
+        matches!(
+            self,
+            Self::Connect
+                | Self::Fill
+                | Self::CreateFace
+                | Self::BridgeChains
+                | Self::FlipFaces
+                | Self::DissolveFaces
+        )
+    }
     pub fn label(self) -> &'static str {
         match self {
             Self::DeleteFaces => "Delete faces",
@@ -35,6 +54,9 @@ impl TopologyEdit {
             Self::DeleteLoop => "Delete loop (leave gap)",
             Self::Fill => "Fill boundary",
             Self::Bridge => "Bridge boundaries",
+            Self::BridgeChains => "Bridge partial chains",
+            Self::FlipFaces => "Flip face orientation",
+            Self::DissolveFaces => "Dissolve face region",
             Self::Connect => "Connect vertices",
             Self::CreateFace => "Create face",
             Self::Split => "Split edges",
@@ -146,6 +168,12 @@ impl Mesh {
             TopologyEdit::Connect | TopologyEdit::Fill | TopologyEdit::CreateFace
         ) {
             return self.manual_topology(edit, edges, vertices, symmetry);
+        }
+        if matches!(edit, TopologyEdit::FlipFaces | TopologyEdit::DissolveFaces) {
+            return self.edit_face_regions(edit, faces, symmetry);
+        }
+        if edit == TopologyEdit::BridgeChains {
+            return self.bridge_model_chains(edges, 1, symmetry);
         }
         manifold(self)?;
         let polygons = self.polygons();
@@ -297,6 +325,9 @@ impl Mesh {
                 unreachable!("manual construction handled above")
             }
             TopologyEdit::Bridge => {}
+            TopologyEdit::BridgeChains | TopologyEdit::FlipFaces | TopologyEdit::DissolveFaces => {
+                unreachable!("region edits handled above")
+            }
         }
         for (f, p) in polygons.iter().enumerate() {
             if removed.contains(&f) {
@@ -591,3 +622,6 @@ impl Mesh {
         Ok(out)
     }
 }
+
+#[cfg(test)]
+mod region_tests;
