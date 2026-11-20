@@ -56,6 +56,8 @@ fn hidden_count_cache_tracks_visibility_topology_history_and_active_model() {
     check(&d, 0);
     d.replace_project(project, "visibility.clay").unwrap();
     check(&d, d.mesh().hidden_face_count());
+    d.select_face_region(|_| true, true).unwrap();
+    check(&d, d.mesh().triangles.len());
     d.show_all_faces().unwrap();
     check(&d, 0);
     let scans = d.hidden_count_scans.load(Ordering::Relaxed);

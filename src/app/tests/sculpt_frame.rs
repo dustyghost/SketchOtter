@@ -6,6 +6,9 @@ fn exercise(
     app: &mut App,
 ) -> Vec<Sample> {
     let ctx = egui::Context::default();
+    // Floating controls fade in by input time; exclude that unrelated animation
+    // from exact same-geometry framebuffer comparisons.
+    ctx.style_mut(|style| style.animation_time = 0.);
     let before = app.document.geometry_snapshot();
     let history = app.document.history_counts();
     let capture = Capture::start();
@@ -156,6 +159,12 @@ fn sculpt_frame_revision_trace_gpu() {
     app.viewport.initialize_renderer(&gpu.state).unwrap();
     let mut frames = Vec::new();
     let samples = exercise(|ctx, output| frames.push(gpu.render(ctx, output)), &mut app);
+    if let Some(path) = std::env::var_os("CLAY_SCULPT_FRAME_TRACE") {
+        let path = std::path::PathBuf::from(path);
+        for (i, pixels) in frames.iter().enumerate() {
+            gpu.save(path.with_extension(format!("{i}.png")), pixels);
+        }
+    }
     assert_eq!(
         samples
             .iter()
@@ -163,13 +172,22 @@ fn sculpt_frame_revision_trace_gpu() {
             .count(),
         5
     );
-    assert_ne!(
-        frames[5], frames[6],
+    assert!(
+        frames[5] != frames[6],
         "same-pointer Undo and Redo must render different surfaces"
     );
-    assert_eq!(
-        frames[4], frames[6],
-        "Redo must restore the settled stroke framebuffer exactly"
+    let differences: Vec<_> = frames[4]
+        .chunks_exact(4)
+        .zip(frames[6].chunks_exact(4))
+        .enumerate()
+        .filter_map(|(i, (a, b))| (a != b).then_some(i))
+        .collect();
+    assert!(
+        differences.is_empty(),
+        "Redo framebuffer differs at {} pixels; first {:?}, last {:?}",
+        differences.len(),
+        differences.first(),
+        differences.last()
     );
     if let Some(path) = std::env::var_os("CLAY_SCULPT_FRAME_TRACE") {
         std::fs::write(path, serde_json::to_vec_pretty(&serde_json::json!({
