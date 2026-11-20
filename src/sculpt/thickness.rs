@@ -74,19 +74,27 @@ impl Mesh {
             );
         }
         let mut normals = self.angle_weighted_normals();
+        let (front, back) = match metadata.map(|m| m.thickness_direction).unwrap_or_default() {
+            super::ThicknessDirection::Inward => (0., -thickness),
+            super::ThicknessDirection::Outward => (thickness, 0.),
+            super::ThicknessDirection::Both => (thickness * 0.5, -thickness * 0.5),
+        };
         // A cut can leave arbitrarily short edges whose endpoints have very
         // different one-sided normal estimates. Bound offset-field variation on
         // those edges before building the shell, so they cannot fold back.
-        let mut normal_edges: Vec<_> = edges
-            .keys()
-            .filter(|(a, b)| boundary_vertices.contains_key(a) || boundary_vertices.contains_key(b))
-            .map(|&(a, b)| ((self.vertices[b] - self.vertices[a]).len(), a, b))
+        let mut normal_edges: Vec<_> = self
+            .polygon_edges()
+            .into_iter()
+            .filter(|[a, b]| boundary_vertices.contains_key(a) || boundary_vertices.contains_key(b))
+            .map(|[a, b]| ((self.vertices[b] - self.vertices[a]).len(), a, b))
             .collect();
         normal_edges.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
-        for _ in 0..32 {
+        for _ in 0..64 {
             let mut changed = false;
+            let mut corrections = vec![super::Vec3::default(); normals.len()];
+            let mut counts = vec![0_u32; normals.len()];
             for &(length, a, b) in &normal_edges {
-                let limit = (length / (2. * thickness)).min(2.);
+                let limit = (length / (2. * front.abs().max(back.abs()))).min(2.);
                 let difference = normals[b] - normals[a];
                 if difference.len() > limit * 1.001 {
                     if (normals[a] + normals[b]).len() < 1e-6 {
@@ -96,13 +104,73 @@ impl Mesh {
                     let tangent = difference.norm();
                     let sine = limit * 0.5;
                     let cosine = (1. - sine * sine).sqrt();
-                    normals[a] = middle * cosine - tangent * sine;
-                    normals[b] = middle * cosine + tangent * sine;
+                    corrections[a] = corrections[a] + middle * cosine - tangent * sine - normals[a];
+                    corrections[b] = corrections[b] + middle * cosine + tangent * sine - normals[b];
+                    counts[a] += 1;
+                    counts[b] += 1;
                     changed = true;
                 }
             }
             if !changed {
                 break;
+            }
+            // Apply a whole iteration together. Updating endpoints in edge order
+            // gave an otherwise symmetric box a different offset at each corner.
+            for (v, &count) in counts.iter().enumerate() {
+                if count > 0 {
+                    normals[v] = (normals[v] + corrections[v] * (1. / count as f32)).norm();
+                }
+            }
+        }
+        // Slivers can fold even when their edge-wise offset variation is small:
+        // their altitude, rather than edge length, controls that constraint.
+        // Relax only normals incident to a folded face/rim, then recheck the
+        // complete surface. Simultaneous updates preserve symmetric results.
+        for _ in 0..64 {
+            let point = |v: usize, offset: f32| self.vertices[v] + normals[v] * offset;
+            let mut corrections = vec![super::Vec3::default(); normals.len()];
+            let mut counts = vec![0_u32; normals.len()];
+            let mut relax = |vertices: &[usize]| {
+                let mean = vertices
+                    .iter()
+                    .fold(super::Vec3::default(), |sum, &v| sum + normals[v])
+                    .norm();
+                for &v in vertices {
+                    corrections[v] = corrections[v] + mean - normals[v];
+                    counts[v] += 1;
+                }
+            };
+            for t in &self.triangles {
+                let [a, b, c] = *t;
+                let original = (self.vertices[b] - self.vertices[a])
+                    .cross(self.vertices[c] - self.vertices[a]);
+                if [front, back].into_iter().any(|offset| {
+                    (point(b, offset) - point(a, offset))
+                        .cross(point(c, offset) - point(a, offset))
+                        .dot(original)
+                        <= 0.
+                }) {
+                    relax(t);
+                }
+            }
+            for &(a, b) in &boundary {
+                let [af, ab, bf, bb] = [
+                    point(a, front),
+                    point(a, back),
+                    point(b, front),
+                    point(b, back),
+                ];
+                if (ab - af).cross(bb - af).dot((bb - af).cross(bf - af)) <= 0. {
+                    relax(&[a, b]);
+                }
+            }
+            if counts.iter().all(|&count| count == 0) {
+                break;
+            }
+            for (v, &count) in counts.iter().enumerate() {
+                if count > 0 {
+                    normals[v] = (normals[v] + corrections[v] * (0.5 / count as f32)).norm();
+                }
             }
         }
         let mut shell = Mesh {
@@ -151,12 +219,12 @@ impl Mesh {
                 .vertices
                 .iter()
                 .zip(&normals)
-                .map(|(p, n)| *p + *n * (thickness * 0.5))
+                .map(|(p, n)| *p + *n * front)
                 .chain(
                     self.vertices
                         .iter()
                         .zip(&normals)
-                        .map(|(p, n)| *p - *n * (thickness * 0.5)),
+                        .map(|(p, n)| *p + *n * back),
                 )
                 .collect(),
             mask: self
@@ -344,6 +412,53 @@ mod tests {
     use super::*;
     use crate::sculpt::{Primitive, PrimitiveKind};
     #[test]
+    fn modeling_notes_thickness_directions_and_large_box_remain_symmetric() {
+        let plane = Primitive::for_kind(PrimitiveKind::Plane).mesh().unwrap();
+        for (direction, front, back) in [
+            (super::super::ThicknessDirection::Both, 0.1, -0.1),
+            (super::super::ThicknessDirection::Outward, 0.2, 0.),
+            (super::super::ThicknessDirection::Inward, 0., -0.2),
+        ] {
+            let metadata = super::super::ModelMetadata {
+                temporary_thickness: 0.2,
+                thickness_direction: direction,
+                ..Default::default()
+            };
+            let shell = plane.solidify_with_metadata(&metadata).unwrap();
+            assert!(
+                shell.vertices[..4]
+                    .iter()
+                    .all(|p| (p.2 - front).abs() < 1e-6)
+            );
+            assert!(
+                shell.vertices[4..]
+                    .iter()
+                    .all(|p| (p.2 - back).abs() < 1e-6)
+            );
+            let restored: super::super::ModelMetadata =
+                serde_json::from_value(serde_json::to_value(metadata).unwrap()).unwrap();
+            assert_eq!(restored.thickness_direction, direction);
+        }
+        let open_box = plane.extrude_faces(&[0], 1.5851434, false).unwrap().mesh;
+        for thickness in [0.3, 0.9, 1.2, 1.5] {
+            let shell = open_box.solidify(thickness).unwrap();
+            for p in &shell.vertices {
+                assert!(
+                    shell
+                        .vertices
+                        .iter()
+                        .any(|q| (*q - super::super::Vec3(-p.0, p.1, p.2)).len() < 1e-5)
+                );
+                assert!(
+                    shell
+                        .vertices
+                        .iter()
+                        .any(|q| (*q - super::super::Vec3(p.0, -p.1, p.2)).len() < 1e-5)
+                );
+            }
+        }
+    }
+    #[test]
     fn thickness_closes_a_plane_with_quads_and_preserves_masks() {
         let p = Primitive::for_kind(PrimitiveKind::Plane);
         let mut mesh = p.mesh().unwrap();
@@ -468,6 +583,19 @@ mod slice_rim_tests {
                     );
                 }
                 shell.validate_closed().unwrap();
+                for direction in [
+                    super::super::ThicknessDirection::Inward,
+                    super::super::ThicknessDirection::Outward,
+                ] {
+                    mesh.solidify_with_metadata(&super::super::ModelMetadata {
+                        temporary_thickness: thickness,
+                        thickness_direction: direction,
+                        ..Default::default()
+                    })
+                    .unwrap_or_else(|error| {
+                        panic!("{direction:?} thickness {thickness} at height {height}: {error}")
+                    });
+                }
             }
         }
     }

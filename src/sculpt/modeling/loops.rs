@@ -21,7 +21,7 @@ impl Mesh {
         count: u32,
         position: f32,
     ) -> Result<LoopCut, String> {
-        self.insert_loop_copies(&[seed], count, position)
+        self.insert_loop_copies(&[seed], count, position, None)
     }
     pub fn insert_symmetric_edge_loops(
         &self,
@@ -30,7 +30,26 @@ impl Mesh {
         position: f32,
         symmetry: &ModelingSymmetry,
     ) -> Result<LoopCut, String> {
-        let result = self.insert_loop_copies(&symmetry.edge_copies(seed), count, position)?;
+        let result = self.insert_loop_copies(&symmetry.edge_copies(seed), count, position, None)?;
+        symmetry.validate_result(&result.mesh)?;
+        Ok(result)
+    }
+    pub(crate) fn insert_protected_edge_loops(
+        &self,
+        seed: [usize; 2],
+        count: u32,
+        position: f32,
+        protect: bool,
+        symmetry: &ModelingSymmetry,
+    ) -> Result<LoopCut, String> {
+        let blocked = self
+            .protected_model_vertices(protect)
+            .into_iter()
+            .flat_map(|v| symmetry.vertex_copies(v))
+            .collect();
+        let result =
+            self.insert_loop_copies(&symmetry.edge_copies(seed), count, position, Some(&blocked))?;
+        self.check_model_protection(&result.mesh, protect)?;
         symmetry.validate_result(&result.mesh)?;
         Ok(result)
     }
@@ -39,6 +58,7 @@ impl Mesh {
         seeds: &[[usize; 2]],
         count: u32,
         position: f32,
+        protection: Option<&BTreeSet<usize>>,
     ) -> Result<LoopCut, String> {
         if !(1..=LoopCut::MAX_COUNT).contains(&count) || !position.is_finite() {
             return Err("Choose 1–16 loops and a finite position".into());
@@ -55,11 +75,22 @@ impl Mesh {
                 incidence.entry(edge(a, b)).or_default().push(i);
             }
         }
+        let blocked_edge = |e: &[usize; 2]| {
+            protection.is_some_and(|blocked| {
+                incidence.get(e).is_some_and(|fs| {
+                    fs.iter()
+                        .any(|&f| polygons[f].vertices.iter().any(|v| blocked.contains(v)))
+                })
+            })
+        };
         let mut splits = BTreeMap::<[usize; 2], Vec<f32>>::new();
         for seed in seeds {
             let key = edge(seed[0], seed[1]);
             if !incidence.contains_key(&key) {
                 return Err("Choose one polygon edge for a loop cut".into());
+            }
+            if blocked_edge(&key) {
+                return Err("Choose an edge outside the masked or hidden area".into());
             }
             let mut starts = BTreeMap::from([(key, seed[0])]);
             let mut pending = vec![key];
@@ -72,6 +103,9 @@ impl Mesh {
                     let edges: Vec<_> = p.edges().map(|(a, b)| edge(a, b)).collect();
                     let k = edges.iter().position(|&x| x == e).unwrap();
                     let opposite = edges[(k + 2) % 4];
+                    if blocked_edge(&opposite) {
+                        continue;
+                    }
                     let start =
                         p.vertices[(k + if starts[&e] == p.vertices[k] { 3 } else { 2 }) % 4];
                     if let Some(&existing) = starts.get(&opposite) {
@@ -128,6 +162,14 @@ impl Mesh {
                 a.len() == b.len() && a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-5)
             };
             if !same(&u, &params(v[3], v[2])) || !same(&vv, &params(v[1], v[2])) {
+                if protection.is_some()
+                    && (u.len() != params(v[3], v[2]).len() || vv.len() != params(v[1], v[2]).len())
+                {
+                    extra += 1;
+                    triangles += p.vertices.len()
+                        + p.edges().map(|(a, b)| params(a, b).len()).sum::<usize>();
+                    continue;
+                }
                 return Err("Symmetric loop parameters disagree across a face".into());
             }
             extra += u.len() * vv.len();
@@ -176,6 +218,34 @@ impl Mesh {
             let top = chain(v[3], v[2]);
             let left = chain(v[0], v[3]);
             let right = chain(v[1], v[2]);
+            if protection.is_some() && (bottom.len() != top.len() || left.len() != right.len()) {
+                // End the cut within the last editable face. A center fan keeps
+                // the protected shared edge intact instead of making a T-junction.
+                let boundary: Vec<_> = p
+                    .edges()
+                    .flat_map(|(a, b)| {
+                        let mut points = chain(a, b);
+                        points.pop();
+                        points
+                    })
+                    .collect();
+                let weights: Vec<_> = p.vertices.iter().map(|&v| (v, 0.25)).collect();
+                let position = weights
+                    .iter()
+                    .fold(Vec3::default(), |p, &(v, w)| p + self.vertices[v] * w);
+                let center = out.append_blend(self, &weights, position);
+                for i in 0..boundary.len() {
+                    out.push_polygon(
+                        &[boundary[i], boundary[(i + 1) % boundary.len()], center],
+                        p.group,
+                        p.hidden,
+                    );
+                    if boundary[i] >= self.vertices.len() {
+                        cuts.push([out.vertices[boundary[i]], position]);
+                    }
+                }
+                continue;
+            }
             let mut grid = vec![vec![0; nx]; ny];
             for j in 0..ny {
                 for i in 0..nx {
@@ -228,6 +298,7 @@ impl Mesh {
                 .extend(chain(a, b).windows(2).map(|p| edge(p[0], p[1])));
         }
         out.retain_creases();
+        out.preserve_model_uvs(self, &BTreeMap::new());
         manifold(&out)?;
         Ok(LoopCut { mesh: out, cuts })
     }

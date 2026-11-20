@@ -133,9 +133,8 @@ impl ModelingSymmetry {
                     "Modeling symmetry requires matching face topology on every enabled side",
                 )?;
                 let other = &polygons[f];
-                if p.visible != other.visible || p.hidden != other.hidden {
-                    return Err("Show matching faces on every symmetry side before modeling".into());
-                }
+                // Visibility is an edit constraint, not a topology mismatch.
+                // Each tool protects hidden components or skips their whole orbit.
                 if reverse {
                     cycle.reverse();
                 }

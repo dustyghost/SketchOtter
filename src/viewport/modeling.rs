@@ -48,6 +48,8 @@ pub(crate) enum ModelTool {
     VertexBevel,
     FacePoint,
     FaceSplit,
+    Delete,
+    SurfaceSlide,
 }
 impl ModelTool {
     pub fn label(self) -> &'static str {
@@ -55,9 +57,9 @@ impl ModelTool {
             Self::Select => "Select",
             Self::Extrude => "Extrude",
             Self::LoopCut => "Loop cut",
-            Self::Move => "Move components",
-            Self::Rotate => "Rotate components",
-            Self::Scale => "Scale components",
+            Self::Move => "Move",
+            Self::Rotate => "Rotate",
+            Self::Scale => "Scale",
             Self::Inset => "Inset",
             Self::Bevel => "Bevel boundary",
             Self::Fuse => "Extrude and fuse",
@@ -74,6 +76,8 @@ impl ModelTool {
             Self::VertexBevel => "Bevel vertices",
             Self::FacePoint => "Insert center point",
             Self::FaceSplit => "Split face",
+            Self::Delete => "Delete components",
+            Self::SurfaceSlide => "Slide components",
         }
     }
     pub fn construction_kind(self) -> Option<crate::sculpt::ComponentBuild> {
@@ -127,7 +131,10 @@ impl ModelTool {
         matches!(self, Self::Move | Self::Rotate | Self::Scale)
     }
     pub fn instant(self) -> bool {
-        matches!(self, Self::FacePoint | Self::FaceSplit | Self::CutCell)
+        matches!(
+            self,
+            Self::FacePoint | Self::FaceSplit | Self::CutCell | Self::Delete
+        )
     }
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,7 +180,7 @@ impl SelectionSpan {
         match self {
             Self::Flat | Self::Group => mode == ComponentMode::Face,
             Self::Ring | Self::Border => mode == ComponentMode::Edge,
-            Self::Loop => mode != ComponentMode::Vertex,
+            Self::Loop => true,
             _ => true,
         }
     }
@@ -274,6 +281,8 @@ pub(crate) struct ModelingOptions {
     pub move_snap: MoveSnap,
     #[serde(default)]
     pub new_group: bool,
+    #[serde(default)]
+    pub delete_keep_vertices: bool,
     #[serde(default = "bevel_segments_default")]
     pub bevel_segments: u32,
     #[serde(default)]
@@ -350,6 +359,27 @@ struct ExtrudeDrag {
     result: Option<Result<Extrusion, String>>,
 }
 impl ModelingState {
+    pub(crate) fn symmetry_error(&self) -> Option<&str> {
+        self.symmetry
+            .as_ref()
+            .and_then(|(_, r)| r.as_ref().err())
+            .map(String::as_str)
+    }
+    pub(super) fn set_detached(&mut self, detached: bool) {
+        if let Some(drag) = &mut self.drag
+            && drag.detached != detached
+        {
+            drag.detached = detached;
+            drag.result = None;
+        }
+        if let Some(drag) = &mut self.edit_drag
+            && drag.preview_options.tool == ModelTool::PointExtrude
+            && drag.detached != detached
+        {
+            drag.detached = detached;
+            drag.result = None;
+        }
+    }
     pub fn sync(&mut self, document: &Document) {
         if self.revision != document.display_revision() {
             self.symmetry = None;
@@ -820,6 +850,7 @@ impl Viewport {
                             | ModelTool::Rotate
                             | ModelTool::Scale
                             | ModelTool::Slide
+                            | ModelTool::SurfaceSlide
                             | ModelTool::CutCell
                             | ModelTool::PointExtrude
                     ) {
@@ -1095,7 +1126,7 @@ impl Viewport {
             egui::FontId::proportional(13.),
             Color32::WHITE,
         );
-        if symmetry_error.is_some() {
+        if symmetry_error.is_some() && model.tool != ModelTool::Select {
             self.modeling.cancel();
             if self.session.gesture == Some(Gesture::Modeling) {
                 self.session.gesture = None;
@@ -1301,7 +1332,13 @@ impl Viewport {
                             .and_then(|symmetry| {
                                 document
                                     .mesh()
-                                    .insert_symmetric_edge_loops(edge, count, position, symmetry)
+                                    .insert_protected_edge_loops(
+                                        edge,
+                                        count,
+                                        position,
+                                        model.protect_mask,
+                                        symmetry,
+                                    )
                                     .and_then(|r| {
                                         document
                                             .mesh()

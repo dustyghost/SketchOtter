@@ -30,9 +30,14 @@ impl App {
                 self.viewport.set_edge_selection(Vec::new(), &self.document);
                 self.ui.modeling.mode = mode;
                 self.ui.modeling.span = crate::viewport::SelectionSpan::Single;
-                self.ui
-                    .modeling
-                    .set_tool(crate::viewport::ModelTool::Select);
+                if !matches!(
+                    self.ui.modeling.tool,
+                    crate::viewport::ModelTool::Delete | crate::viewport::ModelTool::SurfaceSlide
+                ) {
+                    self.ui
+                        .modeling
+                        .set_tool(crate::viewport::ModelTool::Select);
+                }
                 Ok(())
             }
             Command::ModelResizeSelection(grow) => {
@@ -150,10 +155,12 @@ impl App {
                             self.document.mesh(),
                             self.document.symmetry(),
                         )?;
-                        let mesh = self
-                            .document
-                            .mesh()
-                            .dissolve_loops(&symmetry.edges(&edges))?;
+                        let mesh = self.document.mesh().remove_protected_loops(
+                            &edges,
+                            false,
+                            self.ui.modeling.protect_mask,
+                            &symmetry,
+                        )?;
                         symmetry.validate_result(&mesh)?;
                         self.document
                             .mesh()

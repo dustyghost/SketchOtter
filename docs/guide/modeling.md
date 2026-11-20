@@ -206,6 +206,7 @@ Choose the selection pattern below Replace/Add/Remove:
 - **Individual:** paint faces, edges, or vertices under the pen.
 - **Loop** in Face mode: selects a strip of quads. Hover near a face edge to choose the direction across that edge; the full strip previews in gold. Move near a perpendicular edge to choose the other direction.
 - **Loop** in Edge mode: follows connected edges along an unambiguous loop, crease, or border chain.
+- **Loop** in Vertex mode: selects the vertices along that loop. Hover slightly toward an incident edge to choose its direction.
 - **Parallel edges** in Edge mode: selects an edge ring by following opposite edges across connected quads. It follows topology, including around curved surfaces.
 
 Loop selections can wrap around the model, including its far side. Face loops and edge rings stop at hidden faces, triangles, open boundaries, or non-manifold branches. Add/Remove and drag selection also work with these patterns. Each crossed component is visited once per stroke, so retracing does not toggle it.
@@ -238,7 +239,7 @@ Select a face, edge, or vertex, then use **Grow selection** or **Shrink selectio
 
 Each click takes one step through the mesh's logical polygons. Faces cross shared edges, vertices follow real polygon edges, and edges reach other edges sharing an endpoint. Rendering diagonals inside quads do not count. Disconnected islands stay separate. Shrink removes the outer layer at open borders as well as beside unselected components; a fully selected closed island stays selected.
 
-Hidden faces block growth through their vertices. With **Protect mask** enabled, any nonzero mask blocks growth through that vertex too. Grow retains existing protected selections without expanding through them; Shrink removes protected components. Exact symmetry applies to whole matching sets, including when protection blocks one side. As with other Modeling selections, mismatched hidden faces across symmetry require showing matching faces first.
+Hidden faces block growth through their vertices. With **Protect mask** enabled, any nonzero mask blocks growth through that vertex too. Grow retains existing protected selections without expanding through them; Shrink removes protected components. Exact symmetry applies to whole matching sets, including when protection blocks one side. Hidden faces no longer make the whole mesh fail symmetry matching. Protected matching sets stay fixed while other sets can change.
 
 **Undo selection change** and **Redo selection change** restore growth and region-selection steps without consuming sculpt Undo/Redo. The selection history belongs to the current mesh and selection; changing geometry or choosing a different selection invalidates it. It is temporary and is not saved with a project. Geometry changes made afterwards keep their usual single Undo step.
 
@@ -333,7 +334,7 @@ Pressure does not change the distance. Each completed drag is one Undo step. For
 Before editing:
 
 - Apply or disable temporary **Thickness**.
-- Keep **Protect mask** on to reject any edit touching masked geometry, or turn it off to edit through a mask. Hidden geometry stays protected.
+- Keep **Protect mask** on to leave masked vertices fixed during Move, Rotate, Scale and Slide. Hidden faces and their vertices stay fixed too. Other topology tools still reject unsafe changes; loop cuts and loop removal stop before protected areas.
 - Use symmetry when the sides have matching geometry and topology.
 
 Topology edits replace stored subdivision levels and turn off adaptive/dynamic topology. Undo restores the previous mesh settings and levels.
@@ -384,7 +385,7 @@ The setting defaults to Off and saves in Modeling presets. The separate **Align 
 
 ### Ctrl-extrude: detached copies
 
-Hold **Ctrl before starting the drag** with **Extrude** in Face mode or **Extrude point** in Vertex mode. The originals stay in place and a detached copy moves away. Face copies follow the normal extrusion direction, retain the selected region's connections and have no side walls. **Individual faces** gives each face its own copy. Vertex copies follow the screen plane and have no connecting edges.
+Hold **Ctrl at any time during the drag** with **Extrude** in Face mode or **Extrude point** in Vertex mode. Release Ctrl before releasing the pen to return to attached extrusion; the preview updates immediately. The originals stay in place and a detached copy moves away. Face copies follow the normal extrusion direction, retain the selected region's connections and have no side walls. **Individual faces** gives each face its own copy. Vertex copies follow the screen plane and have no connecting edges.
 
 Release to apply, or press **Escape** to cancel. Ctrl-clicking without dragging makes no copy. The new components stay selected; one Undo restores the original mesh. Detached point copying bypasses snap-and-join so a nearby target cannot accidentally reconnect the copy. Isolated points can be selected, moved, extruded, welded, joined into a face or deleted. Save them in `.clay` or OBJ; surface-only exports and reconstruction tools cannot preserve isolated points.
 
@@ -399,6 +400,8 @@ Transforms group only the moved vertices. Topology changes include the corner ve
 ### Chamfer and rounded bevel
 
 Choose **Chamfer edges** or **Bevel edges** in Edge mode, and **Chamfer vertices** or **Bevel vertices** in Vertex mode. All four are in **Q**, the Modeling menu and the Mesh panel. Chamfer cuts a flat surface across the selected edge or corner. Bevel rounds the cut; **Segments** controls its resolution from 2 to 8.
+
+With multiple edges selected, both edge tools follow the selected chain or loop and join the cuts where those edges meet. Bevel uses a rounded profile along that same path. **Bevel vertices** rounds the selected corners; selecting a vertex loop does not automatically bevel the edges between those vertices. Use Edge mode for a continuous edge bevel.
 
 Drag upward on the selected component to increase **Width**, then release to apply. Escape cancels. Alternatively, enter a width and choose **Apply amount**. Q also exposes the width and segments for the active tool. Each cut is one Undo step and supports the optional new vertex group.
 
@@ -505,6 +508,10 @@ For loops around a hole or selected region, use the existing [support-loop contr
 
 <a id="dissolve-selected-loops"></a>
 
+### Click to delete
+
+Choose **Delete components** in Q or Mesh → Modeling, then choose Face, Edge or Vertex and the desired Target. Click the target to remove it directly. **Keep unused vertices** retains vertices left behind by face or edge deletion; turn it off to remove them. Deleting an edge also removes its attached faces. Protected components and their symmetry partners are skipped. Each click is one Undo step. The immediate Topology delete actions remain available for an existing selection.
+
 ### Delete loops
 
 Choose **Edge → Select → Loop**, then select the complete loop to remove. Use **Add** for several separate loops. Open **Q → Topology**, the toolbar **Modeling** menu, or **Mesh → Modeling → Topology** and choose:
@@ -516,7 +523,7 @@ Choose **Edge → Select → Loop**, then select the complete loop to remove. Us
 
 Both apply immediately as one normal **Undo/Redo** step. **Protect mask**, hidden-face protection and exact symmetry apply to both. Use Undo to restore the operation, including stored subdivision levels.
 
-Both require complete, noncrossing interior quad loops. An open loop must end at the mesh border. Partial loops, selected boundary edges, hidden adjoining faces and intersections are rejected without changing the mesh. Keep surface also rejects merging different face-group labels. Remaining vertex masks/group weights and boundary creases are preserved. Removing a curved loop with Keep surface can simplify the shape.
+Both require noncrossing interior quad loops. They stop before masked or hidden areas, retaining the boundary vertices needed to keep the untouched surface connected. Keep surface uses triangles at a protected stopping point. Unprotected partial loops, selected boundary edges and intersections are rejected without changing the mesh. Keep surface also rejects merging different face-group labels. Remaining vertex masks/group weights and boundary creases are preserved. Removing a curved loop with Keep surface can simplify the shape.
 
 ![Both Delete loop options in Q's Edge topology section](../images/delete-loop-options-1100.png)
 
@@ -588,6 +595,8 @@ Dissolve rejects face-group boundaries, internal creases, hard shading edges and
 All three operations respect hidden geometry, **Protect mask** and exact symmetry. Each face-region edit supports up to 4,096 selected faces including symmetry copies and 1,024 corners per outline. Each successful edit replaces stored subdivision levels; Undo restores them. Failed edits preserve the selection and history. The actions are also available in Q, Search, shelves and configurable shortcuts, and support **New vertex group after each edit**.
 
 ### Slide and repair topology
+
+Choose **Slide components** to drag individual faces, edges or vertices along their original neighbouring surface. A numeric distance and axis are also available. The movement stops at the local surface boundary and rejects collapsed or flipped faces. Masked and hidden vertices remain fixed. One release is one Undo step.
 
 Use **Edge → Select → Loop**, then **Slide loop**. Drag to preview, or enter a fraction between -1 and 1 and choose **Apply amount**. The chosen axis determines the positive rail on the reference side; symmetry mirrors that movement. Sliding keeps the same topology and selection. It requires a complete interior quad loop with unambiguous rails; selected loops must not share a face.
 
@@ -821,11 +830,15 @@ Whole-model hiding keeps a reference out of the way without disabling it. Indivi
 
 Projection follows locally averaged surface directions to keep neighbouring vertices from bunching around steep rims. It does not smooth the target's positions. Vertices with no reference hit within the distance stay in place. The closest opposing sheet is skipped rather than searching through it; near-equal matches on disconnected parts are skipped as ambiguous. Triangle safety can reduce movement to prevent neighbouring faces folding back against each other. Very sharp details may need a denser target mesh. These checks cannot infer which overlapping surface you intended, so inspect folds and thin walls before applying. Projection moves existing vertices; it cannot restore detail finer than the target topology can represent.
 
+### When symmetry cannot match
+
+A fresh, centred 3×3×3 cube supports ordinary X mirror symmetry after conversion to an editable mesh. Exact symmetry still needs matching positions and topology. If it cannot match, Q and the Modeling panel show the reason and a **Turn symmetry off** button. Select remains available so you can inspect the mesh. Check mirror axes, radial settings and centre before trying the edit again.
+
 ## Thickness modifier
 
 ### Preview a shell
 
-In **Submodels → Thickness · open meshes**, enable **Thickness modifier** and set its total thickness in model units. Half is added to each side; walls close boundary loops.
+In **Submodels → Thickness · open meshes**, enable **Thickness modifier** and set its total thickness in model units. Choose **Inward**, **Outward** or **Both** under Direction. Inward follows the opposite of the face normals, Outward follows them, and Both adds half to each side. Walls close boundary loops. The direction is saved with the project and restored by Undo.
 
 Use **Rim loops** to add wall segments and **Crease rim edges** to preserve the joins during later smooth subdivision. See the [illustrated thickness example](edges.md#add-loops-and-creases-to-thickness).
 
@@ -950,9 +963,9 @@ Merge bakes primitives and thickness modifier, uses current mesh levels, and res
 
 Open **Modeling** in the toolbar, or press **Q** over the viewport for its quick popup. Choose **Face**, **Edge** or **Vertex** under **Component**, then choose a **Target** such as Individual, Loop, Connected or Flat island. Targets follow the current component mode, just like the Modeling panel. Component changes convert the selection; target changes keep the current tool and selection. These controls leave the menu open so you can then choose a function.
 
-The same controls are also in **Model → Modeling** on the top bar. Use its Panel controls to pin a movable window or dock a collapsible section on the left or right. These placements are saved with your workspace. Pinned and docked controls stay open when you choose a function; the drop-down and Q popup close after a function choice. Opening or moving the menu alone does not edit the model.
+The same controls are also in **Model → Modeling** on the top bar. Use its Panel controls to pin a movable window or dock a collapsible section on the left or right. These placements are saved with your workspace. Pinned and docked controls stay open when you choose a function. Q also has **Keep open**: enable it to use the viewport while the menu stays visible, and drag its title to reposition it. Opening or moving the menu alone does not edit the model.
 
-The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Delete vertices**, **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes **Create face**, both **Delete loop** options, **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu and keeps the current selection. Escape, an outside click or focus loss dismisses the menu without editing geometry. Finish the current drag before opening it.
+The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Delete vertices**, **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes **Create face**, both **Delete loop** options, **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu unless **Keep open** is enabled. An outside click closes an unpinned menu and immediately starts the chosen viewport action, so selection needs only one click. Escape or focus loss dismisses the menu. Q shares the panel’s tool options and **Tool presets** section; scroll down to reach them. Finish the current drag before opening it.
 
 ![Q menu with topology actions beside Modeling functions](../images/modeling-topology-q-1100.png)
 

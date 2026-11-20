@@ -135,6 +135,36 @@ impl Viewport {
             (Component::Edge(e), SelectionSpan::Ring) => mesh
                 .select_edge_ring(e)
                 .map(|es| es.into_iter().map(Component::Edge).collect()),
+            (Component::Vertex(v), SelectionSpan::Loop) => {
+                let seed = mesh
+                    .model_edges()
+                    .into_iter()
+                    .filter(|e| e.contains(&v))
+                    .filter_map(|e| {
+                        let other = if e[0] == v { e[1] } else { e[0] };
+                        let origin = scene.project(mesh.vertices[v]);
+                        let direction = scene.project(mesh.vertices[other]) - origin;
+                        let toward = point - origin;
+                        let score = if toward.length_sq() > 0.01 {
+                            -toward.normalized().dot(direction.normalized())
+                        } else {
+                            other as f32
+                        };
+                        (direction.length_sq() > 0.01).then_some((score, e))
+                    })
+                    .min_by(|a, b| a.0.total_cmp(&b.0))
+                    .ok_or("Choose a vertex on an edge loop")?
+                    .1;
+                mesh.expand_edge_loop(&[seed]).map(|edges| {
+                    edges
+                        .into_iter()
+                        .flatten()
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .map(Component::Vertex)
+                        .collect()
+                })
+            }
             (Component::Face(f), SelectionSpan::Loop) => {
                 let polygons = mesh.polygons();
                 let edge = polygons[f]

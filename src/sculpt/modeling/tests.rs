@@ -23,6 +23,59 @@ fn front_center(mesh: &Mesh) -> usize {
         .0
 }
 #[test]
+fn review_extruded_uv_plane_can_be_filled_and_retains_cap_mapping() {
+    let mut mesh = Primitive::for_kind(PrimitiveKind::Plane).mesh().unwrap();
+    mesh.uv.topology = mesh.triangles.clone();
+    mesh.uv.corners = mesh
+        .triangles
+        .iter()
+        .map(|t| {
+            t.map(|v| {
+                [
+                    (mesh.vertices[v].0 + 1.) * 0.5,
+                    (mesh.vertices[v].1 + 1.) * 0.5,
+                ]
+            })
+        })
+        .collect();
+    for region in [false, true] {
+        let out = if region {
+            mesh.extrude_region(&[0], 1.).unwrap()
+        } else {
+            mesh.extrude_faces(&[0], 1., false).unwrap().mesh
+        };
+        assert!(out.uv.current(&out));
+        assert_eq!(out.uv.corners[..2], mesh.uv.corners);
+        assert!(out.uv.removed[2..].iter().all(|&r| r));
+        let symmetry = ModelingSymmetry::new(&out, &Default::default()).unwrap();
+        let boundary = crate::sculpt::fusion::boundaries(&out).unwrap().remove(0);
+        let edges: Vec<_> = boundary
+            .vertices
+            .iter()
+            .copied()
+            .zip(boundary.vertices.iter().copied().cycle().skip(1))
+            .take(boundary.vertices.len())
+            .map(|(a, b)| edge(a, b))
+            .collect();
+        let filled = out
+            .edit_model_topology(TopologyEdit::Fill, &[], &edges, &[], &symmetry)
+            .unwrap();
+        filled.validate_closed().unwrap();
+        assert!(filled.uv.current(&filled));
+        // Old projects may already contain the pre-fix inactive map. Filling
+        // must repair that state too, without assigning old corners to new faces.
+        let mut legacy = out.clone();
+        legacy.uv = mesh.uv.clone();
+        assert!(!legacy.uv.current(&legacy));
+        let repaired = legacy
+            .edit_model_topology(TopologyEdit::Fill, &[], &edges, &[], &symmetry)
+            .unwrap();
+        repaired.validate_closed().unwrap();
+        assert!(repaired.uv.current(&repaired));
+        assert!(repaired.uv.removed.iter().all(|&removed| removed));
+    }
+}
+#[test]
 fn modeling_extrudes_closed_quads_with_attributes() {
     let mut mesh = cube(1);
     mesh.mask.fill(0.4);
@@ -489,7 +542,7 @@ fn modeling_symmetry_checks_geometry_topology_visibility_and_supports_radial() {
     let mut hidden = mesh.clone();
     hidden.hidden_faces = vec![false; mesh.triangles.len()];
     hidden.hidden_faces[0] = true;
-    assert!(ModelingSymmetry::new(&hidden, &settings).is_err());
+    ModelingSymmetry::new(&hidden, &settings).unwrap();
     let radial = crate::sculpt::Symmetry {
         enabled: true,
         mirror: [false; 3],
@@ -657,22 +710,26 @@ fn component_transforms_preserve_attributes_and_mirror_displacements() {
     );
 }
 #[test]
-fn modeling_protection_rejects_whole_edits() {
+fn modeling_protection_freezes_transforms_and_rejects_unsafe_topology() {
     let mut mesh = cube(3);
     let f = front_center(&mesh);
     let vertices = mesh.polygons()[f].vertices.clone();
     mesh.mask[vertices[0]] = 1.;
     let sym = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
-    assert!(
-        mesh.transform_components(
+    let moved = mesh
+        .transform_components(
             &vertices,
             Vec3::default(),
             ComponentTransform::Move(Vec3(0., 0., 0.1)),
             true,
-            &sym
+            &sym,
         )
-        .is_err()
-    );
+        .unwrap();
+    assert_eq!(moved.vertices[vertices[0]], mesh.vertices[vertices[0]]);
+    for &v in &vertices[1..] {
+        assert_eq!(moved.vertices[v], mesh.vertices[v] + Vec3(0., 0., 0.1));
+    }
+    mesh.check_model_protection(&moved, true).unwrap();
     let extruded = mesh.extrude_faces(&[f], 0.1, false).unwrap();
     assert!(mesh.check_model_protection(&extruded.mesh, true).is_err());
     mesh.check_model_protection(&extruded.mesh, false).unwrap();
@@ -843,7 +900,7 @@ fn modeling_slide_preserves_loops_and_mirrors_the_rails() {
     assert_eq!(edges.len(), 5);
     let sym = ModelingSymmetry::new(&mesh, &mirror_x()).unwrap();
     let out = mesh
-        .slide_model_edges(&edges, 0.25, Vec3(1., 0., 0.), Vec3(1., 0., 0.), &sym)
+        .slide_model_edges(&edges, 0.25, Vec3(1., 0., 0.), Vec3(1., 0., 0.), true, &sym)
         .unwrap();
     sym.validate_result(&out).unwrap();
     assert_eq!(out.quads, mesh.quads);
@@ -851,11 +908,18 @@ fn modeling_slide_preserves_loops_and_mirrors_the_rails() {
         assert!((out.vertices[*v].0 - 0.7).abs() < 1e-5);
     }
     assert!(
-        mesh.slide_model_edges(&edges[..1], 0.2, Vec3(1., 0., 0.), Vec3::default(), &sym)
-            .is_err()
+        mesh.slide_model_edges(
+            &edges[..1],
+            0.2,
+            Vec3(1., 0., 0.),
+            Vec3::default(),
+            true,
+            &sym
+        )
+        .is_err()
     );
     assert!(
-        mesh.slide_model_edges(&edges, 1., Vec3(1., 0., 0.), Vec3::default(), &sym)
+        mesh.slide_model_edges(&edges, 1., Vec3(1., 0., 0.), Vec3::default(), true, &sym)
             .is_err()
     );
 }

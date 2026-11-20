@@ -90,6 +90,8 @@ impl ModelTool {
             || matches!(
                 self,
                 Self::CutCell
+                    | Self::Delete
+                    | Self::SurfaceSlide
                     | Self::Move
                     | Self::Rotate
                     | Self::Scale
@@ -240,6 +242,47 @@ impl ModelingState {
             return Err("Amount must be finite".into());
         }
         let mesh = document.mesh();
+        if options.tool == ModelTool::Delete {
+            let faces: Vec<_> = components
+                .iter()
+                .filter_map(|c| {
+                    if let Component::Face(f) = c {
+                        Some(*f)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let edges: Vec<_> = components
+                .iter()
+                .filter_map(|c| {
+                    if let Component::Edge(e) = c {
+                        Some(*e)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let vertices: Vec<_> = components
+                .iter()
+                .filter_map(|c| {
+                    if let Component::Vertex(v) = c {
+                        Some(*v)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let result = mesh.delete_model_components(
+                &faces,
+                &edges,
+                &vertices,
+                options.delete_keep_vertices,
+                options.protect_mask,
+                &ModelingSymmetry::new(mesh, document.symmetry())?,
+            )?;
+            return Ok(EditOutcome::new(result, 0., false));
+        }
         if options.tool == ModelTool::CutCell {
             let symmetry = ModelingSymmetry::new(mesh, document.symmetry())?;
             return Self::cut_cell(components, mesh, &symmetry, options.protect_mask);
@@ -256,6 +299,21 @@ impl ModelingState {
                     .unwrap_or_default(),
             })
             .collect();
+        if options.tool == ModelTool::SurfaceSlide {
+            let direction = if options.transform_direction.len() > 1e-7 {
+                options.transform_direction
+            } else {
+                options.axis.vector()
+            };
+            let result = mesh.slide_components(
+                &vertices.into_iter().collect::<Vec<_>>(),
+                anchor,
+                direction * amount,
+                options.protect_mask,
+                &ModelingSymmetry::new(mesh, document.symmetry())?,
+            )?;
+            return Ok(EditOutcome::new(result, amount, false));
+        }
         if options.tool.is_component_bevel() {
             let edges: Vec<_> = components
                 .iter()
@@ -458,6 +516,7 @@ impl ModelingState {
                 amount,
                 options.axis.vector(),
                 anchor,
+                options.protect_mask,
                 &ModelingSymmetry::new(mesh, document.symmetry())?,
             )?;
             mesh.check_model_protection(&result, options.protect_mask)?;
@@ -475,10 +534,11 @@ impl ModelingState {
                 })
                 .ok_or("Select an edge to repeat the cut")?;
             let result = mesh
-                .insert_symmetric_edge_loops(
+                .insert_protected_edge_loops(
                     edge,
                     options.loop_count,
                     amount,
+                    options.protect_mask,
                     &ModelingSymmetry::new(mesh, document.symmetry())?,
                 )?
                 .mesh;
@@ -582,7 +642,10 @@ impl ModelingState {
             || options.tool.is_transform()
             || matches!(
                 options.tool,
-                ModelTool::Slide | ModelTool::CutCell | ModelTool::PointExtrude
+                ModelTool::Slide
+                    | ModelTool::SurfaceSlide
+                    | ModelTool::CutCell
+                    | ModelTool::PointExtrude
             ) {
             result.moved_selection(&drag.components)
         } else if result.retain_caps
@@ -674,7 +737,10 @@ impl ModelingState {
         let selection = if options.tool.is_transform()
             || matches!(
                 options.tool,
-                ModelTool::Slide | ModelTool::CutCell | ModelTool::PointExtrude
+                ModelTool::Slide
+                    | ModelTool::SurfaceSlide
+                    | ModelTool::CutCell
+                    | ModelTool::PointExtrude
             ) {
             result.moved_selection(&self.selected)
         } else if result.retain_caps
@@ -766,6 +832,7 @@ impl Viewport {
                     return;
                 }
                 if model.tool == ModelTool::PointExtrude
+                    || model.tool == ModelTool::SurfaceSlide
                     || (model.tool.is_transform() && model.interaction == ModelInteraction::Free)
                 {
                     match self.modeling.begin_direct(
@@ -866,7 +933,11 @@ impl ModelingState {
                 .collect();
             document.mesh().protect_model_vertices(&touched, protect)?;
         }
-        let result = if edit == crate::sculpt::TopologyEdit::BridgeChains {
+        let result = if edit == crate::sculpt::TopologyEdit::DeleteLoop {
+            document
+                .mesh()
+                .remove_protected_loops(&edges, true, protect, &symmetry)?
+        } else if edit == crate::sculpt::TopologyEdit::BridgeChains {
             document
                 .mesh()
                 .bridge_model_chains(&edges, bridge_segments, &symmetry)?

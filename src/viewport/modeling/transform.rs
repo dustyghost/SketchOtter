@@ -167,7 +167,7 @@ impl ModelingState {
         let delta = point - drag.start;
         let pivot = direct.pivot;
         let (direction, amount) = match options.tool {
-            ModelTool::Move | ModelTool::PointExtrude => {
+            ModelTool::Move | ModelTool::PointExtrude | ModelTool::SurfaceSlide => {
                 let displacement = match direct.handle {
                     Handle::Axis(axis) => {
                         let amount = scene

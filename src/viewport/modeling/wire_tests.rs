@@ -107,3 +107,31 @@ fn point_extrude_wire_picking_and_region_depth_work_without_faces_at_the_tip() {
         assert_eq!(display.mesh.loose_edges.as_ref(), &mesh.loose_edges);
     }
 }
+
+#[test]
+fn review_wire_only_extrusion_has_no_invented_outline() {
+    let mesh = Mesh {
+        vertices: vec![
+            Vec3(0., 0., 0.),
+            Vec3(1., 0., 0.),
+            Vec3(1., 1., 0.),
+            Vec3(0., 1., 0.),
+            Vec3(2., 2., 0.),
+        ],
+        loose_edges: vec![[0, 1], [0, 3], [1, 2], [2, 3], [2, 4]],
+        mask: vec![0.; 5],
+        ..Default::default()
+    };
+    let mut document = Document::default();
+    document
+        .replace_geometry(Geometry::new(mesh.clone()))
+        .unwrap();
+    let display = super::super::gpu::DisplayMesh::new(&document);
+    assert!(
+        display.outlines.is_empty(),
+        "Explicit wires must not also be connected in index order"
+    );
+    assert_eq!(display.mesh.loose_edges.as_ref(), &mesh.loose_edges);
+    let preview = super::super::gpu::DisplayMesh::with_active_mesh(&document, &mesh);
+    assert!(preview.outlines.is_empty());
+}

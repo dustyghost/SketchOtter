@@ -6,18 +6,20 @@ use crate::viewport::{Component, ComponentMode, ModelTool};
 fn component_bevel_offscreen_review() {
     let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    for (tool, name) in [
-        (ModelTool::EdgeChamfer, "chamfer-edge"),
-        (ModelTool::EdgeBevel, "bevel-edge"),
-        (ModelTool::VertexChamfer, "chamfer-vertex"),
-        (ModelTool::VertexBevel, "bevel-vertex"),
+    for (tool, name, loop_selection) in [
+        (ModelTool::EdgeChamfer, "chamfer-edge", false),
+        (ModelTool::EdgeBevel, "bevel-edge", false),
+        (ModelTool::VertexChamfer, "chamfer-vertex", false),
+        (ModelTool::VertexBevel, "bevel-vertex", false),
+        (ModelTool::EdgeChamfer, "chamfer-edge-loop", true),
+        (ModelTool::EdgeBevel, "bevel-edge-loop", true),
     ] {
         let mut g = Guide::new(&directory, [1100, 950]);
         g.interactive = true;
         g.toolbar = false;
         g.panel(Tool::Mesh, Dock::Right);
         let mut primitive = Primitive::for_kind(PrimitiveKind::Cube);
-        primitive.divisions = [1; 3];
+        primitive.divisions = [if loop_selection { 3 } else { 1 }; 3];
         let mesh = primitive.mesh().unwrap();
         g.app
             .document
@@ -48,8 +50,26 @@ fn component_bevel_offscreen_review() {
                     .unwrap(),
             )
         } else {
+            let mut edges = mesh.polygon_edges();
+            if loop_selection {
+                let top = mesh
+                    .vertices
+                    .iter()
+                    .map(|p| p.1)
+                    .fold(f32::NEG_INFINITY, f32::max);
+                edges.retain(|e| {
+                    e.iter().all(|&v| {
+                        let p = mesh.vertices[v];
+                        (p.1 - top).abs() < 1e-6
+                            && ((p.0.abs() - top).abs() < 1e-6 || (p.2.abs() - top).abs() < 1e-6)
+                    })
+                });
+                assert_eq!(edges.len(), 12);
+                g.app.viewport.modeling.selected =
+                    edges.iter().copied().map(Component::Edge).collect();
+            }
             Component::Edge(
-                mesh.polygon_edges()
+                edges
                     .into_iter()
                     .max_by(|a, b| {
                         let depth =
@@ -110,6 +130,9 @@ fn component_bevel_offscreen_review() {
                 g.save(name);
                 g.frame(vec![primary_event(end, false)]);
                 let after = g.app.document.geometry_snapshot();
+                if loop_selection {
+                    g.save(&format!("{name}-applied"));
+                }
                 assert_eq!(after.mesh.vertices, preview.vertices);
                 assert_eq!(after.mesh.vertex_groups.len(), 1);
                 assert_eq!(g.app.document.history_counts().0, history.0 + 1);

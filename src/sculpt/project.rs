@@ -67,6 +67,14 @@ impl BooleanRole {
         *self == Self::Regular
     }
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThicknessDirection {
+    Inward,
+    Outward,
+    #[default]
+    Both,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModelMetadata {
     #[serde(default, skip_serializing_if = "BooleanRole::is_regular")]
@@ -80,6 +88,8 @@ pub struct ModelMetadata {
     pub group: String,
     #[serde(default, skip_serializing_if = "zero_thickness")]
     pub temporary_thickness: f32,
+    #[serde(default)]
+    pub thickness_direction: ThicknessDirection,
     #[serde(
         default = "default_threshold",
         skip_serializing_if = "threshold_default"
@@ -104,6 +114,7 @@ impl Default for ModelMetadata {
             visible: true,
             group: String::new(),
             temporary_thickness: 0.,
+            thickness_direction: ThicknessDirection::Both,
             mask_threshold: 0.5,
             thickness_groups: false,
             thickness_loops: 0,

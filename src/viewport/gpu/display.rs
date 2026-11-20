@@ -556,7 +556,11 @@ impl DisplayMesh {
             };
             let surface = shell.as_ref().unwrap_or(original);
             let offset = mesh.vertices.len();
-            if surface.triangles.is_empty() && surface.vertices.len() > 1 {
+            if surface.triangles.is_empty()
+                && surface.loose_edges.is_empty()
+                && surface.loose_vertices.is_empty()
+                && surface.vertices.len() > 1
+            {
                 for i in 0..surface.vertices.len() {
                     outlines.push([offset + i, offset + (i + 1) % surface.vertices.len()]);
                 }
