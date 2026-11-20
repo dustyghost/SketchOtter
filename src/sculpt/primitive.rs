@@ -181,6 +181,8 @@ impl Primitive {
 }
 fn empty() -> Mesh {
     Mesh {
+        loose_edges: Vec::new(),
+        loose_vertices: Vec::new(),
         uv: Default::default(),
         creases: Vec::new(),
         shading_seams: None,

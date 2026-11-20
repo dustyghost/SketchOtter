@@ -449,6 +449,7 @@ impl Mesh {
         let mut merged = BTreeMap::new();
         let mut removed = HashSet::new();
         let mut blocked = HashSet::new();
+        blocked.extend(self.loose_edges.iter().flatten().copied());
         for (_, fi, [a, b, c, d]) in candidates {
             if merged.len() >= limit {
                 break;
@@ -585,6 +586,11 @@ impl Mesh {
         }
         self.materials = self.reindex_materials(kept.iter().copied());
         self.vertices = kept.iter().map(|&i| self.vertices[i]).collect();
+        for e in &mut self.loose_edges {
+            *e = e.map(|v| indices[v]);
+            e.sort_unstable();
+        }
+        self.loose_edges.sort_unstable();
         self.mask = kept.iter().map(|&i| self.mask[i]).collect();
         for group in &mut self.vertex_groups {
             group.weights = kept.iter().map(|&i| group.weights[i]).collect();

@@ -6,6 +6,7 @@ pub(crate) mod boolean;
 mod intersection;
 mod spatial;
 pub(crate) use intersection::{FusionReport, fuse, join_open_ends};
+pub(crate) use spatial::validate_connector as validate_added_faces;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct JoinOptions {

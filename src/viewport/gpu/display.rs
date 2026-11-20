@@ -67,6 +67,8 @@ struct StrokeSurfaceTopology {
     filtered: bool,
     triangles: Vec<[usize; 3]>,
     quads: Vec<[usize; 4]>,
+    loose_edges: Vec<[usize; 2]>,
+    loose_vertices: Vec<usize>,
     hidden_faces: Vec<bool>,
     polygroups: Vec<usize>,
     group_visibility: Vec<bool>,
@@ -79,6 +81,8 @@ impl StrokeSurfaceTopology {
         self.model_id == model_id
             && self.triangles == mesh.triangles
             && self.quads == mesh.quads
+            && self.loose_edges == mesh.loose_edges
+            && self.loose_vertices == mesh.loose_vertices
             && self.shading_seams == mesh.shading_seams
             && self.hidden_faces == mesh.hidden_faces
             && self.polygroups == mesh.polygroups
@@ -448,6 +452,8 @@ impl DisplayMesh {
         });
         let result_owner = super::super::boolean::RESULT_OWNER;
         let mut mesh = Mesh {
+            loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,
@@ -598,6 +604,14 @@ impl DisplayMesh {
                     eframe::egui::Color32::from_rgb(255, 170, 65),
                 );
             }
+            mesh.loose_vertices
+                .extend(surface.loose_vertices.iter().map(|v| v + offset));
+            mesh.loose_edges.extend(
+                surface
+                    .visible_loose_edges()
+                    .into_iter()
+                    .map(|e| e.map(|v| v + offset)),
+            );
             mesh.vertices.extend(
                 surface
                     .vertices
@@ -771,6 +785,8 @@ impl DisplayMesh {
                         filtered: has_hidden,
                         triangles: surface.triangles.clone(),
                         quads: surface.quads.clone(),
+                        loose_edges: surface.loose_edges.clone(),
+                        loose_vertices: surface.loose_vertices.clone(),
                         hidden_faces: surface.hidden_faces.clone(),
                         polygroups: surface.polygroups.clone(),
                         group_visibility: surface.vertex_groups.iter().map(|g| g.visible).collect(),

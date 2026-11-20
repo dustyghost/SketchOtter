@@ -3040,7 +3040,29 @@ mod pinned_menus {
         click(&mut app, &ctx, text_point(&output, "Parallel edges"));
         assert_eq!(app.ui.modeling.span, SelectionSpan::Ring);
         assert!(egui::Popup::is_any_open(&ctx));
-        let output = frame(&mut app, &ctx, vec![]);
+        // Topology actions share this menu now, so the function list may start
+        // below the fold. Exercise the actual scroll area before choosing Move.
+        let mut output = frame(&mut app, &ctx, vec![]);
+        for _ in 0..8 {
+            if output.shapes.iter().any(|shape| {
+                matches!(&shape.shape,
+                    egui::Shape::Text(text) if text.galley.text() == "Move components"
+                        && shape.clip_rect.contains(text.pos + text.galley.size() * 0.5)
+                )
+            }) {
+                break;
+            }
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0., -100.),
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            output = frame(&mut app, &ctx, vec![]);
+        }
         click(&mut app, &ctx, text_point(&output, "Move components"));
         assert_eq!(app.ui.modeling.tool, ModelTool::Move);
         assert!(!egui::Popup::is_any_open(&ctx));
@@ -3660,6 +3682,7 @@ mod mirror;
 mod edges;
 
 mod modeling;
+mod region_selection;
 
 mod files;
 

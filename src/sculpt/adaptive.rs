@@ -132,6 +132,14 @@ impl Region<'_> {
 impl Mesh {
     fn adaptive_protected_vertices(&self, unmasked_only: bool) -> Vec<bool> {
         let mut protected = vec![false; self.vertices.len()];
+        for &v in self
+            .loose_edges
+            .iter()
+            .flatten()
+            .chain(self.loose_vertices.iter())
+        {
+            protected[v] = true;
+        }
         for (fi, t) in self.triangles.iter().enumerate() {
             if !self.face_visible(fi) || (unmasked_only && t.iter().any(|&v| self.mask[v] > 0.)) {
                 for &v in t {
@@ -1059,6 +1067,14 @@ impl Mesh {
         for crease in &mut self.creases {
             *crease = crease.map(|v| indices[v]);
         }
+        for v in &mut self.loose_vertices {
+            *v = indices[*v];
+        }
+        for e in &mut self.loose_edges {
+            *e = e.map(|v| indices[v]);
+            e.sort_unstable();
+        }
+        self.loose_edges.sort_unstable();
         self.triangles = triangles;
         self.retain_adaptive_quads();
     }

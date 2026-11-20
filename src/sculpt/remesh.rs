@@ -26,6 +26,7 @@ enum QuadExtraction {
 impl Mesh {
     pub fn validate_closed(&self) -> Result<(), String> {
         self.validate()?;
+        self.require_surface_topology()?;
         if self.triangles.is_empty() {
             return Err("Remeshing requires a closed surface with faces".into());
         }
@@ -312,6 +313,8 @@ impl Grid {
     ) -> Result<Mesh, String> {
         let dims = self.dims;
         let mut mesh = Mesh {
+            loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,
@@ -437,6 +440,8 @@ mod tests {
     use super::*;
     fn cube(offset: Vec3) -> Mesh {
         Mesh {
+            loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,

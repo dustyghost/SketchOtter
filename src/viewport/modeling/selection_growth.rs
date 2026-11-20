@@ -56,6 +56,21 @@ fn resized(
             incidence.entry([a.min(b), a.max(b)]).or_default().push(f);
         }
     }
+    for e in mesh.visible_loose_edges() {
+        incidence.entry(e).or_default();
+        for v in e {
+            visible.insert(v);
+            if protect && mesh.mask[v] > 0. {
+                blocked.insert(v);
+            }
+        }
+    }
+    for &v in &mesh.loose_vertices {
+        visible.insert(v);
+        if protect && mesh.mask[v] > 0. {
+            blocked.insert(v);
+        }
+    }
     let allowed_vertex = |v: usize| visible.contains(&v) && !blocked.contains(&v);
     let allowed = |c: Component| match c {
         Component::Vertex(v) => allowed_vertex(v),
@@ -105,6 +120,11 @@ fn resized(
                     boundary.insert(Component::Edge(e));
                 }
             }
+        }
+    }
+    if mode == ComponentMode::Vertex {
+        for &v in &mesh.loose_vertices {
+            adjacency.entry(Component::Vertex(v)).or_default();
         }
     }
     if mode == ComponentMode::Edge {
@@ -175,9 +195,17 @@ impl ModelingState {
             grow,
             &symmetry,
         )?;
+        self.record_selection(document, result);
+        Ok(())
+    }
+    pub(in crate::viewport) fn record_selection(
+        &mut self,
+        document: &Document,
+        result: BTreeSet<Component>,
+    ) {
         if result == self.selected {
             self.notice = Some("Selection unchanged at its boundary");
-            return Ok(());
+            return;
         }
         if !self.can_restore_selection(document, false) {
             self.selection_history.undo.clear();
@@ -200,7 +228,6 @@ impl ModelingState {
             self.selection_history.undo.remove(0);
         }
         self.selected = result;
-        Ok(())
     }
     pub fn clear_selection_history(&mut self) {
         self.selection_history = Default::default();

@@ -3,9 +3,14 @@ use super::*;
 use crate::sculpt::{Extrusion, LoopCut, Mesh, ModelingSymmetry, Symmetry};
 use std::collections::BTreeSet;
 mod edit;
+mod extrude_snapping;
+mod move_snapping;
+pub(crate) use move_snapping::MoveSnap;
 mod selection;
 mod selection_growth;
 mod snapping;
+#[cfg(test)]
+mod wire_tests;
 pub(crate) use snapping::SnapTarget;
 mod transform;
 use edit::EditDrag;
@@ -37,6 +42,10 @@ pub(crate) enum ModelTool {
     EdgeCollapse,
     PointExtrude,
     PointSplit,
+    EdgeChamfer,
+    EdgeBevel,
+    VertexChamfer,
+    VertexBevel,
     FacePoint,
     FaceSplit,
 }
@@ -59,6 +68,10 @@ impl ModelTool {
             Self::EdgeCollapse => "Collapse edge",
             Self::PointExtrude => "Extrude point",
             Self::PointSplit => "Split point",
+            Self::EdgeChamfer => "Chamfer edges",
+            Self::EdgeBevel => "Bevel edges",
+            Self::VertexChamfer => "Chamfer vertices",
+            Self::VertexBevel => "Bevel vertices",
             Self::FacePoint => "Insert center point",
             Self::FaceSplit => "Split face",
         }
@@ -88,14 +101,27 @@ impl ModelTool {
             | Self::Slide
             | Self::EdgeExtrude
             | Self::EdgeSplit
-            | Self::EdgeCollapse => Some(ComponentMode::Edge),
-            Self::PointExtrude | Self::PointSplit => Some(ComponentMode::Vertex),
+            | Self::EdgeCollapse
+            | Self::EdgeChamfer
+            | Self::EdgeBevel => Some(ComponentMode::Edge),
+            Self::PointExtrude | Self::PointSplit | Self::VertexChamfer | Self::VertexBevel => {
+                Some(ComponentMode::Vertex)
+            }
             _ => None,
         }
     }
     pub fn supports_mode(self, mode: ComponentMode) -> bool {
         self.required_mode().is_none_or(|required| required == mode)
             && !(self == Self::CutCell && mode == ComponentMode::Vertex)
+    }
+    pub fn is_component_bevel(self) -> bool {
+        matches!(
+            self,
+            Self::EdgeChamfer | Self::EdgeBevel | Self::VertexChamfer | Self::VertexBevel
+        )
+    }
+    pub fn rounded_bevel(self) -> bool {
+        matches!(self, Self::EdgeBevel | Self::VertexBevel)
     }
     pub fn is_transform(self) -> bool {
         matches!(self, Self::Move | Self::Rotate | Self::Scale)
@@ -237,12 +263,23 @@ pub(crate) struct ModelingOptions {
     pub snap_target: SnapTarget,
     #[serde(default = "snapping::snap_radius_default")]
     pub snap_radius: f32,
+    #[serde(default = "tap_repeat_default")]
+    pub extrude_snap: bool,
+    #[serde(default)]
+    pub move_snap: MoveSnap,
+    #[serde(default)]
+    pub new_group: bool,
+    #[serde(default = "bevel_segments_default")]
+    pub bevel_segments: u32,
     #[serde(default)]
     pub construction: ModelConstruction,
     #[serde(default = "tap_repeat_default")]
     pub tap_repeat: bool,
     #[serde(default)]
     pub smooth_preview: bool,
+}
+fn bevel_segments_default() -> u32 {
+    3
 }
 fn tap_repeat_default() -> bool {
     true
@@ -295,6 +332,7 @@ struct LoopDrag {
     moved: bool,
 }
 struct ExtrudeDrag {
+    detached: bool,
     start: Pos2,
     moved: bool,
     scale: f32,
@@ -525,21 +563,29 @@ impl ModelingState {
                         .as_ref()
                         .map_err(Clone::clone)
                         .and_then(|symmetry| {
-                            document
-                                .mesh()
-                                .extrude_model(
+                            (if drag.detached {
+                                document.mesh().duplicate_extruded_faces(
+                                    &drag.faces,
+                                    distance,
+                                    options.individual,
+                                    options.protect_mask,
+                                    symmetry,
+                                )
+                            } else {
+                                document.mesh().extrude_model(
                                     &drag.faces,
                                     distance,
                                     options.join,
                                     options.individual,
                                     symmetry,
                                 )
-                                .and_then(|r| {
-                                    document
-                                        .mesh()
-                                        .check_model_protection(&r.mesh, options.protect_mask)?;
-                                    Ok(r)
-                                })
+                            })
+                            .and_then(|r| {
+                                document
+                                    .mesh()
+                                    .check_model_protection(&r.mesh, options.protect_mask)?;
+                                Ok(r)
+                            })
                         }),
                 );
             }
@@ -570,12 +616,19 @@ impl Viewport {
                     .map(Component::Face)
             }
             ComponentMode::Vertex => {
+                let wires: BTreeSet<_> = mesh
+                    .visible_loose_edges()
+                    .into_iter()
+                    .flatten()
+                    .chain(mesh.loose_vertices.iter().copied())
+                    .collect();
                 let visible: BTreeSet<_> = mesh
                     .triangles
                     .iter()
                     .enumerate()
                     .filter(|(i, _)| mesh.face_visible(*i))
                     .flat_map(|(_, t)| t.iter().copied())
+                    .chain(wires.iter().copied())
                     .collect();
                 visible
                     .into_iter()
@@ -584,6 +637,11 @@ impl Viewport {
                         let distance = p.distance(point);
                         if distance > 12. {
                             return None;
+                        }
+                        if wires.contains(&v) {
+                            return scene
+                                .point_unoccluded(mesh.vertices[v])
+                                .then_some((distance, v));
                         }
                         // Sample just inside the incident surface at silhouettes.
                         let hit = scene.pick(p).or_else(|| scene.pick(p.lerp(point, 0.1)))?;
@@ -706,6 +764,24 @@ impl Viewport {
         }
         self.modeling
             .advance_direct_transform(document, scene, point, model);
+        self.modeling.advance_extrude_snap(
+            document,
+            scene,
+            point,
+            model,
+            ui.input(|i| i.modifiers.shift),
+        );
+        if let Some(drag) = &mut self.modeling.edit_drag
+            && drag.detached
+            && let Some(Ok(result)) = &mut drag.result
+        {
+            match document.mesh().detach_extruded_points(&mut result.mesh) {
+                Ok(()) => result.notice = "Detached vertex copy",
+                Err(error) => drag.result = Some(Err(error)),
+            }
+        }
+        self.modeling
+            .advance_move_snap(document, scene, model, ui.input(|i| i.modifiers.shift));
         if model.tool == ModelTool::Select
             && model.erase_radius > 0.
             && let Some(p) = eligible
@@ -714,7 +790,7 @@ impl Viewport {
         }
         let hover = eligible.and_then(|p| Self::component_at(p, model.mode, document, scene));
         if model.smooth_preview && options.wire && !self.modeling.dragging() {
-            for [a, b] in document.mesh().polygon_edges() {
+            for [a, b] in document.mesh().model_edges() {
                 if let Some(points) =
                     scene.clip_segment([document.mesh().vertices[a], document.mesh().vertices[b]])
                 {
@@ -732,14 +808,16 @@ impl Viewport {
         let highlighted = Color32::from_rgb(255, 205, 95);
         if let Some(drag) = &self.modeling.edit_drag {
             if let Some(Ok(result)) = &drag.result {
-                let components = if matches!(
-                    model.tool,
-                    ModelTool::Move
-                        | ModelTool::Rotate
-                        | ModelTool::Scale
-                        | ModelTool::Slide
-                        | ModelTool::CutCell
-                ) {
+                let components = if result.snap_target.is_some()
+                    || matches!(
+                        model.tool,
+                        ModelTool::Move
+                            | ModelTool::Rotate
+                            | ModelTool::Scale
+                            | ModelTool::Slide
+                            | ModelTool::CutCell
+                            | ModelTool::PointExtrude
+                    ) {
                     result.moved_selection(&drag.components)
                 } else if result.retain_caps {
                     ModelingState::cap_selection(document.mesh(), &result.mesh, &drag.components)
@@ -747,6 +825,36 @@ impl Viewport {
                     BTreeSet::new()
                 };
                 Self::paint_components(components, &result.mesh, scene, painter, highlighted);
+                if let Some(target) = result.snap_target {
+                    let (position, label) = match target {
+                        Component::Vertex(v) => (
+                            document.mesh().vertices[v],
+                            if model.tool == ModelTool::Move {
+                                "Weld vertex"
+                            } else {
+                                "Join vertex"
+                            },
+                        ),
+                        Component::Edge([a, b]) => (
+                            (document.mesh().vertices[a] + document.mesh().vertices[b]) * 0.5,
+                            if model.tool == ModelTool::Move {
+                                "Weld edge"
+                            } else {
+                                "Join edge"
+                            },
+                        ),
+                        Component::Face(_) => unreachable!(),
+                    };
+                    let at = scene.project(position);
+                    painter.circle_stroke(at, 8., (2., highlighted));
+                    painter.text(
+                        at + Vec2::new(12., -12.),
+                        egui::Align2::LEFT_BOTTOM,
+                        label,
+                        egui::FontId::proportional(13.),
+                        highlighted,
+                    );
+                }
                 if model.tool.construction_kind().is_some() {
                     let key = |mesh: &Mesh, [a, b]: [usize; 2]| {
                         let p = |v: usize| {
@@ -759,11 +867,11 @@ impl Viewport {
                     };
                     let old: BTreeSet<_> = document
                         .mesh()
-                        .polygon_edges()
+                        .model_edges()
                         .into_iter()
                         .map(|e| key(document.mesh(), e))
                         .collect();
-                    for edge in result.mesh.polygon_edges() {
+                    for edge in result.mesh.model_edges() {
                         if !old.contains(&key(&result.mesh, edge))
                             && let Some(points) =
                                 scene.clip_segment(edge.map(|v| result.mesh.vertices[v]))
@@ -938,7 +1046,9 @@ impl Viewport {
                 Some(Ok(result)) => format!(
                     "Extrude {:.3}{} · release to apply · Esc cancels",
                     result.distance,
-                    if result.joined {
+                    if drag.detached {
+                        " · Detached face copy"
+                    } else if result.joined {
                         " · Tunnel snapped"
                     } else {
                         ""
@@ -1028,6 +1138,13 @@ impl Viewport {
         }
         if model.tool.is_edit() {
             self.update_edit_gesture(document, scene, model, hover, point, pressed || clicked);
+            if (pressed || clicked)
+                && model.tool == ModelTool::PointExtrude
+                && ui.input(|i| i.modifiers.ctrl)
+                && let Some(drag) = &mut self.modeling.edit_drag
+            {
+                drag.detached = true;
+            }
         }
         if model.tool == ModelTool::Select {
             self.update_selection_stroke(
@@ -1088,6 +1205,7 @@ impl Viewport {
                     }
                 };
                 self.modeling.drag = Some(ExtrudeDrag {
+                    detached: ui.input(|i| i.modifiers.ctrl),
                     start: point.unwrap(),
                     moved: false,
                     scale: scene.scale_at(scene.pick(point.unwrap()).unwrap().0),
@@ -1211,8 +1329,12 @@ impl Viewport {
                     self.status = Some(e);
                 }
             } else if let Some(drag) = self.modeling.drag.take() {
+                if drag.detached && !drag.moved {
+                    return true;
+                }
                 if !drag.moved {
                     self.modeling.edit_drag = Some(EditDrag {
+                        detached: false,
                         start: drag.start,
                         direct: None,
                         rail: None,
@@ -1237,7 +1359,19 @@ impl Viewport {
                         Ok(r) => {
                             let selected =
                                 drag.faces.iter().copied().map(Component::Face).collect();
-                            let caps = if !r.joined && !r.collapsed {
+                            let caps = if drag.detached {
+                                r.mesh
+                                    .polygons()
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(_, p)| {
+                                        p.vertices
+                                            .iter()
+                                            .all(|v| *v >= document.mesh().vertices.len())
+                                    })
+                                    .map(|(i, _)| Component::Face(i))
+                                    .collect()
+                            } else if !r.joined && !r.collapsed {
                                 ModelingState::cap_selection(document.mesh(), &r.mesh, &selected)
                             } else {
                                 BTreeSet::new()
@@ -1245,19 +1379,22 @@ impl Viewport {
                             let amount = r.distance;
                             match document.commit_modeling(
                                 r.mesh,
-                                if r.joined {
+                                if drag.detached {
+                                    "Duplicate faces"
+                                } else if r.joined {
                                     "Extrude tunnel"
                                 } else {
                                     "Extrude faces"
                                 },
                                 drag.revision,
+                                model.new_group,
                             ) {
                                 Ok(()) => {
                                     self.modeling.sync(document);
                                     self.modeling.selected = caps;
                                     let mut last = model;
                                     last.amount = amount;
-                                    self.modeling.last_edit = Some(last);
+                                    self.modeling.last_edit = (!drag.detached).then_some(last);
                                     self.modeling.requested_amount = Some(amount);
                                 }
                                 Err(e) => self.status = Some(e),
@@ -1272,7 +1409,12 @@ impl Viewport {
                         document
                             .mesh()
                             .check_model_protection(&cut.mesh, model.protect_mask)?;
-                        document.commit_modeling(cut.mesh, "Insert edge loops", drag.revision)
+                        document.commit_modeling(
+                            cut.mesh,
+                            "Insert edge loops",
+                            drag.revision,
+                            model.new_group,
+                        )
                     }) {
                         self.status = Some(e);
                     } else {
@@ -1336,6 +1478,7 @@ impl ModelingOptions {
             || !self.snap.is_finite()
             || !(0.0..=0.25).contains(&self.snap)
             || !(1..=LoopCut::MAX_COUNT).contains(&self.loop_count)
+            || !(2..=8).contains(&self.bevel_segments)
             || !self.span.available(self.mode)
         {
             return Err("Invalid modeling preset settings".into());

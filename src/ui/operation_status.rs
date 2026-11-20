@@ -83,6 +83,32 @@ impl UiState {
             summary.hint = "Release the selection hold to restore your tool. Escape cancels an unfinished outline.".into();
             return summary;
         }
+        if self.viewport_menu.components_were_active && held {
+            use crate::viewport::SelectionChange;
+            let change = self.preferences.component_region_change;
+            let reverse = ctx.input(|input| input.modifiers.alt);
+            let operation = match (change, reverse) {
+                (SelectionChange::Remove, true) | (SelectionChange::Add, false) => "Add",
+                (_, true) | (SelectionChange::Remove, false) => "Remove",
+                _ => "Replace",
+            };
+            summary.mode = format!(
+                "Temporary selection · {} · {} · {}",
+                self.preferences.component_region_shape.label(),
+                operation,
+                if self.preferences.component_select_through {
+                    "Through mesh"
+                } else {
+                    "Visible only"
+                },
+            );
+            summary.target = format!(
+                "{:?} · {} selected",
+                self.modeling.mode, self.modeling.count
+            );
+            summary.hint = "Release the pen to keep the selection. Release the selection hold to restore your Modeling tool; unfinished regions are cancelled.".into();
+            return summary;
+        }
         if self.viewport_menu.slice_was_active && held {
             summary.mode = format!(
                 "Temporary slice · {} · {}",

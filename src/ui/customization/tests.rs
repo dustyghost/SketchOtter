@@ -727,12 +727,30 @@ fn modeling_buttons_offer_menu_and_shortcut_customization() {
             Action::ModelSelectRing,
         ),
         (
-            "Dissolve selected loops",
+            "Delete loop (keep surface)",
             Mode::Edge,
             Tool::Select,
             Action::ModelDissolveLoops,
         ),
+        (
+            "Delete loop (leave gap)",
+            Mode::Edge,
+            Tool::Select,
+            Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteLoop),
+        ),
         ("Face", Mode::Face, Tool::Select, Action::ModelFaces),
+        (
+            "Delete vertices",
+            Mode::Vertex,
+            Tool::Select,
+            Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteVertices),
+        ),
+        (
+            "Delete faces",
+            Mode::Face,
+            Tool::Select,
+            Action::ModelTopology(crate::sculpt::TopologyEdit::DeleteFaces),
+        ),
         ("Edge", Mode::Face, Tool::Select, Action::ModelEdges),
         ("Vertex", Mode::Face, Tool::Select, Action::ModelVertices),
         ("Extrude", Mode::Face, Tool::Select, Action::ModelExtrude),
@@ -808,7 +826,14 @@ fn modeling_buttons_offer_menu_and_shortcut_customization() {
                 })
                 .unwrap_or_else(|| panic!("Missing central UI text: {label}"))
         };
-        let group = central_text(&output, "Selection to vertex group");
+        let group = central_text(
+            &output,
+            if label.starts_with("Delete ") {
+                "Topology"
+            } else {
+                "Selection to vertex group"
+            },
+        );
         click(&mut state, &ctx, &doc, group, egui::PointerButton::Primary);
         let (output, _) = frame(&mut state, &ctx, &doc, vec![]);
         let pos = central_text(&output, label);

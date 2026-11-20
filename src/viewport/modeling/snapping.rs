@@ -167,10 +167,13 @@ impl ModelingState {
             options.protect_mask,
         )?;
         let polygons = document.mesh().polygons();
+        let wires = document.mesh().visible_loose_edges();
         let visible_vertices = polygons
             .iter()
             .filter(|p| p.visible)
             .flat_map(|p| p.vertices.iter().copied())
+            .chain(wires.iter().flatten().copied())
+            .chain(document.mesh().loose_vertices.iter().copied())
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
@@ -179,6 +182,7 @@ impl ModelingState {
             .filter(|p| p.visible)
             .flat_map(|p| p.edges())
             .map(|(a, b)| [a.min(b), a.max(b)])
+            .chain(wires)
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
@@ -263,7 +267,7 @@ impl ModelingState {
         let source = p.source.unwrap();
         let anchor = mesh.vertices[source];
         let changed = mesh != *document.mesh();
-        document.commit_modeling(mesh, "Snap components", p.revision)?;
+        document.commit_modeling(mesh, "Snap components", p.revision, options.new_group)?;
         let selected = p.selection.clone();
         self.snap_preview = None;
         self.sync(document);
@@ -360,31 +364,10 @@ impl ModelingState {
 }
 
 fn visible_point(scene: &Scene, point: Vec3) -> bool {
-    if !scene.visible_depth(point) {
-        return false;
-    }
-    let screen = scene.project(point);
-    // Exact border samples can round just outside a rasterized triangle. Sample
-    // half a pixel around the vertex/edge, but still require the same 3D depth.
-    [
-        Vec2::ZERO,
-        Vec2::X,
-        -Vec2::X,
-        Vec2::Y,
-        -Vec2::Y,
-        Vec2::new(1., 1.),
-        Vec2::new(-1., 1.),
-        Vec2::new(1., -1.),
-        Vec2::new(-1., -1.),
-    ]
-    .into_iter()
-    .any(|offset| {
-        scene
-            .pick(screen + offset * 0.5)
-            .is_some_and(|(hit, _)| (hit - point).len() < 2. / scene.scale_at(point))
-    })
+    scene.point_unoccluded(point)
 }
-fn nearest_edge_point(scene: &Scene, pointer: Pos2, a: Vec3, b: Vec3) -> Vec3 {
+
+pub(super) fn nearest_edge_point(scene: &Scene, pointer: Pos2, a: Vec3, b: Vec3) -> Vec3 {
     let (origin, ray) = scene.ray(pointer);
     let d = b - a;
     let w = a - origin;

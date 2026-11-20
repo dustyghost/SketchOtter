@@ -314,7 +314,7 @@ fn intersects(a: [Vec3; 3], b: [Vec3; 3]) -> bool {
     true
 }
 
-pub(super) fn validate_connector(
+pub(crate) fn validate_connector(
     mesh: &Mesh,
     first_new: usize,
     cancel: &dyn Fn() -> bool,

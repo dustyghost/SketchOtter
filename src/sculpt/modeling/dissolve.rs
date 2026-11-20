@@ -1,11 +1,18 @@
 //! Remove complete, nonbranching quad loops without leaving holes or T junctions.
 use super::*;
+struct QuadLoopSelection {
+    polygons: Vec<Polygon>,
+    selected: BTreeSet<[usize; 2]>,
+    degree: BTreeMap<usize, usize>,
+    neighbors: Vec<Vec<usize>>,
+    closed: bool,
+}
 impl Mesh {
-    pub fn dissolve_loops(&self, selected: &[[usize; 2]]) -> Result<Mesh, String> {
+    fn quad_loop_selection(&self, selected: &[[usize; 2]]) -> Result<QuadLoopSelection, String> {
         manifold(self)?;
         let selected: BTreeSet<_> = selected.iter().map(|e| edge(e[0], e[1])).collect();
         if selected.is_empty() {
-            return Err("Select complete edge loops to dissolve".into());
+            return Err("Select complete edge loops".into());
         }
         let polygons = self.polygons();
         let mut incidence = BTreeMap::<_, Vec<_>>::new();
@@ -26,13 +33,13 @@ impl Mesh {
                 .get(e)
                 .ok_or("The selected edge no longer exists")?;
             if fs.len() != 2 {
-                return Err("Dissolve interior loops; border edges would open the surface".into());
+                return Err("Select interior loops; boundary edges are not supported".into());
             }
             if fs
                 .iter()
                 .any(|&f| !polygons[f].visible || polygons[f].vertices.len() != 4)
             {
-                return Err("Dissolve loops needs visible quads on both sides".into());
+                return Err("Loop deletion needs visible quads on both sides".into());
             }
             for &v in e {
                 *degree.entry(v).or_default() += 1;
@@ -56,9 +63,41 @@ impl Mesh {
                 .flat_map(|e| &incidence[e])
                 .any(|&f| !polygons[f].visible || polygons[f].vertices.len() != 4)
             {
-                return Err("Show all adjoining faces and use quad loops before dissolving".into());
+                return Err("Show all adjoining faces and use complete quad loops".into());
             }
         }
+        Ok(QuadLoopSelection {
+            polygons,
+            selected,
+            degree,
+            neighbors,
+            closed: incidence.values().all(|fs| fs.len() == 2),
+        })
+    }
+
+    /// The gap variant removes the adjoining face strip using ordinary face
+    /// deletion, after the same complete-loop validation used by dissolution.
+    pub(super) fn faces_along_loops(
+        &self,
+        selected: &[[usize; 2]],
+    ) -> Result<BTreeSet<usize>, String> {
+        let loops = self.quad_loop_selection(selected)?;
+        Ok(loops
+            .neighbors
+            .iter()
+            .enumerate()
+            .filter_map(|(f, neighbors)| (!neighbors.is_empty()).then_some(f))
+            .collect())
+    }
+
+    pub fn dissolve_loops(&self, selected: &[[usize; 2]]) -> Result<Mesh, String> {
+        let QuadLoopSelection {
+            polygons,
+            selected,
+            degree,
+            neighbors,
+            closed,
+        } = self.quad_loop_selection(selected)?;
         let mut out = self.empty_topology();
         let mut visited = BTreeSet::new();
         for first in 0..polygons.len() {
@@ -147,7 +186,7 @@ impl Mesh {
         out.compact_model_vertices();
         manifold(&out)?;
         // Every old boundary stays a boundary; closed input must remain closed.
-        if incidence.values().all(|fs| fs.len() == 2) {
+        if closed {
             out.validate_closed()?;
         }
         Ok(out)

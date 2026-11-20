@@ -3,20 +3,30 @@
 mod array_layers;
 #[path = "attached_array_capture.rs"]
 mod attached_array_capture;
+#[path = "bevel_capture.rs"]
+mod bevel_capture;
 #[path = "cameras_capture.rs"]
 mod cameras_capture;
 #[path = "guide_deformation_stack.rs"]
 mod deformation_stack_review;
+#[path = "detached_capture.rs"]
+mod detached_capture;
 #[path = "grouped_path_capture.rs"]
 mod grouped_path_capture;
+#[path = "move_snap_capture.rs"]
+mod move_snap_capture;
 #[path = "object_kits.rs"]
 mod object_kits;
 #[path = "path_assembly.rs"]
 mod path_assembly;
 #[path = "precision_capture.rs"]
 mod precision_capture;
+#[path = "region_selection_capture.rs"]
+mod region_selection_capture;
 #[path = "surface_array_capture.rs"]
 mod surface_array_capture;
+#[path = "topology_capture.rs"]
+mod topology_capture;
 use super::*;
 use crate::{
     preferences::{BuiltinMenu, Dock, Tool},
@@ -2547,7 +2557,13 @@ fn modeling_symmetry_dissolve_offscreen_review() {
     g.app.camera.pitch = 0.;
     g.app.camera.zoom = 0.65;
     click_guide_modeling_checkbox(&mut g);
-    click_guide_label(&mut g, "Symmetry");
+    g.app.dispatch(
+        Command::SetSymmetry(Symmetry {
+            enabled: true,
+            ..Default::default()
+        }),
+        &g.ctx,
+    );
     assert!(g.app.document.symmetry().enabled);
     let (rect, _) = g.frame(vec![]);
     let scale = rect.width().min(rect.height()) * 0.35 * g.app.camera.zoom;
@@ -2593,7 +2609,10 @@ fn modeling_symmetry_dissolve_offscreen_review() {
         rect.left_top() + Vec2::new(5., 5.),
     )]);
     g.save("modeling-dissolve-before");
-    click_guide_label(&mut g, "Dissolve selected loops");
+    reach_sidebar_control(&mut g, "Topology");
+    click_guide_label(&mut g, "Topology");
+    reach_sidebar_control(&mut g, "Delete loop (keep surface)");
+    click_guide_label(&mut g, "Delete loop (keep surface)");
     assert_eq!(
         (
             g.app.document.mesh().vertices.len(),

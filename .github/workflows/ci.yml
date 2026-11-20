@@ -95,6 +95,16 @@ jobs:
           cargo test --locked --lib quad_topology_controls_offscreen_review -- --ignored
           cargo test --locked --lib uv_texture_controls_offscreen_review -- --ignored
           cargo test --locked --lib uv_island_controls_offscreen_review -- --ignored
+          cargo test --locked --lib manual_topology_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-region-selection" cargo test --locked --lib region_selection_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-loop-delete" cargo test --locked --lib delete_loop_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-component-delete" cargo test --locked --lib component_delete_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-point-extrude" cargo test --locked --lib point_extrude_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-extrusion-snap" cargo test --locked --lib extrusion_snap_join_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-selected-face" cargo test --locked --lib create_selected_face_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-move-snap" cargo test --locked --lib move_snap_weld_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-detached" cargo test --locked --lib detached_copy_offscreen_review -- --ignored --test-threads=1
+          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-bevel" cargo test --locked --lib component_bevel_offscreen_review -- --ignored --test-threads=1
           cargo test --locked --lib viewport_lighting_offscreen_review -- --ignored
           cargo test --locked --lib reference_images_offscreen_preview -- --ignored
           cargo test --locked --lib navigation_and_smooth_offscreen_preview -- --ignored

@@ -11,7 +11,7 @@ pub(crate) mod objects;
 mod retopology_density;
 pub(crate) use modeling::{
     Component, ComponentMode, ModelAxis, ModelConstruction, ModelInteraction, ModelTool,
-    ModelingOptions, SelectionChange, SelectionSpan, SnapTarget,
+    ModelingOptions, MoveSnap, SelectionChange, SelectionSpan, SnapTarget,
 };
 mod gizmo;
 mod gpu;
@@ -29,6 +29,7 @@ mod path_follow;
 pub(crate) mod path_thickness;
 mod primitive;
 mod references;
+mod region_selection;
 mod scene;
 mod slice;
 mod stabilizer;
@@ -36,6 +37,7 @@ mod stencil;
 mod stroke;
 mod transform;
 mod visibility;
+pub(crate) use region_selection::{RegionOperation, RegionShape, RegionTool};
 mod visibility_path;
 use crate::{
     camera::Camera,
@@ -786,7 +788,8 @@ impl Viewport {
             gizmo_rect,
             options.enabled
                 && !options.edge_select
-                && options.modeling.is_none()
+                && (options.modeling.is_none()
+                    || matches!(options.select, Some(SelectionTool::Region(_))))
                 && !options.arrange_references
                 && options.slice.is_none()
                 && options.transform_mode == TransformMode::Sculpt,

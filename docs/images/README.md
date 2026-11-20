@@ -74,6 +74,16 @@ See [Development](../development.md#update-guide-screenshots) for prerequisites 
 
 | `material-copper.png`, `material-painted-stroke.png` | [Example materials and a local paint stroke](../guide/materials.md) | `material_examples_manual_capture` (manual only) |
 
+| `create-face-applied.png`, `connect-vertices-applied.png` | [Manual face construction with Undo/Redo](../guide/modeling.md#connect-vertices-and-create-faces) | `manual_topology_offscreen_review` |
+
+| `modeling-topology-q-1100.png`, `modeling-selection-z-1100.png` | [Q topology shortcuts and Z component regions](../guide/modeling.md#select-many-components-with-a-region) | `region_selection_offscreen_review` |
+
+| `delete-loop-options-1100.png`, `delete-loop-keep-surface-1100.png`, `delete-loop-leave-gap-1100.png` | [Delete loops while keeping the surface or leaving a gap](../guide/modeling.md#delete-loops) | `delete_loop_offscreen_review` |
+
+| `delete-vertices-options-1100.png` | [Delete selected vertices or faces](../guide/modeling.md#slide-and-repair-topology) | `component_delete_offscreen_review` |
+
+| `point-extrude-orthographic.png` | [Extrude a vertex connected by an edge](../guide/modeling.md#construct-from-edges-points-and-face-centers) | `point_extrude_offscreen_review` |
+
 ## Example assets
 
 [pyramid.obj](../examples/pyramid.obj) contains the imported sample. [Front study](../examples/front-study.png) and [Side study](../examples/side-study.png) are original renders of a scaled UV sphere, exported by the same model-icon renderer used in the app. They are input assets, not screenshots of controls.

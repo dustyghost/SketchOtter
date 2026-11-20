@@ -92,10 +92,26 @@ impl App {
             }
             Command::ModelTopology(edit) => {
                 self.viewport.cancel(&mut self.document);
+                if matches!(
+                    edit,
+                    crate::sculpt::TopologyEdit::Connect
+                        | crate::sculpt::TopologyEdit::Fill
+                        | crate::sculpt::TopologyEdit::CreateFace
+                ) {
+                    // Search and shelf actions also work with a retained selection
+                    // after leaving Modeling.
+                    if !self.ui.modeling.active {
+                        self.dispatch_modeling(Command::ModelingMode(true))?;
+                    }
+                    self.ui
+                        .modeling
+                        .set_tool(crate::viewport::ModelTool::Select);
+                }
                 self.viewport.modeling.topology_edit(
                     &mut self.document,
                     edit,
                     self.ui.modeling.protect_mask,
+                    self.ui.modeling.new_group,
                 )
             }
             Command::ModelRepeat => {
@@ -149,8 +165,12 @@ impl App {
                         Ok(mesh)
                     })
                     .and_then(|mesh| {
-                        self.document
-                            .commit_modeling(mesh, "Dissolve selected loops", revision)
+                        self.document.commit_modeling(
+                            mesh,
+                            "Dissolve selected loops",
+                            revision,
+                            self.ui.modeling.new_group,
+                        )
                     })
                     .map(|()| {
                         self.viewport.modeling.sync(&self.document);

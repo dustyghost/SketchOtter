@@ -389,6 +389,8 @@ impl Mesh {
             ));
         }
         let mut result = Self {
+            loose_edges: self.loose_edges.clone(),
+            loose_vertices: self.loose_vertices.clone(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,
@@ -703,6 +705,8 @@ mod tests {
     }
     fn tetrahedron() -> Mesh {
         Mesh {
+            loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,

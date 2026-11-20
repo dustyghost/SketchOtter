@@ -1,0 +1,11 @@
+Validation — 16 November 2026
+
+Focused CPU invocation:
+cargo test --locked --offline -j 1 --lib -- --test-threads=1 manual_topology precision_ modeling_topology_commands_are_atomic_and_undoable modeling_topology_open_fill_bridge_connect_split_and_weld modeling_connect_accepts_expanded_symmetry_selection modeling_selection_keeps_coalesced_pen_path
+Result: 28 passed; 0 failed; 4 ignored; 1306 filtered out.
+
+Actual-control Vulkan invocation:
+cargo test --locked --offline -j 1 --lib manual_topology_offscreen_review -- --ignored --test-threads=1
+Result: 1 passed; 0 failed; 0 ignored; 1337 filtered out; 27.08 seconds.
+
+Both commands ran sequentially under the shared build lock, with one compiler job and LP_NUM_THREADS=1.

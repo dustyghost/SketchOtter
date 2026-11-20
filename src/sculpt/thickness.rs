@@ -18,6 +18,7 @@ impl Mesh {
         metadata: Option<&super::ModelMetadata>,
     ) -> Result<Self, String> {
         self.validate()?;
+        self.require_surface_topology()?;
         if !thickness.is_finite() || thickness <= 0. || thickness > 100. {
             return Err("Thickness must be greater than zero and at most 100 model units".into());
         }
@@ -105,6 +106,8 @@ impl Mesh {
             }
         }
         let mut shell = Mesh {
+            loose_edges: Vec::new(),
+            loose_vertices: Vec::new(),
             uv: Default::default(),
             creases: Vec::new(),
             shading_seams: None,

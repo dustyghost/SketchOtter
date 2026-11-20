@@ -6,6 +6,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Stroke, StrokeKind};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SelectionTool {
+    Region(super::RegionTool),
     Rectangle,
     Lasso,
     MaskLasso,
@@ -16,6 +17,21 @@ pub(crate) enum SelectionTool {
 impl SelectionTool {
     fn with_reverse(self, reverse: bool) -> Self {
         match self {
+            Self::Region(mut tool) => {
+                if reverse {
+                    match &mut tool.operation {
+                        super::RegionOperation::Mask { erase } => *erase = !*erase,
+                        super::RegionOperation::Components { change, .. } => {
+                            *change = if *change == super::SelectionChange::Remove {
+                                super::SelectionChange::Add
+                            } else {
+                                super::SelectionChange::Remove
+                            }
+                        }
+                    }
+                }
+                Self::Region(tool)
+            }
             Self::MaskLassoOperation { erase } => Self::MaskLassoOperation {
                 erase: erase ^ reverse,
             },
@@ -35,6 +51,7 @@ impl SelectionTool {
     }
     pub(crate) fn label(self) -> &'static str {
         match self {
+            Self::Region(_) => "Region selection",
             Self::Rectangle => "Select rectangle",
             Self::Lasso => "Select lasso",
             Self::MaskLasso | Self::MaskLassoOperation { .. } => "Mask lasso",
@@ -43,6 +60,9 @@ impl SelectionTool {
         }
     }
     pub(crate) fn instructions(self) -> &'static str {
+        if matches!(self, Self::Region(_)) {
+            return "Drag a region · release to apply · Escape cancels";
+        }
         if let Self::MaskLassoOperation { erase } = self {
             return if erase {
                 "Drag to erase through all depths · release to apply"
@@ -77,6 +97,11 @@ impl SelectionTool {
     }
     fn visibility_shape(self) -> Option<VisibilityShape> {
         match self {
+            Self::Region(tool) => Some(match tool.shape {
+                super::RegionShape::Rectangle => VisibilityShape::Rectangle,
+                super::RegionShape::Lasso => VisibilityShape::Lasso,
+                super::RegionShape::Line => VisibilityShape::Line,
+            }),
             Self::Rectangle => Some(VisibilityShape::Rectangle),
             Self::Lasso => Some(VisibilityShape::Lasso),
             Self::Visibility(settings) => Some(settings.shape),
@@ -473,6 +498,14 @@ impl Viewport {
         }
         // Alt switches the operation even after Ctrl/Shift are released.
         drag.hide = match drag.tool {
+            SelectionTool::Region(super::RegionTool {
+                operation: super::RegionOperation::Mask { erase },
+                ..
+            }) => erase,
+            SelectionTool::Region(super::RegionTool {
+                operation: super::RegionOperation::Components { change, .. },
+                ..
+            }) => change == super::SelectionChange::Remove,
             SelectionTool::MaskLine { erase, .. } | SelectionTool::MaskLassoOperation { erase } => {
                 erase
             }
@@ -484,7 +517,12 @@ impl Viewport {
         } else {
             Color32::LIGHT_GREEN
         };
-        let rect = if let SelectionTool::MaskLine { flip, .. }
+        let rect = if let SelectionTool::Region(super::RegionTool {
+            shape: super::RegionShape::Line,
+            flip,
+            ..
+        })
+        | SelectionTool::MaskLine { flip, .. }
         | SelectionTool::Visibility(VisibilitySettings {
             shape: VisibilityShape::Line,
             flip,
@@ -556,6 +594,19 @@ impl Viewport {
         }
         let operation = match (drag.tool, drag.hide) {
             (
+                SelectionTool::Region(super::RegionTool {
+                    operation: super::RegionOperation::Components { change, .. },
+                    ..
+                }),
+                _,
+            ) => match change {
+                super::SelectionChange::Replace => "Replace selection",
+                super::SelectionChange::Add => "Add to selection",
+                super::SelectionChange::Remove => "Remove from selection",
+            },
+            (SelectionTool::Region(_), false) => "Add mask",
+            (SelectionTool::Region(_), true) => "Erase mask",
+            (
                 SelectionTool::MaskLasso
                 | SelectionTool::MaskLassoOperation { .. }
                 | SelectionTool::MaskLine { .. },
@@ -579,7 +630,17 @@ impl Viewport {
                 (rect.top() - 6.).max(scene.rect.top() + 18.),
             ),
             egui::Align2::LEFT_BOTTOM,
-            format!("{operation} · through all depths · release to apply"),
+            format!(
+                "{operation} · {} · release to apply",
+                if matches!(
+                    drag.tool,
+                    SelectionTool::Region(super::RegionTool { through: false, .. })
+                ) {
+                    "visible only"
+                } else {
+                    "through mesh"
+                }
+            ),
             egui::FontId::proportional(13.),
             color,
         );
@@ -587,6 +648,51 @@ impl Viewport {
         if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
             let drag = self.session.selection.take().unwrap();
             self.session.gesture = None;
+            if let SelectionTool::Region(tool) = drag.tool {
+                let region = LassoRegion::new(drag.polygon());
+                let valid = match tool.shape {
+                    super::RegionShape::Lasso => region.is_some(),
+                    _ => drag.start.distance(drag.end) >= 4.,
+                };
+                if !valid {
+                    self.status = Some("Drag a region enclosing components".into());
+                    return true;
+                }
+                let contains = |p| match tool.shape {
+                    super::RegionShape::Rectangle => rect.contains(p) != tool.flip,
+                    super::RegionShape::Lasso => {
+                        region.as_ref().is_some_and(|r| r.contains(p)) != tool.flip
+                    }
+                    super::RegionShape::Line => line_contains(drag.start, drag.end, tool.flip, p),
+                };
+                let result = match tool.operation {
+                    super::RegionOperation::Components { .. } => {
+                        self.select_component_region(document, scene, tool, contains)
+                    }
+                    super::RegionOperation::Mask { erase } => document.mask_region_named(
+                        |p| {
+                            super::region_selection::point_in_region(
+                                scene,
+                                p,
+                                tool.through,
+                                &contains,
+                            )
+                        },
+                        erase,
+                        if erase {
+                            "Erase mask region"
+                        } else {
+                            "Mask region"
+                        },
+                    ),
+                };
+                self.status = Some(
+                    result
+                        .err()
+                        .unwrap_or_else(|| format!("{operation} applied")),
+                );
+                return true;
+            }
             if let SelectionTool::Visibility(settings) = drag.tool {
                 if rectangle_inverts {
                     let result = document.invert_visibility();

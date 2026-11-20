@@ -116,6 +116,8 @@ fn parse(text: &str, cancelled: &impl Fn() -> bool) -> Result<Mesh, String> {
     let mut materials = Vec::new();
     let mut has_colors = false;
     let mut faces = Vec::new();
+    let mut loose_edges = Vec::new();
+    let mut loose_vertices = Vec::new();
     let (mut textures, mut normals) = (0, 0);
     let mut texcoords = Vec::new();
     let (mut texture_ref, mut normal_ref) = (0, 0);
@@ -198,6 +200,32 @@ fn parse(text: &str, cancelled: &impl Fn() -> bool) -> Result<Mesh, String> {
                         return Err("OBJ has too many texture coordinates or normals".into());
                     }
                 }
+                "p" => {
+                    for value in words {
+                        loose_vertices.push(index(value, vertices.len())?);
+                    }
+                    if loose_vertices.len() > max_vertices() {
+                        return Err("OBJ has too many isolated points".into());
+                    }
+                }
+                "l" => {
+                    let points = words
+                        .map(|s| index(s.split('/').next().unwrap(), vertices.len()))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    if points.len() < 2 || points.len() > MAX_CORNERS {
+                        return Err("Lines need 2–256 vertices".into());
+                    }
+                    for pair in points.windows(2) {
+                        let (a, b) = (pair[0], pair[1]);
+                        if a == b {
+                            return Err("Line repeats a vertex".into());
+                        }
+                        loose_edges.push([a.min(b), a.max(b)]);
+                    }
+                    if loose_edges.len() > max_vertices() {
+                        return Err("OBJ has too many loose edges".into());
+                    }
+                }
                 "f" => {
                     let corners: Vec<_> = words.take(MAX_CORNERS + 1).collect();
                     if !(3..=MAX_CORNERS).contains(&corners.len()) {
@@ -270,13 +298,15 @@ fn parse(text: &str, cancelled: &impl Fn() -> bool) -> Result<Mesh, String> {
     if !logical.is_empty() {
         return Err(format!("OBJ line {start}: unfinished line continuation"));
     }
-    if faces.is_empty() {
-        return Err("OBJ contains no polygon faces".into());
+    if faces.is_empty() && loose_edges.is_empty() && loose_vertices.is_empty() {
+        return Err("OBJ contains no polygon faces, edges or points".into());
     }
     if texture_ref > textures || normal_ref > normals {
         return Err("OBJ texture or normal index is out of range".into());
     }
     let mut mesh = Mesh {
+        loose_edges,
+        loose_vertices,
         uv: Default::default(),
         creases: Vec::new(),
         shading_seams: None,
@@ -333,6 +363,11 @@ fn parse(text: &str, cancelled: &impl Fn() -> bool) -> Result<Mesh, String> {
         mesh.uv.topology = mesh.triangles.clone();
     }
     mesh.canonicalize_polygroups();
+    mesh.retain_loose_vertices();
+    mesh.loose_edges.sort_unstable();
+    mesh.loose_edges.dedup();
+    let surface: HashSet<_> = mesh.polygon_edges().into_iter().collect();
+    mesh.loose_edges.retain(|e| !surface.contains(e));
     mesh.validate()?;
     Ok(mesh)
 }
@@ -457,6 +492,12 @@ pub(super) fn export_uv_obj(path: &str, mesh: &Mesh) -> Result<(), String> {
     let mut text = String::from("# Clay Form seam-aware UV mesh\n");
     for v in &mesh.vertices {
         writeln!(text, "v {} {} {}", v.0, v.1, v.2).unwrap();
+    }
+    for &v in &mesh.loose_vertices {
+        writeln!(text, "p {}", v + 1).unwrap();
+    }
+    for &[a, b] in &mesh.loose_edges {
+        writeln!(text, "l {} {}", a + 1, b + 1).unwrap();
     }
     for q in mesh.uv.corners.iter().flatten() {
         writeln!(text, "vt {} {}", q[0], q[1]).unwrap();
