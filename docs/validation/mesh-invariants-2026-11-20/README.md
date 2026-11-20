@@ -23,6 +23,14 @@ valence, three coordinate scales, triangle order and symmetry. Conservative
 rejection is permitted; each fixture must execute successful edits. These tests
 do not establish freedom from self-intersection.
 
+Full CI exposed an older directed Move-weld test that expected two separate
+quad patches joined at one vertex to succeed. That expectation now explicitly
+asserts rejection and exact preservation of the source attributes; its valid
+two-endpoint seam, UV, crease and stationary-target checks remain. Invalid Move
+snap candidates are skipped, so release can still commit ordinary unwelded
+movement. Saved meshes with pinched surface vertices may need topology cleanup
+before operations guarded by the stronger manifold check can proceed.
+
 The retopology final gate omitted output vertices while sampling output edge
 midpoints and triangle centroids. A flat four-quad source with local spacing h=1
 accepted a candidate centre vertex at z=1.5 and reported error 0.75. It now checks
@@ -85,6 +93,7 @@ Known retopology feature/quality limits continue under #10.
 ## Focused reproduction
 
 Local checks passed: 128 modeling regressions (13 optional captures ignored),
+six directed Move-weld/snap regressions (one optional capture ignored),
 eight solver validation/fitting/cancellation tests, the visibility-cache test,
 CPU and Vulkan frame tests, and all 17 Python harness tests. The actual input
 trace observed one initial dab, nine dabs for the pointer jump, no release dab
@@ -110,6 +119,7 @@ cargo test --locked -j 1 --lib modeling_fan_gate -- --test-threads=1
 cargo test --locked -j 1 --lib modeling_bounded_edit_sequences -- --test-threads=1
 cargo test --locked -j 1 --lib modeling_pinched_weld_rejection -- --test-threads=1
 cargo test --locked -j 1 --lib modeling_boundary_edit_sequence -- --test-threads=1
+cargo test --locked -j 1 --lib move_snap -- --test-threads=1
 cargo test --locked -j 1 --lib hidden_count_cache -- --test-threads=1
 cargo test --locked -j 1 --lib sculpt_frame_revision_trace_cpu -- --test-threads=1
 CLAY_GPU_SOFTWARE=1 LP_NUM_THREADS=1 CLAY_SCULPT_FRAME_TRACE=/tmp/clay-frame-trace.json cargo test --locked -j 1 --lib sculpt_frame_revision_trace_gpu -- --ignored --test-threads=1
