@@ -177,8 +177,10 @@ fn sculpt_frame_revision_trace_gpu() {
         "same-pointer Undo and Redo must render different surfaces"
     );
     let differences: Vec<_> = frames[4]
-        .chunks_exact(4)
-        .zip(frames[6].chunks_exact(4))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(frames[6].as_chunks::<4>().0)
         .enumerate()
         .filter_map(|(i, (a, b))| (a != b).then_some(i))
         .collect();
