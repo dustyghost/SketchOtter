@@ -401,6 +401,8 @@ Transforms group only the moved vertices. Topology changes include the corner ve
 
 Choose **Chamfer edges** or **Bevel edges** in Edge mode, and **Chamfer vertices** or **Bevel vertices** in Vertex mode. All four are in **Q**, the Modeling menu and the Mesh panel. Chamfer cuts a flat surface across the selected edge or corner. Bevel rounds the cut; **Segments** controls its resolution from 2 to 8.
 
+With multiple edges selected, both edge tools follow the selected chain or loop and join the cuts where those edges meet. Bevel uses a rounded profile along that same path. **Bevel vertices** rounds the selected corners; selecting a vertex loop does not automatically bevel the edges between those vertices. Use Edge mode for a continuous edge bevel.
+
 Drag upward on the selected component to increase **Width**, then release to apply. Escape cancels. Alternatively, enter a width and choose **Apply amount**. Q also exposes the width and segments for the active tool. Each cut is one Undo step and supports the optional new vertex group.
 
 Use closed surface fans with convex face corners. Open borders, loose edges, disconnected corner fans and cuts that overlap are rejected; reduce the width or selection when needed. Masks and hidden geometry remain protected. Untouched UVs remain intact; edited faces need unwrapping before texture painting. The existing face-mode **Bevel boundary** remains available for its original region operation.
