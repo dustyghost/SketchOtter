@@ -320,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "clay-form"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.4"
 dependencies = [
  "boolmesh",
  "bytemuck",

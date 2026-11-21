@@ -1,22 +1,21 @@
-**Alpha 3 — 0.1.0-alpha.3.** An early testing release, with features and file
+**Alpha 4 — 0.1.0-alpha.4.** An early testing release, with features and file
 formats still evolving. Keep backups of important projects.
 The startup notice can be dismissed for the current version; new prereleases
 show it again.
 
-Changes since Alpha 2:
+Changes since Alpha 3:
 
-- **Live arrays and path assemblies.** Attach Linear, Radial or Grid arrays to a submodel, adjust them with viewport handles, and edit the source or individual copies. Grouped path objects repeat a middle section between end regions, with bending, thickness and welding controls. Make results editable when ready to sculpt or export.
-- **Reusable object brushes.** Capture multiple parts into a named brush, place linked objects or stamp raised/inset relief. A built-in Ship greebles brush provides reusable details.
-- **Deformation and editable Boolean stacks.** Push or pull a deformation-frame corner, bend or twist a model. Combine grouped submodels with Add, Subtract and Intersect roles; choose Voxel or Preserve surfaces, preview the result, then bake it into a sculptable mesh.
-- **Local mesh joining and modelling.** Join open ends or intersecting surfaces with an affected-area preview. Cut one cell from faces or edges, preview fuse targets, and inspect geometry with optional flat shading.
-- **Faster dense sculpting.** Picking, brush work, shading and GPU uploads reuse more unchanged data. **Settings → Mesh capacity** lets you raise per-mesh limits after a restart, subject to available hardware.
-- **Separate materials, colours and textures.** Choose stroke materials and Primary/Secondary colours independently. The texture library manages images separately from model assignment, with explicit painting destinations and shared-material editing.
-- **Navigation and pen fixes.** Orbit follows the current screen axes. Windows pen routing preserves pressure and completed UI taps while keeping finger navigation separate.
+- **More modeling tools.** Build faces from selected points or edges, connect vertices, bridge partial boundary chains, and edit face regions. Create detached copies, snap and weld moved or extruded components, and grow selections along connected geometry. Chamfer and rounded bevel tools work on corners and selected edge chains or loops.
+- **Protected edits and thickness fixes.** Modeling transforms and slides respect protected vertices; loop edits stop at protected areas. Thickness offers Inward, Outward and Both directions, with fixes for distorted open surfaces and thin sliced shells. Extrusion preserves valid cap UVs and supports switching between attached and detached geometry during a drag.
+- **Surface arrays.** Repeat selected faces over a surface, choose whether to keep or replace the source region, and adjust rotation per copy. Per-copy edits survive array updates. Preview the result before applying it or making it editable.
+- **Saved cameras and named lights.** Save and restore named viewport views, confirm camera overwrites, switch projection and reset roll independently. Name lights, toggle them without losing their strength, and see which side of the current view they illuminate.
+- **A clearer, customizable workspace.** Search for actions and settings, arrange menus and controls, and use Zen mode with an operation strip that keeps the active tool visible. Modeling quick menus support dragging, Keep open, shared settings and presets. Brush labels, Paint headings and shared Slice controls are clearer; switching brushes offers recovery choices for pending edits.
+- **Experimental guided quad retopology.** Preview a fresh quad layout with path direction guides, painted density, sharp-bend protection and optional layout symmetry. Apply the result as a new model while retaining the source. The target quad count is approximate; coarse fingers and uneven poles remain limitations.
+- **Path Brush workflow.** Draw and edit surface or free paths from the Brush Library, offset them from the surface, round corners and use saved paths for brush strokes, assemblies or retopology guidance.
 
-**Project compatibility:** Alpha 3 reads native project formats 1–5 and saves
-format 6 for the new reusable-model workflows. Earlier application versions
-cannot open format 6 projects. Keep a separate backup before saving an older
-project in Alpha 3.
+**Project compatibility:** Alpha 4 reads native project formats 1–7 and saves
+format 7. Alpha 3 and earlier cannot open format 7 projects. Keep a separate
+backup before saving an older project in Alpha 4.
 
 Clay Form is free and open source under GPLv3. Your models, textures, renders
 and other creations remain yours to use, sell, license or keep private.
@@ -36,10 +35,10 @@ and operating-system SDKs are installed separately. Licence notices are
 included in each binary archive and in the app's About window. `SHA256SUMS`
 contains archive hashes.
 
-Testing to date includes maintainer use on Arch Linux, automated CPU and headless Vulkan checks, and recorded visual/interaction reviews of arrays, path assemblies, object brushes, deformation, Boolean results, mesh joining and material/texture workflows. Windows x86-64 and ARM64 packaging checks also exercise pen routing and brush selection. Desktop, GPU and pen compatibility still needs broader user testing, particularly on Windows and macOS; a native build alone does not establish runtime compatibility.
+Testing to date includes maintainer use on Arch Linux, automated CPU and headless Vulkan checks, and recorded visual/interaction reviews of modeling, snapping, bevels, thickness, surface arrays, saved cameras, lights and workspace controls. Guided retopology has recorded solver comparisons and preview reviews. Windows x86-64 and ARM64 packaging checks also exercise pen routing and brush selection. Desktop, GPU and physical tablet compatibility still needs broader user testing, particularly on Windows and macOS; a native build alone does not establish runtime compatibility.
 
 Windows packages are unsigned. macOS packages have an ad-hoc signature and are not notarized. Operating systems may show download or launch warnings.
 
 Meshes default to 500,000 vertices and 1,000,000 triangles. Configurable limits extend to 16 million vertices and 32 million triangles per mesh, but these are safety ceilings, not a performance guarantee. Large scenes can become slow or exceed available memory well below them. Live instances have separate project and expanded-geometry budgets; make an array editable before exporting its result. Preserve surfaces requires closed, consistently oriented solids, and local joins still need wider production-sculpt testing. Please include your OS, GPU and input device when reporting problems.
 
-[Changes since Alpha 2](https://github.com/dustyghost/clay-form/compare/v0.1.0-alpha.2...v0.1.0-alpha.3).
+[Changes since Alpha 3](https://github.com/dustyghost/clay-form/compare/v0.1.0-alpha.3...v0.1.0-alpha.4).
