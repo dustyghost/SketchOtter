@@ -960,7 +960,8 @@ impl Gpu {
             && self.packed_vertices.len() == vertex_len
         {
             let mut vertices = std::mem::take(&mut self.packed_vertices);
-            let update = data.update_vertices(stride, &mut vertices);
+            let update =
+                data.update_vertices_from(stride, &mut vertices, self.mesh_geometry.as_ref());
             #[cfg(test)]
             {
                 self.vertex_pack_count = update.changed_vertices;

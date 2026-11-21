@@ -106,12 +106,22 @@ impl Document {
             .mesh
             .prepare_stenciled_stamp(brush, &dabs, &stencils, settings);
         let old_mask = (brush.kind == Kind::Mask).then(|| self.geometry.mesh.mask.clone());
+        let track = self.geometry.mesh.vertices.len() >= 20_000
+            && !settings.enabled
+            && !before_topology
+            && matches!(brush.kind, Kind::Standard | Kind::Clay | Kind::Mask);
+        let mut edits = regions::Edits::default();
         let deformed = self.geometry.mesh.stamp_observing_positions(
             brush,
             &dabs,
             &stencils,
             &self.stroke_flatten_planes,
-            observe,
+            &mut |i, old, new| {
+                if track {
+                    regions::Edits::push(&mut edits.positions, i);
+                }
+                observe(i, old, new);
+            },
         );
         let mut after_dabs = dabs.clone();
         if brush.kind == Kind::Snake {
@@ -130,11 +140,19 @@ impl Document {
             false,
         );
         self.stroke_deformed |= deformed || before_topology || after_topology;
-        if deformed
-            || before_topology
-            || after_topology
-            || old_mask.is_some_and(|mask| mask != self.geometry.mesh.mask)
-        {
+        let mask_changed = old_mask.is_some_and(|before| {
+            if track && before.len() == self.geometry.mesh.mask.len() {
+                for (i, (a, b)) in before.iter().zip(&self.geometry.mesh.mask).enumerate() {
+                    if a.to_bits() != b.to_bits() {
+                        regions::Edits::push(&mut edits.mask, i);
+                    }
+                }
+                !edits.mask.is_empty()
+            } else {
+                before != self.geometry.mesh.mask
+            }
+        });
+        if deformed || before_topology || after_topology || mask_changed {
             if let Some(before) = self.stroke_before.take() {
                 let captured = self.stroke_edit_settings(brush, dab);
                 self.history.record_owned(
@@ -155,7 +173,11 @@ impl Document {
                 );
             }
             self.dirty = true;
-            self.display_changed();
+            if track && !after_topology {
+                self.display_changed_in(edits);
+            } else {
+                self.display_changed();
+            }
         }
         deformed || before_topology || after_topology
     }

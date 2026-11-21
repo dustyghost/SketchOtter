@@ -752,3 +752,53 @@ fn shared_display_arrays_follow_mixed_edits_and_preserve_older_snapshots() {
         }
     }
 }
+
+#[test]
+fn accumulated_document_regions_match_full_scan_and_packed_upload() {
+    let mut doc = document(source());
+    let mut old = DisplayMesh::new(&doc);
+    let initial = old.vertices(old.vertex_stride());
+    let mut fixed = initial.clone();
+    let mut reference = old.clone();
+    for (i, kind) in [
+        Kind::Standard,
+        Kind::Clay,
+        Kind::Mask,
+        Kind::Paint,
+        Kind::Standard,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut b = Brush::new(kind);
+        b.set_paint_colour(false, [0.8, 0.1, 0.3]);
+        for _ in 0..3 {
+            doc.apply_dab(&b, dab());
+        }
+        reference.disable_region_input();
+        let expected = reference.during_stroke(&doc).unwrap();
+        let next = old.during_stroke(&doc).unwrap();
+        let stride = next.vertex_stride();
+        let full = expected.vertices(stride);
+        assert_eq!(
+            bytemuck::cast_slice::<f32, u32>(&next.vertices(stride)),
+            bytemuck::cast_slice::<f32, u32>(&full),
+            "display {i}"
+        );
+        next.update_vertices_from(stride, &mut fixed, Some(&old.geometry));
+        assert_eq!(
+            bytemuck::cast_slice::<f32, u32>(&fixed),
+            bytemuck::cast_slice::<f32, u32>(&full),
+            "upload {i}"
+        );
+        old = next;
+        reference = expected;
+    }
+    doc.end_stroke();
+    let actual = Arc::new(old).after_stroke(&doc).unwrap();
+    let expected = DisplayMesh::new(&doc);
+    assert_eq!(
+        actual.vertices(actual.vertex_stride()),
+        expected.vertices(expected.vertex_stride())
+    );
+}

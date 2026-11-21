@@ -33,6 +33,7 @@ mod instances;
 mod materials;
 mod paint;
 mod references;
+pub(crate) mod regions;
 mod relax;
 mod scene;
 mod stroke;
@@ -79,6 +80,7 @@ pub struct Document {
     hidden_face_count: std::sync::OnceLock<usize>,
     #[cfg(test)]
     hidden_count_scans: std::sync::atomic::AtomicUsize,
+    regions: regions::Journal,
     display_revision: u64,
     geometry_display_revision: u64,
     source_revision: u64,
@@ -121,6 +123,7 @@ impl Default for Document {
             hidden_face_count: Default::default(),
             #[cfg(test)]
             hidden_count_scans: Default::default(),
+            regions: regions::Journal::default(),
             display_revision: 0,
             geometry_display_revision: 0,
             source_revision: 0,
