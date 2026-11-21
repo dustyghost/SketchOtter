@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import platform
 
-TEST = "viewport::gpu::profile::capacity::paint_pointer::paint_pointer_startup"
+TEST = "viewport::gpu::profile::capacity::paint_pointer::gpu_load_profile_paint_pointer_startup"
 spec = importlib.util.spec_from_file_location("capacity", Path(__file__).with_name("benchmark-capacity.py"))
 capacity = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(capacity)

@@ -4,8 +4,6 @@ use crate::sculpt::{Material, Project};
 use serde::Serialize;
 use std::{collections::BTreeMap, io::Write};
 
-mod paint_pointer;
-
 const DABS: usize = 12;
 const SCHEMA: u32 = 2;
 
@@ -735,6 +733,8 @@ fn gpu_load_profile_release_upload() {
         "scope":"Actual upload path with opt-in CPU checkpoints and separate queue submit/completion. Excludes display construction, drawing and orbit workload."});
     std::fs::write(output, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
 }
+
+mod paint_pointer;
 
 #[test]
 #[ignore = "manual paint startup diagnosis; excluded from routine GPU CI"]

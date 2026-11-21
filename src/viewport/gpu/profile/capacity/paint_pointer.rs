@@ -63,7 +63,7 @@ fn sequence(level: usize, prior: bool) -> Vec<serde_json::Value> {
 
 #[test]
 #[ignore = "manual Paint startup measurement"]
-fn paint_pointer_startup() {
+fn gpu_load_profile_paint_pointer_startup() {
     let level = env_limit("CLAY_PAINT_LEVEL", 3);
     let repeats = env_limit("CLAY_PAINT_REPEATS", 3);
     assert!((1..=10).contains(&repeats));
