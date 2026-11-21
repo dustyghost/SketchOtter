@@ -28,16 +28,17 @@ def main():
     parser.add_argument("--target", required=True, choices=TARGETS)
     parser.add_argument("--profile", choices=["debug", "release"], default="release")
     args = parser.parse_args()
-    version = tomllib.loads((ROOT / "Cargo.toml").read_text())["package"]["version"]
-    name = f"clay-form-v{version}-{TARGETS[args.target]}"
+    package = tomllib.loads((ROOT / "Cargo.toml").read_text())["package"]
+    version = package["version"]
+    name = f"sketchotter-v{version}-{TARGETS[args.target]}"
     stage = ROOT / "dist" / name
     stage.mkdir(parents=True, exist_ok=False)
     windows = "windows" in args.target
     mac = "apple" in args.target
-    binary = "clay-form.exe" if windows else "clay-form"
+    binary = "sketchotter.exe" if windows else "sketchotter"
     destination = stage
     if mac:
-        contents = stage / "Clay Form.app" / "Contents"
+        contents = stage / "SketchOtter.app" / "Contents"
         destination = contents / "MacOS"
         destination.mkdir(parents=True)
         build_number = os.environ.get("GITHUB_RUN_NUMBER", "1")
@@ -45,7 +46,8 @@ def main():
             raise SystemExit("macOS bundle build number must be a positive integer")
         (contents / "Info.plist").write_bytes(plistlib.dumps({
             "CFBundleExecutable": binary, "CFBundleIdentifier": "io.github.dustyghost.clay-form",
-            "CFBundleName": "Clay Form", "CFBundlePackageType": "APPL",
+            "CFBundleIconFile": "sketchotter.icns",
+            "CFBundleName": "SketchOtter", "CFBundlePackageType": "APPL",
             # The full SemVer remains in About and BUILD-INFO.
             "CFBundleShortVersionString": version.split("-", 1)[0],
             "CFBundleVersion": build_number,
@@ -58,6 +60,8 @@ def main():
     shutil.copytree(ROOT / "legal", stage / "legal")
     if "linux" in args.target:
         shutil.copytree(ROOT / "packaging/linux", stage / "packaging/linux")
+        shutil.copy2(ROOT / "assets/branding/sketchotter.png", stage / "packaging/linux")
+        (stage / "clay-form").symlink_to(binary)
     # Rust's linked runtime has notices beyond the Cargo dependency graph.
     sysroot = Path(subprocess.check_output(["rustc", "--print", "sysroot"], text=True).strip())
     runtime = stage / "legal/rust"
@@ -72,19 +76,20 @@ def main():
     (stage / "BUILD-INFO.json").write_text(json.dumps({
         "version": version, "commit": revision, "target": args.target, "profile": args.profile,
         "rustc": subprocess.check_output(["rustc", "--version"], text=True).strip(),
-        "source": f"https://github.com/dustyghost/clay-form/releases/tag/v{version}",
-        "source_asset": f"clay-form-v{version}-source.tar.gz",
+        "source": f"{package['repository']}/releases/tag/v{version}",
+        "source_asset": f"sketchotter-v{version}-source.tar.gz",
     }, indent=2) + "\n")
     if mac:
         # Keep notices with the .app when the user moves it to Applications.
-        resources = stage / "Clay Form.app/Contents/Resources"
+        resources = stage / "SketchOtter.app/Contents/Resources"
         resources.mkdir()
+        shutil.copy2(ROOT / "assets/branding/sketchotter.icns", resources)
         for filename in ["LICENSE", "COPYRIGHT.md", "README.md", "THIRD-PARTY-NOTICES.html", "BUILD-INFO.json"]:
             shutil.copy2(stage / filename, resources / filename)
         for directory in ["docs", "legal"]:
             shutil.copytree(stage / directory, resources / directory)
         # Ad-hoc identity supports local execution; this is not notarization.
-        subprocess.run(["codesign", "--force", "--sign", "-", str(stage / "Clay Form.app")], check=True)
+        subprocess.run(["codesign", "--force", "--sign", "-", str(stage / "SketchOtter.app")], check=True)
     if windows or mac:
         archive = stage.parent / (stage.name + ".zip")
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as output:

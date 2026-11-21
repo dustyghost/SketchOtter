@@ -489,7 +489,7 @@ mod tests;
 /// Emit a quad only when both rendering triangles agree at their shared UV corners.
 pub(super) fn export_uv_obj(path: &str, mesh: &Mesh) -> Result<(), String> {
     use std::fmt::Write;
-    let mut text = String::from("# Clay Form seam-aware UV mesh\n");
+    let mut text = String::from("# SketchOtter seam-aware UV mesh\n");
     for v in &mesh.vertices {
         writeln!(text, "v {} {} {}", v.0, v.1, v.2).unwrap();
     }

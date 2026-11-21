@@ -1,4 +1,4 @@
-# Clay Form roadmap
+# SketchOtter roadmap
 
 [Documentation home](../README.md#documentation)
 
@@ -214,7 +214,7 @@ These tools reuse numeric input, tap repeat, presets, mask protection, exact fac
 
 Geometry and controller tests cover closed surfaces, border extension, point patches and tube extrusion, edge positions, attributes, symmetry, masks, cancellation, tap repeat, Undo and preset compatibility. The rendered exercise uses the actual controls for a symmetric creased point patch, tube extrusion, surface-edge preview and face split. See [the component construction guide](guide/modeling.md#construct-from-edges-points-and-face-centers) for controls and limits.
 
-A comparison of edge, point and polygon workflows helped identify missing construction tools. Clay Form uses explicit modes and visible values for these operations.
+A comparison of edge, point and polygon workflows helped identify missing construction tools. SketchOtter uses explicit modes and visible values for these operations.
 
 #### Direct manipulation and a modeling starter
 
@@ -224,7 +224,7 @@ Move, Rotate and Scale now offer Free, Gizmo and Axis / amount interactions. The
 
 #### Research informing the design
 
-The action/target/options model draws on other sculpting workflows, including their distinction between ordinary extrusion and fused extrusion. Clay Form keeps its own explicit controls and terminology; modifier timing and brush-size-dependent attraction are not requirements.
+The action/target/options model draws on other sculpting workflows, including their distinction between ordinary extrusion and fused extrusion. SketchOtter keeps its own explicit controls and terminology; modifier timing and brush-size-dependent attraction are not requirements.
 
 Community reports informed these choices. They describe individual experiences, not how common a problem is or which versions share it:
 
@@ -265,7 +265,7 @@ For each feature, run focused regression tests and check its interaction with ma
 
 ## Comparison workflows
 
-The comparisons cover these tasks. Clay Form’s scope and acceptance checks are defined above.
+The comparisons cover these tasks. SketchOtter’s scope and acceptance checks are defined above.
 
 - Stroke stabilisation and sculpting
 - Masking and lasso selection

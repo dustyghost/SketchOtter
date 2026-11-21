@@ -4,7 +4,7 @@
 
 Start here to find the owner of a change. Follow the linked references when you need an algorithm, validation rule, or interaction contract.
 
-Clay Form uses immediate-mode egui: controls are described each frame. One application controller coordinates actions, and one document owner holds persistent scene data.
+SketchOtter uses immediate-mode egui: controls are described each frame. One application controller coordinates actions, and one document owner holds persistent scene data.
 
 There is no MVC framework, ECS, event bus or plugin layer. Start with the ownership table below rather than looking for those abstractions.
 

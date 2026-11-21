@@ -97,9 +97,9 @@ To roll, place two fingers apart and circle them around each other, like turning
 
 Trackpads normally send scroll events instead of individual contacts. **Pan pixel scroll; zoom wheel** pans smooth trackpad scrolling while keeping a stepped mouse wheel for zoom. If your desktop sends trackpad scrolling as wheel steps, choose **Pan all scrolling**; this also makes the mouse wheel pan. The two-finger drag mapping and sensitivity apply to trackpad panning too.
 
-For a trackpad configured by the OS to send two-finger taps as right-click and three-finger taps as middle-click, enable **Use right / middle clicks as two / three-finger taps**. This also maps short physical mouse right/middle clicks to the selected tap actions. Right/middle drags retain their usual navigation behavior. Alternatively, map the trackpad taps to Clay Form's configured Undo/Redo keyboard shortcuts in your desktop settings.
+For a trackpad configured by the OS to send two-finger taps as right-click and three-finger taps as middle-click, enable **Use right / middle clicks as two / three-finger taps**. This also maps short physical mouse right/middle clicks to the selected tap actions. Right/middle drags retain their usual navigation behavior. Alternatively, map the trackpad taps to SketchOtter's configured Undo/Redo keyboard shortcuts in your desktop settings.
 
-Native trackpad pinch requires the OS to deliver pinch events. The current windowing backend exposes these on macOS, but not Linux or Windows ([winit platform support](https://docs.rs/winit/0.30.13/winit/event/enum.WindowEvent.html#variant.PinchGesture)). On those desktops, a gesture mapper can send **Ctrl+wheel** or Clay Form's Zoom in/out shortcuts instead. Ctrl+wheel uses the pinch sensitivity and direction settings. Touchscreen pinch uses the individual contacts and does not need that trackpad support. OS-reserved gestures must be reassigned in desktop settings before Clay Form can receive them.
+Native trackpad pinch requires the OS to deliver pinch events. The current windowing backend exposes these on macOS, but not Linux or Windows ([winit platform support](https://docs.rs/winit/0.30.13/winit/event/enum.WindowEvent.html#variant.PinchGesture)). On those desktops, a gesture mapper can send **Ctrl+wheel** or SketchOtter's Zoom in/out shortcuts instead. Ctrl+wheel uses the pinch sensitivity and direction settings. Touchscreen pinch uses the individual contacts and does not need that trackpad support. OS-reserved gestures must be reassigned in desktop settings before SketchOtter can receive them.
 
 ## Viewport buttons
 
@@ -178,7 +178,7 @@ Enable **View → Faint back-facing surfaces** to see the back of an open surfac
 
 First check that your desktop tablet driver moves the cursor and registers the pen tip. Then open **Tablet & navigation** and press lightly and firmly: the live pressure value should change.
 
-Clay Form accepts native pen/touch pressure where available and retains it between input events until contact ends. On Linux it observes all accessible pressure-capable pen endpoints from `/dev/input/event*`, using `/sys/class/input` capabilities rather than a vendor name. This includes physical Huion devices and OpenTabletDriver virtual artist tablets. Without pressure input, strokes use full pressure.
+SketchOtter accepts native pen/touch pressure where available and retains it between input events until contact ends. On Linux it observes all accessible pressure-capable pen endpoints from `/dev/input/event*`, using `/sys/class/input` capabilities rather than a vendor name. This includes physical Huion devices and OpenTabletDriver virtual artist tablets. Without pressure input, strokes use full pressure.
 
 The **Tablet & navigation** panel shows live pressure and connection errors. Tilt, eraser detection, and express-key configuration are not implemented. Physical Huion pressure has not yet been verified.
 
@@ -191,7 +191,7 @@ sudo install -m 0644 packaging/linux/72-clay-form-huion.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 ```
 
-Reconnect the tablet and restart Clay Form. The rule grants the active desktop user access to this device through [systemd uaccess](https://cgit.freedesktop.org/systemd/systemd/tree/src/login/70-uaccess.rules).
+Reconnect the tablet and restart SketchOtter. The rule grants the active desktop user access to this device through [systemd uaccess](https://cgit.freedesktop.org/systemd/systemd/tree/src/login/70-uaccess.rules).
 
 For OpenTabletDriver's virtual artist tablet, install `packaging/linux/72-clay-form-opentabletdriver.rules` into `/etc/udev/rules.d/` using the same command pattern, reload the rules, then restart OpenTabletDriver to recreate the virtual device. This rule grants access only to the artist tablet, not its virtual keyboard. Physical and virtual pen endpoints are monitored together, so an idle endpoint cannot hide pressure from the one in use.
 

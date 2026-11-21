@@ -249,7 +249,7 @@ pub fn export_obj(path: &str, mesh: &Mesh) -> Result<(), String> {
             "UVs are out of date after topology editing. Unwrap again before OBJ export".into(),
         );
     }
-    let mut text = String::from("# Clay Form mesh\n");
+    let mut text = String::from("# SketchOtter mesh\n");
     for v in &mesh.vertices {
         text.push_str(&format!("v {} {} {}\n", v.0, v.1, v.2));
     }

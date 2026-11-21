@@ -1,7 +1,10 @@
 # Build the tagged upstream source; this recipe is not yet published to AUR.
-pkgname=clay-form
-pkgver=0.1.0alpha4
-_upstream_version=0.1.0-alpha.4
+pkgname=sketchotter
+provides=(clay-form)
+conflicts=(clay-form)
+replaces=(clay-form)
+pkgver=0.1.0alpha5
+_upstream_version=0.1.0-alpha.5
 pkgrel=1
 pkgdesc='Free, open-source desktop sculpting'
 arch=('x86_64' 'aarch64')
@@ -10,7 +13,7 @@ license=('GPL-3.0-only')
 depends=('gcc-libs' 'glibc' 'libx11' 'libxcursor' 'libxi' 'libxrandr' 'libxkbcommon' 'libxkbcommon-x11' 'wayland' 'vulkan-icd-loader')
 makedepends=('git' 'rustup' 'pkgconf' 'python')
 optdepends=('blender: Blender and FBX export' 'gimp: external texture editing')
-source=("git+$url.git#tag=v$_upstream_version")
+source=("$pkgname::git+$url.git#tag=v$_upstream_version")
 # Git sources use a tag rather than an archive checksum; review the upstream
 # release commit before publishing this recipe and pin a commit if desired.
 sha256sums=('SKIP')
@@ -29,8 +32,10 @@ build() {
 
 package() {
     cd "$srcdir/$pkgname"
-    install -Dm755 target/release/clay-form "$pkgdir/usr/bin/clay-form"
-    install -Dm644 packaging/linux/clay-form.desktop "$pkgdir/usr/share/applications/clay-form.desktop"
+    install -Dm755 target/release/sketchotter "$pkgdir/usr/bin/sketchotter"
+    ln -s sketchotter "$pkgdir/usr/bin/clay-form"
+    install -Dm644 packaging/linux/sketchotter.desktop "$pkgdir/usr/share/applications/sketchotter.desktop"
+    install -Dm644 assets/branding/sketchotter.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/sketchotter.png"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     install -Dm644 COPYRIGHT.md "$pkgdir/usr/share/licenses/$pkgname/COPYRIGHT.md"
     install -Dm644 THIRD-PARTY-NOTICES.html "$pkgdir/usr/share/licenses/$pkgname/THIRD-PARTY-NOTICES.html"

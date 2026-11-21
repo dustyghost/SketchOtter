@@ -99,6 +99,7 @@ pub(crate) struct UiState {
     pub(super) customization: customization::Customization,
     pub about_open: bool,
     pub startup_notice_open: bool,
+    startup_art: Option<egui::TextureHandle>,
     pub startup_notice_skip: bool,
     pub settings_open: bool,
     pub mesh_capacity_open: bool,
@@ -206,6 +207,7 @@ impl Default for UiState {
             customization: Default::default(),
             about_open: false,
             startup_notice_open: false,
+            startup_art: None,
             startup_notice_skip: false,
             settings_open: false,
             mesh_capacity_open: false,
@@ -368,7 +370,7 @@ impl UiState {
             ui.spacing_mut().item_spacing = Vec2::new(6., 5.);
             // Keep the project and finding tools in the same place in every layout.
             ui.horizontal_wrapped(|ui| {
-                ui.strong("CLAY FORM");
+                ui.strong("SketchOtter");
                 self.project_menu(ui, document, &mut commands);
                 if !compact {
                     self.toolbar_action(ui, Glyph::New, "New sphere", Action::New, document, &mut commands);

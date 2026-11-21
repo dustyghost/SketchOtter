@@ -2,7 +2,7 @@
 
 [Documentation home](../README.md#documentation)
 
-Help someone finish a task with Clay Form open beside the guide. Give them a reason to try it, clear steps and a result they can recognise.
+Help someone finish a task with SketchOtter open beside the guide. Give them a reason to try it, clear steps and a result they can recognise.
 
 ## Organize around tasks
 

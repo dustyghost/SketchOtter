@@ -2,7 +2,7 @@ name: Native packages
 
 on:
   pull_request:
-    paths: ['src/**', 'Cargo.*', 'build.rs', 'rust-toolchain.toml', 'legal/**', 'about.toml', 'LICENSE', 'COPYRIGHT.md', 'THIRD-PARTY-NOTICES.html', 'packaging/**', 'scripts/*notices.py', 'scripts/*release.py', '.github/workflows/release.yml']
+    paths: ['src/**', 'assets/branding/**', 'docs/images/sketchotter-splash.jpg', 'Cargo.*', 'build.rs', 'rust-toolchain.toml', 'legal/**', 'about.toml', 'LICENSE', 'COPYRIGHT.md', 'THIRD-PARTY-NOTICES.html', 'packaging/**', 'scripts/*notices.py', 'scripts/*release.py', '.github/workflows/release.yml']
   push:
     tags: ['v*']
   workflow_dispatch:
@@ -146,7 +146,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          stage="$RUNNER_TEMP/clay-form-v$VERSION-source"
+          stage="$RUNNER_TEMP/sketchotter-v$VERSION-source"
           mkdir -p "$stage/.cargo" dist
           git archive HEAD | tar -x -C "$stage"
           cargo vendor --locked --versioned-dirs "$stage/vendor" > "$stage/.cargo/config.toml"
@@ -159,9 +159,9 @@ jobs:
           # Prove the vendored configuration works after relocation, offline.
           mkdir -p "$RUNNER_TEMP/source-check"
           mv "$stage" "$RUNNER_TEMP/source-check/"
-          relocated="$RUNNER_TEMP/source-check/clay-form-v$VERSION-source"
+          relocated="$RUNNER_TEMP/source-check/sketchotter-v$VERSION-source"
           (cd "$relocated" && cargo metadata --frozen --format-version 1 > /dev/null)
-          tar -C "$RUNNER_TEMP/source-check" -czf "dist/clay-form-v$VERSION-source.tar.gz" "clay-form-v$VERSION-source"
+          tar -C "$RUNNER_TEMP/source-check" -czf "dist/sketchotter-v$VERSION-source.tar.gz" "sketchotter-v$VERSION-source"
       - uses: actions/upload-artifact@v4
         with:
           name: corresponding-source
@@ -199,9 +199,9 @@ jobs:
           (cd dist && sha256sum *.tar.gz *.zip > SHA256SUMS)
           prerelease=()
           if [[ "$VERSION" == *-* ]]; then prerelease+=(--prerelease); fi
-          title="Clay Form $tag"
+          title="SketchOtter $tag"
           if [[ "$VERSION" =~ -alpha\.([0-9]+)$ ]]; then
-            title="Clay Form Alpha ${BASH_REMATCH[1]} ($tag)"
+            title="SketchOtter Alpha ${BASH_REMATCH[1]} ($tag)"
           fi
           gh release create "$tag" dist/*.tar.gz dist/*.zip dist/SHA256SUMS \
             --target "$GITHUB_SHA" --draft --title "$title" \

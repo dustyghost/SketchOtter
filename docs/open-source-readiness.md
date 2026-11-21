@@ -3,7 +3,7 @@
 Preparation started 28 October 2026; tracked in
 [#76](https://github.com/dustyghost/clay-form/issues/76). This document records
 completed preparation and remaining publication requirements. It is not a
-claim that Clay Form is already cleared or tested on every platform.
+claim that SketchOtter is already cleared or tested on every platform.
 
 ## Licensing and ownership
 
@@ -20,7 +20,7 @@ downloads remain free of charge. GPLv3 permits charging for redistributed
 copies; distributed modifications must satisfy its source/licensing terms.
 
 COPYRIGHT.md, README and About explicitly state that models, textures, renders
-and other creations belong to their creators. Merely using Clay Form does not
+and other creations belong to their creators. Merely using SketchOtter does not
 put output under GPL, require credit, or require publishing it. Imported
 third-party material retains its own terms.
 

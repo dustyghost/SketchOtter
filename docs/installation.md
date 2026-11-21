@@ -1,12 +1,12 @@
-# Install and open Clay Form
+# Install and open SketchOtter
 
 [Documentation home](../README.md#documentation) · [Make your first sculpt](guide/getting-started.md)
 
-Use this guide to build and open Clay Form from its source code. You will need a terminal for setup; once the app opens, you can follow the sculpting guides with a mouse or pen.
+Use this guide to build and open SketchOtter from its source code. You will need a terminal for setup; once the app opens, you can follow the sculpting guides with a mouse or pen.
 
 ## Before you start
 
-For a packaged build, download the archive for your operating system and CPU from the [Alpha 4 release](https://github.com/dustyghost/clay-form/releases/tag/v0.1.0-alpha.4), extract it and open Clay Form. The steps below cover building the current source checkout. See [release readiness and platform limits](open-source-readiness.md) for testing coverage.
+For a packaged build, download the archive for your operating system and CPU from the [releases page](https://github.com/dustyghost/clay-form/releases). Extract the archive and open `sketchotter` (Linux), `sketchotter.exe` (Windows) or `SketchOtter.app` (macOS). Existing Alpha 4 downloads carry the Clay Form name. Build this checkout to try SketchOtter before its first packaged release. The steps below cover building the current source checkout. See [release readiness and platform limits](open-source-readiness.md) for testing coverage.
 
 You need an internet connection for the first build and enough time for Rust and the app's dependencies to download and compile.
 
@@ -38,7 +38,7 @@ Other Linux distributions use different package names. This is not a complete dr
 
    Before the repository becomes public, this step requires GitHub access to it.
 
-3. From that folder, build and run Clay Form:
+3. From that folder, build and run SketchOtter:
 
    ```sh
    cargo run --release
@@ -46,9 +46,9 @@ Other Linux distributions use different package names. This is not a complete dr
 
    Rustup selects the compiler version in `rust-toolchain.toml`. The first build downloads dependencies; later builds reuse them. The pinned compiler and committed `Cargo.lock` keep builds reproducible.
 
-4. Wait for the build to finish. The Clay Form window should open. Continue with [Make your first sculpt](guide/getting-started.md) to shape and save a small moon.
+4. Wait for the build to finish. The SketchOtter window should open. Continue with [Make your first sculpt](guide/getting-started.md) to shape and save a small moon.
 
-To open Clay Form again, return to the same folder and run `cargo run --release`.
+To open SketchOtter again, return to the same folder and run `cargo run --release`.
 
 ## If the app does not open
 

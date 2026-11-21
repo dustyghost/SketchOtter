@@ -1,6 +1,38 @@
+#[cfg(windows)]
+fn embed_windows_icon() {
+    use std::{env, path::PathBuf, process::Command};
+    let target = env::var("TARGET").unwrap();
+    if !target.ends_with("-windows-msvc") {
+        return;
+    }
+    let compiler = find_msvc_tools::find_windows_sdk(env::consts::ARCH)
+        .and_then(|sdk| {
+            sdk.path()
+                .map(|dir| dir.join("rc.exe"))
+                .find(|file| file.is_file())
+        })
+        .unwrap_or_else(|| PathBuf::from("rc.exe"));
+    let resource = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("sketchotter.res");
+    let status = Command::new(compiler)
+        .arg("/nologo")
+        .arg("/fo")
+        .arg(&resource)
+        .arg("assets/branding/windows.rc")
+        .status()
+        .expect("Windows SDK resource compiler is required to embed the application icon");
+    assert!(status.success(), "compiling the SketchOtter icon failed");
+    println!(
+        "cargo:rustc-link-arg-bin=sketchotter={}",
+        resource.display()
+    );
+}
+
 fn main() {
+    #[cfg(windows)]
+    embed_windows_icon();
     // Track source edits and commits, including linked worktrees. Never watch target/.
     for path in [
+        "assets/branding",
         "build.rs",
         "src",
         "Cargo.toml",

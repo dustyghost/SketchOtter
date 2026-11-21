@@ -6,7 +6,7 @@ Use this guide to prepare a focused contribution, check it and update its docume
 
 ## Set up a contribution
 
-1. Follow the [run instructions](../README.md#run) and launch Clay Form from your checkout. Rustup selects the compiler pinned in `rust-toolchain.toml`.
+1. Follow the [run instructions](../README.md#run) and launch SketchOtter from your checkout. Rustup selects the compiler pinned in `rust-toolchain.toml`.
 2. Create a branch for one change. For substantial work, agree the scope in an issue first.
 3. Find the responsible module in [Architecture](architecture.md#ownership-and-responsibilities). Read its detailed contract before changing an edit or interaction.
 4. Reproduce the problem or try the workflow you plan to improve. Choose the smallest useful check for that change.

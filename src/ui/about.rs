@@ -25,14 +25,14 @@ impl UiState {
         if !self.about_open {
             return;
         }
-        egui::Window::new("About Clay Form")
+        egui::Window::new("About SketchOtter")
             .open(&mut self.about_open)
             .default_width(620.)
             .max_width((ctx.content_rect().width() - 40.).max(240.))
             .max_height((ctx.content_rect().height() - 80.).max(160.))
             .vscroll(true)
             .show(ctx, |ui| {
-                ui.heading(format!("Clay Form {}", env!("CARGO_PKG_VERSION")));
+                ui.heading(format!("SketchOtter {}", env!("CARGO_PKG_VERSION")));
                 if let Some(number) = env!("CARGO_PKG_VERSION_PRE").strip_prefix("alpha.") {
                     ui.strong(format!("Alpha {number} · early testing release"));
                 }
@@ -41,13 +41,13 @@ impl UiState {
                 ui.label("Copyright © 2026 Clay Form contributors. No warranty.");
                 ui.horizontal_wrapped(|ui| {
                     ui.hyperlink_to("Source & contributions", env!("CARGO_PKG_REPOSITORY"));
-                    ui.hyperlink_to("Releases & corresponding source", "https://github.com/dustyghost/clay-form/releases");
+                    ui.hyperlink_to("Releases & corresponding source", concat!(env!("CARGO_PKG_REPOSITORY"), "/releases"));
                 });
                 ui.separator();
                 ui.strong("Your creations belong to you");
-                ui.label("Use, sell, license or keep your models, textures, renders and other artwork private. You do not need to credit Clay Form or publish your work. Using the app does not put your work under GPLv3.");
-                ui.label("Imported third-party material retains its own terms. Official Clay Form downloads are free of charge.");
-                ui.collapsing("Clay Form licence", |ui| {
+                ui.label("Use, sell, license or keep your models, textures, renders and other artwork private. You do not need to credit SketchOtter or publish your work. Using the app does not put your work under GPLv3.");
+                ui.label("Imported third-party material retains its own terms. Official SketchOtter downloads are free of charge.");
+                ui.collapsing("SketchOtter licence", |ui| {
                     ui.label(include_str!("../../LICENSE"));
                 });
                 ui.separator();

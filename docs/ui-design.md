@@ -2,7 +2,7 @@
 
 [Documentation home](../README.md#documentation)
 
-Make sculpting comfortable and the next action clear. Use other sculpting apps as workflow references; choose gestures and terminology that work for Clay Form.
+Make sculpting comfortable and the next action clear. Use other sculpting apps as workflow references; choose gestures and terminology that work for SketchOtter.
 
 ## Interaction principles
 

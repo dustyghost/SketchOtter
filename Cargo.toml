@@ -1,10 +1,13 @@
 [package]
-name = "clay-form"
-version = "0.1.0-alpha.4"
+name = "sketchotter"
+version = "0.1.0-alpha.5"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "A free, open-source desktop sculpting application"
 repository = "https://github.com/dustyghost/clay-form"
+
+[lib]
+name = "clay_form"
 
 [dependencies]
 eframe = { version = "0.33.3", default-features = false, features = ["wgpu", "x11", "wayland", "default_fonts"] }
@@ -26,6 +29,9 @@ clay-retopology = { path = "crates/clay-retopology" }
 # Match eframe's existing locked dependencies; no windowing-stack upgrade.
 winit = { version = "0.30.13", default-features = false }
 windows-sys = { version = "0.61.2", features = ["Win32_UI_Input_Pointer", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(windows)'.build-dependencies]
+find-msvc-tools = "0.1.9"
 
 [dev-dependencies]
 pollster = "0.4"

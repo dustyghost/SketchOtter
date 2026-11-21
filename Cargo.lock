@@ -319,28 +319,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "clay-form"
-version = "0.1.0-alpha.4"
-dependencies = [
- "boolmesh",
- "bytemuck",
- "clay-retopology",
- "earcutr",
- "eframe",
- "exr",
- "flate2",
- "image",
- "libc",
- "moxcms",
- "pollster",
- "serde",
- "serde_json",
- "wgpu",
- "windows-sys 0.61.2",
- "winit",
-]
-
-[[package]]
 name = "clay-retopology"
 version = "0.1.0"
 dependencies = [
@@ -2296,6 +2274,29 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "sketchotter"
+version = "0.1.0-alpha.5"
+dependencies = [
+ "boolmesh",
+ "bytemuck",
+ "clay-retopology",
+ "earcutr",
+ "eframe",
+ "exr",
+ "find-msvc-tools",
+ "flate2",
+ "image",
+ "libc",
+ "moxcms",
+ "pollster",
+ "serde",
+ "serde_json",
+ "wgpu",
+ "windows-sys 0.61.2",
+ "winit",
+]
 
 [[package]]
 name = "slab"

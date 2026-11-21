@@ -1,4 +1,4 @@
-# Releasing Clay Form
+# Releasing SketchOtter
 
 The **Native packages** workflow builds six native targets and creates a
 **draft** release after every build and the source bundle succeed. It does not
@@ -24,14 +24,24 @@ artifact contents, source correspondence and licence notices. Configure private
 security reporting, signing and notarization as appropriate. Opening the
 repository to the public is a separate maintainer action.
 
+## SketchOtter repository rename
+
+Keep the existing repository address through review. After the rebrand PR is merged, the release checks pass and the naming review on issue #180 is signed off, rename the existing repository in **Settings → General** to `SketchOtter`. The dated searches and remaining checks are recorded on [issue #180](https://github.com/dustyghost/clay-form/issues/180).
+
+1. Verify the old issue, PR, clone and release URLs lead to the same history and downloadable assets. Check project membership and the Actions workflows at the new address. Keep the old repository name unused so GitHub can serve its redirects.
+2. For each local clone, run `git remote set-url origin https://github.com/dustyghost/SketchOtter.git` (or `git@github.com:dustyghost/SketchOtter.git` for SSH). Run `git fetch origin` to confirm access.
+3. Update the repository URLs in both Cargo manifests, the Arch recipe, contributing and security links, project working agreements, guides, badges and external listings. Review active references with `git grep -in 'dustyghost/clay-form'`. The app and package source links derive from the root manifest. Refresh the notice inputs after changing the manifest and verify CI and native packaging again.
+4. Check the historical downloads and new source archive from the release page. Record verification on #180 before closing it.
+
+[GitHub repository rename guidance](https://docs.github.com/en/repositories/creating-and-managing-repositories/renaming-a-repository)
+
 ## Create a draft release
 
-The current testing version is **0.1.0-alpha.4 (Alpha 4)**. Continue with
-`0.1.0-alpha.5`, then `0.1.0-beta.1` when ready for beta testing, and `0.1.0`
+The current testing version is **0.1.0-alpha.5 (Alpha 5)**. Continue with a new alpha tag or `0.1.0-beta.1` when ready for beta testing, and `0.1.0`
 when that development cycle is ready for a stable release. Earlier alphas remain
 available under their original tags. Hyphenated versions
 are automatically marked as GitHub prereleases, in addition to being drafts.
-Arch uses `pkgver=0.1.0alpha4` and a separate `_upstream_version` for its tag;
+Arch uses `pkgver=0.1.0alpha5` and a separate `_upstream_version` for its tag;
 update both together. macOS uses the numeric `0.1.0` marketing version and CI
 run number as its bundle build counter; About retains the full alpha version.
 

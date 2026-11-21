@@ -28,7 +28,7 @@ def main():
     for license in report["licenses"]:
         for user in license["used_by"]:
             package = user["crate"]
-            if package["name"] == "clay-form":
+            if package["name"] == "sketchotter":
                 continue
             repository = package.get("repository")
             if repository and repository.startswith("http://github.com/"):
@@ -109,9 +109,9 @@ def main():
     (legal / "third-party.json").write_text(json.dumps(records, ensure_ascii=False, indent=2) + "\n")
     parts = ['<!doctype html><html lang="en"><meta charset="utf-8">',
              '<meta name="viewport" content="width=device-width">',
-             '<title>Clay Form third-party notices</title>',
+             '<title>SketchOtter third-party notices</title>',
              '<style>body{max-width:75ch;margin:2rem auto;padding:1rem;font:16px system-ui}pre{white-space:pre-wrap;overflow-wrap:anywhere}summary{cursor:pointer;margin:1rem 0}</style>',
-             '<h1>Clay Form third-party notices</h1><p>Third-party components retain their own licences. Includes platform-specific and build dependencies and bundled fonts.</p>']
+             '<h1>SketchOtter third-party notices</h1><p>Third-party components retain their own licences. Includes platform-specific and build dependencies and bundled fonts.</p>']
     for record in records:
         title = html.escape(f"{record['name']} {record['version']} — {record['license']}")
         parts.append(f'<details><summary>{title}</summary><a href="{html.escape(record["repository"], quote=True)}">Source repository</a><pre>{html.escape(record["text"])}</pre></details>')

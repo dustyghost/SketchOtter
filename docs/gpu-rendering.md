@@ -2,7 +2,7 @@
 
 [Documentation home](../README.md#documentation)
 
-Clay Form retains egui for the interface and uses eframe’s wgpu backend for a dedicated 3D viewport. Linux requires Vulkan; the enabled native backends also include Metal and DX12. CPU sculpting and project file formats are unchanged.
+SketchOtter retains egui for the interface and uses eframe’s wgpu backend for a dedicated 3D viewport. Linux requires Vulkan; the enabled native backends also include Metal and DX12. CPU sculpting and project file formats are unchanged.
 
 Use this page to choose a rendering check, export a preview, or measure a slowdown. For ownership and cache lifecycle, see [GPU architecture](architecture/integration.md#gpu-viewport).
 
