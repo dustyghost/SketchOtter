@@ -6,6 +6,7 @@ use std::{collections::BTreeMap, io::Write};
 
 mod drawing;
 mod picking;
+mod release;
 mod write_history;
 
 const DABS: usize = 12;

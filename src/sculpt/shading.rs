@@ -1,5 +1,7 @@
 //! Display-only normal fans. Sculpt topology remains welded at hard edges.
 use super::{Mesh, Vec3};
+#[cfg(test)]
+mod compact;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -434,6 +436,7 @@ mod tests {
             for actual in [
                 mesh.surface_shading(),
                 SurfaceShadingTopology::new(&mesh).shade(&mesh),
+                SurfaceShadingTopology::new(&mesh).compact_shade(&mesh, |_| {}),
             ] {
                 assert_eq!(actual.triangles, expected.triangles);
                 assert_eq!(actual.vertices.len(), expected.vertices.len());
