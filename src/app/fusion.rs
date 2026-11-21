@@ -1,4 +1,5 @@
 use super::*;
+use crate::sculpt::Vec3;
 use crate::{
     background_job::BackgroundJob,
     sculpt::{
@@ -6,12 +7,69 @@ use crate::{
         fusion::{self, Boundary},
     },
 };
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 enum ResultMesh {
     Openings(Mesh, [Vec<Boundary>; 2]),
-    Preview(Mesh, fusion::FusionReport),
+    Preview(PreparedPreview),
 }
+struct PreparedPreview {
+    mesh: Mesh,
+    report: fusion::FusionReport,
+    patch: Vec<[Vec3; 2]>,
+    removed: Vec<[Vec3; 2]>,
+}
+
+impl PreparedPreview {
+    fn build(
+        source: &Mesh,
+        mesh: Mesh,
+        report: fusion::FusionReport,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<ResultMesh, String> {
+        fn edges<'a>(
+            vertices: &[Vec3],
+            triangles: impl Iterator<Item = &'a [usize; 3]>,
+            cancel: &dyn Fn() -> bool,
+        ) -> Result<Vec<[Vec3; 2]>, String> {
+            let mut unique = BTreeSet::new();
+            for (i, &[a, b, c]) in triangles.enumerate() {
+                if i % 256 == 0 {
+                    fusion::cancelled(cancel)?;
+                }
+                for [v, w] in [[a, b], [b, c], [c, a]] {
+                    unique.insert(crate::sculpt::uv::edge(v, w));
+                }
+            }
+            Ok(unique.into_iter().map(|e| e.map(|v| vertices[v])).collect())
+        }
+        let (retained, patch) = mesh.triangles.split_at(report.retained_triangles);
+        let patch = edges(&mesh.vertices, patch.iter(), cancel)?;
+        // Cutting and culling retain source triangle order and vertex IDs until compaction.
+        let mut keep = retained.iter().peekable();
+        let mut removed_faces = Vec::new();
+        for (i, triangle) in source.triangles.iter().enumerate() {
+            if i % 256 == 0 {
+                fusion::cancelled(cancel)?;
+            }
+            if keep.next_if_eq(&triangle).is_none() {
+                removed_faces.push(triangle);
+            }
+        }
+        if keep.next().is_some() {
+            return Err("Could not match preview faces to the source meshes".into());
+        }
+        let removed = edges(&source.vertices, removed_faces.into_iter(), cancel)?;
+        fusion::cancelled(cancel)?;
+        Ok(ResultMesh::Preview(Self {
+            mesh: fusion::compact(mesh),
+            report,
+            patch,
+            removed,
+        }))
+    }
+}
+
 struct Worker {
     job: BackgroundJob<ResultMesh>,
     revision: u64,
@@ -26,11 +84,15 @@ struct Draft {
 #[derive(Default)]
 pub(super) struct FusionState {
     pub display: Option<crate::viewport::JoinDisplay>,
-    pub patch: Vec<[crate::sculpt::Vec3; 2]>,
-    pub removed: Vec<[crate::sculpt::Vec3; 2]>,
     worker: Option<Worker>,
     prepared: Option<(Arc<Mesh>, u64, [usize; 2])>,
     draft: Option<Draft>,
+}
+#[cfg(test)]
+impl FusionState {
+    pub(super) fn preview_mesh(&self) -> &Mesh {
+        &self.draft.as_ref().expect("completed preview").mesh
+    }
 }
 impl App {
     pub(super) fn open_fusion(&mut self) -> Result<(), String> {
@@ -48,8 +110,6 @@ impl App {
         self.fusion.worker = None;
         self.fusion.draft = None;
         self.fusion.display = None;
-        self.fusion.patch.clear();
-        self.fusion.removed.clear();
         self.viewport.session.join_patch.clear();
         self.viewport.session.join_removed.clear();
         self.viewport.set_join_preview(None);
@@ -81,11 +141,11 @@ impl App {
         let [a, b] = self.document.fusion_sources(sources)?;
         let job = BackgroundJob::start("clay-join-openings", move |cancel| {
             fusion::cancelled(cancel)?;
-            let first = fusion::boundaries(&a)?;
+            let first = fusion::boundaries_cancellable(&a, cancel)?;
             let mut second = if sources[0] == sources[1] {
                 first.clone()
             } else {
-                fusion::boundaries(&b)?
+                fusion::boundaries_cancellable(&b, cancel)?
             };
             let mesh = if sources[0] == sources[1] {
                 a
@@ -132,8 +192,9 @@ impl App {
             }
             let [a, b] = self.document.fusion_sources(sources)?;
             BackgroundJob::start("clay-local-fusion", move |cancel| {
-                fusion::fuse(&a, &b, collar, options, cancel)
-                    .map(|(mesh, report)| ResultMesh::Preview(mesh, report))
+                fusion::fuse(&a, &b, collar, options, cancel).and_then(|(joined, report)| {
+                    PreparedPreview::build(&mesh, joined, report, cancel)
+                })
             })?
         } else {
             let first = self.ui.fusion.loops[0]
@@ -147,8 +208,9 @@ impl App {
                 .vertices
                 .clone();
             BackgroundJob::start("clay-local-join", move |cancel| {
-                fusion::join_open_ends(&mesh, &first, &second, options, cancel)
-                    .map(|(mesh, report)| ResultMesh::Preview(mesh, report))
+                fusion::join_open_ends(&mesh, &first, &second, options, cancel).and_then(
+                    |(joined, report)| PreparedPreview::build(&mesh, joined, report, cancel),
+                )
             })?
         };
         self.clear_fusion();
@@ -194,38 +256,12 @@ impl App {
                     self.ui.fusion.loops = loops;
                     self.fusion.prepared = Some((Arc::new(mesh), worker.revision, worker.sources));
                 }
-                Ok(ResultMesh::Preview(mesh, report)) => {
-                    if let Some((source, _, _)) = &self.fusion.prepared {
-                        use std::collections::BTreeSet;
-                        let start = report.retained_triangles;
-                        let edges = |triangles: &[[usize; 3]]| {
-                            triangles
-                                .iter()
-                                .flat_map(|t| {
-                                    (0..3)
-                                        .map(move |i| crate::sculpt::uv::edge(t[i], t[(i + 1) % 3]))
-                                })
-                                .collect::<BTreeSet<_>>()
-                        };
-                        self.fusion.patch = edges(&mesh.triangles[start..])
-                            .into_iter()
-                            .map(|e| e.map(|v| mesh.vertices[v]))
-                            .collect();
-                        let retained = mesh.triangles[..start]
-                            .iter()
-                            .copied()
-                            .collect::<BTreeSet<_>>();
-                        let removed = source
-                            .triangles
-                            .iter()
-                            .filter(|t| !retained.contains(*t))
-                            .copied()
-                            .collect::<Vec<_>>();
-                        self.fusion.removed = edges(&removed)
-                            .into_iter()
-                            .map(|e| e.map(|v| source.vertices[v]))
-                            .collect();
-                    }
+                Ok(ResultMesh::Preview(PreparedPreview {
+                    mesh,
+                    report,
+                    patch,
+                    removed,
+                })) => {
                     let result = self
                         .document
                         .fusion_geometry(mesh.clone(), worker.sources)
@@ -236,6 +272,8 @@ impl App {
                         });
                     match result {
                         Ok(document) => {
+                            self.viewport.session.join_patch = patch;
+                            self.viewport.session.join_removed = removed;
                             self.fusion.display =
                                 Some(crate::viewport::JoinDisplay::new(&document));
                             self.viewport.set_join_preview(self.fusion.display.clone());
@@ -251,9 +289,16 @@ impl App {
                                     report.retained_faces
                                 )
                             } else {
-                                "Preview ready. Inspect the connector, then Apply or Cancel.".into()
+                                format!(
+                                    "Preview ready · {} segments · alignment offset {} · curvature {:.2} · {} patch triangles.",
+                                    self.ui.fusion.options.segments,
+                                    self.ui.fusion.options.twist,
+                                    self.ui.fusion.options.curvature,
+                                    mesh.triangles.len() - report.retained_triangles
+                                )
                             };
-                            self.ui.fusion.has_removed_faces = !self.fusion.removed.is_empty();
+                            self.ui.fusion.has_removed_faces =
+                                !self.viewport.session.join_removed.is_empty();
                             if report.enclosed_faces > 0 {
                                 self.ui.fusion.notice.push_str(&format!(
                                     " Culled {} enclosed polygons.",
@@ -282,6 +327,7 @@ impl App {
         self.viewport.session.join_rims.clear();
         if self.ui.fusion.open
             && !self.ui.fusion.intersections
+            && (!self.ui.fusion.ready || self.ui.fusion.show_patch)
             && let Some((mesh, _, _)) = &self.fusion.prepared
         {
             for side in 0..2 {

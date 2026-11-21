@@ -926,6 +926,8 @@ Open **Mesh → Join meshes…**. Choose two visible sculpt meshes, or choose th
 
 The connector shares the original rim vertices. If other holes remain open, the tool keeps every source polygon. Closing the last holes also runs the enclosed-shell cleanup described below. Unequal vertex counts use a mixture of triangles and quads; aligned spans use quads. Curvature bends only the new connector toward the adjoining surfaces. It does not smooth the sources. Segment count controls divisions along the gap; the combined spacing of both rims determines intermediate ring resolution. Alignment offset changes the circular correspondence by one vertex on the second rim.
 
+After changing **Connector segments**, **Alignment offset** or **Curvature**, press **Preview join** again. The message beside the button lists the settings and patch triangle count for the current result. Turn off **Highlight patch and rims** to inspect the shaded surface, then turn on wireframe to check how the connector meets each rim. Apply commits the previewed mesh. UV seam marks stay on retained source edges. Mark any seam you want across the new connector after applying.
+
 **Modeling → Topology → Bridge boundaries** remains available for the existing equal-count, active-mesh workflow and its symmetry copies.
 
 ### Fuse intersecting solids

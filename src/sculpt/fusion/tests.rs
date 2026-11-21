@@ -768,3 +768,188 @@ fn fusion_uv_preserves_texture_bindings_on_mapped_faces() {
     b.uv.textures[0].pixels.u16_mut()[0] ^= 1;
     assert!(merge(&a, &b).unwrap_err().contains("shared atlas"));
 }
+
+/// Unequal, relief-covered parts with seam marks. The thin plate sits just above the join.
+pub(crate) fn relief_parts(segments: u32) -> [Mesh; 2] {
+    let [mut left, mut right] = spheres([segments, segments - 8], 1.6);
+    for (mesh, center) in [
+        (&mut left, Vec3(-0.8, 0., 0.)),
+        (&mut right, Vec3(0.8, 0.03, 0.02)),
+    ] {
+        for p in &mut mesh.vertices {
+            let d = *p - center;
+            let relief = 0.045 * (16. * d.1).cos() * (9. * d.2).cos();
+            *p = center + d * (1. + relief);
+        }
+        let face = mesh
+            .triangles
+            .iter()
+            .find(|t| t.iter().all(|&i| mesh.vertices[i].0.abs() > 1.))
+            .unwrap();
+        mesh.uv.seams.push(edge(face[0], face[1]));
+    }
+    let mut plate = small_cube(Vec3::default(), 1.);
+    for p in &mut plate.vertices {
+        *p = Vec3(0.12 * p.0, 0.012 * p.1 + 0.84, 0.12 * p.2);
+    }
+    [merge(&left, &plate).unwrap(), right]
+}
+
+pub(crate) fn fluted_open_parts() -> [Mesh; 2] {
+    [(96, -1.4, -0.22), (112, 0.22, 1.4)].map(|(sides, start, end)| {
+        let mut mesh = Mesh::default();
+        for row in 0..=64 {
+            let t = row as f32 / 64.;
+            let z = start + (end - start) * t;
+            for i in 0..sides {
+                let angle = i as f32 * std::f32::consts::TAU / sides as f32;
+                let radius = 0.56 + 0.04 * (10. * angle + 2. * z).cos() + 0.035 * (14. * z).cos();
+                mesh.vertices
+                    .push(Vec3(radius * angle.cos(), radius * angle.sin(), z));
+                mesh.mask.push(0.);
+                if row > 0 {
+                    let lo = (row - 1) * sides;
+                    let hi = row * sides;
+                    let j = (i + 1) % sides;
+                    mesh.push_polygon(&[lo + i, lo + j, hi + j, hi + i], 0, false);
+                }
+            }
+        }
+        mesh.uv.seams = (0..64).map(|r| [r * sides, (r + 1) * sides]).collect();
+        mesh
+    })
+}
+
+#[test]
+fn fusion_relief_transition_deviation_and_thin_neighbor() {
+    use crate::sculpt::projection::Surface;
+    let [a, b] = relief_parts(48);
+    let originals = [&a, &b].map(|m| Surface::new(m, &|| false).unwrap());
+    let plate = *originals[0].components.last().unwrap();
+    // The wider collar hits the underside of the nearby plate (y = 0.828).
+    let blocked = fuse(
+        &a,
+        &b,
+        2,
+        JoinOptions {
+            segments: 5,
+            ..Default::default()
+        },
+        &|| false,
+    )
+    .unwrap_err();
+    assert!(
+        blocked.contains("intersects retained geometry"),
+        "{blocked}"
+    );
+    for (segments, curvature) in [(4, 0.5), (5, 0.7)] {
+        let (joined, report) = fuse(
+            &a,
+            &b,
+            1,
+            JoinOptions {
+                segments,
+                curvature,
+                ..Default::default()
+            },
+            &|| false,
+        )
+        .unwrap();
+        joined.validate_closed().unwrap();
+        assert_eq!(report.joins, 1);
+        let result = Surface::new(&joined, &|| false).unwrap();
+        assert_eq!(result.components.iter().collect::<BTreeSet<_>>().len(), 2);
+        // The last six source quads are the disjoint plate, including its top and bottom.
+        for quad in a.quads.iter().rev().take(6) {
+            assert!(joined.quads.contains(quad));
+            for &i in quad {
+                assert_eq!(joined.vertices[i], a.vertices[i]);
+            }
+        }
+        assert_eq!(joined.uv.seams.len(), 2);
+        let mut worst = 0_f32;
+        let mut sum = 0.;
+        let mut count = 0;
+        for triangle in &joined.triangles[report.retained_triangles..] {
+            let [p, q, r] = triangle.map(|v| joined.vertices[v]);
+            for point in [p, q, r, (p + q + r) * (1. / 3.)] {
+                let distance = originals
+                    .iter()
+                    .zip([Some(plate), None])
+                    .filter_map(|(s, exclude)| {
+                        s.nearest(point, 1., exclude, &mut 100_000)
+                            .unwrap()
+                            .map(|(_, _, d)| d)
+                    })
+                    .reduce(f32::min)
+                    .unwrap();
+                worst = worst.max(distance);
+                sum += distance * distance;
+                count += 1;
+            }
+        }
+        assert!(count > 0);
+        eprintln!(
+            "collar 1, segments {segments}, curvature {curvature}, patch samples {count}, RMS {:.5}, max {worst:.5} model units",
+            (sum / count as f32).sqrt()
+        );
+        assert!(
+            worst < 0.16,
+            "patch moved {worst} model units from the source surfaces"
+        );
+    }
+}
+
+#[test]
+fn fusion_open_end_compaction_keeps_loose_modeling_geometry() {
+    let mut a = tube(8, -1., -0.3, 0.4);
+    let b = tube(12, 0.3, 1., 0.5);
+    let loose = a.vertices.len();
+    // An unreferenced slot forces the explicit point and edge to be renumbered.
+    a.vertices.extend([
+        Vec3(3., 0., 0.),
+        Vec3(4., 0., 0.),
+        Vec3(5., 0., 0.),
+        Vec3(6., 0., 0.),
+    ]);
+    a.mask.resize(a.vertices.len(), 0.);
+    a.loose_edges.push([loose + 1, loose + 2]);
+    a.loose_vertices.push(loose + 3);
+    let source = merge(&a, &b).unwrap();
+    let rims = boundaries(&source).unwrap();
+    let (mesh, _) = join_open_ends(
+        &source,
+        &rims[1].vertices,
+        &rims[2].vertices,
+        JoinOptions::default(),
+        &|| false,
+    )
+    .unwrap();
+    let joined = compact(mesh);
+    joined.validate().unwrap();
+    assert_eq!(
+        joined.loose_edges[0].map(|v| joined.vertices[v]),
+        [Vec3(4., 0., 0.), Vec3(5., 0., 0.)]
+    );
+    assert_eq!(joined.vertices[joined.loose_vertices[0]], Vec3(6., 0., 0.));
+}
+
+#[test]
+fn fusion_rejects_contact_without_a_crossing_and_invalid_source_surfaces() {
+    let a = small_cube(Vec3::default(), 1.);
+    for (center, scale) in [
+        (Vec3::default(), 1.),   // identical exterior
+        (Vec3::default(), 0.25), // enclosed with no seam
+        (Vec3(2., 0., 0.), 1.),  // common face
+        (Vec3(2., 2., 2.), 1.),  // one touching corner
+    ] {
+        let b = small_cube(center, scale);
+        assert!(
+            fuse(&a, &b, 0, JoinOptions::default(), &|| false).is_err(),
+            "center {center:?} scale {scale}"
+        );
+    }
+    let crossing = merge(&a, &small_cube(Vec3(0.3, 0.2, 0.1), 1.)).unwrap();
+    let target = small_cube(Vec3(0.7, 0., 0.), 0.5);
+    assert!(fuse(&crossing, &target, 1, JoinOptions::default(), &|| false).is_err());
+}

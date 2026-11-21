@@ -494,10 +494,21 @@ impl Viewport {
                     }
                 }
             }
-            for (lines, color) in [
-                (&self.session.join_patch, Color32::from_rgb(190, 140, 245)),
-                (&self.session.join_removed, Color32::from_rgb(245, 110, 90)),
+            for (show, lines, color) in [
+                (
+                    self.session.show_join_patch,
+                    &self.session.join_patch,
+                    Color32::from_rgb(190, 140, 245),
+                ),
+                (
+                    self.session.show_join_removed,
+                    &self.session.join_removed,
+                    Color32::from_rgb(245, 110, 90),
+                ),
             ] {
+                if !show {
+                    continue;
+                }
                 for &line in lines {
                     if let Some(points) = scene.clip_segment(line) {
                         painter.line_segment(points, egui::Stroke::new(1_f32, color));

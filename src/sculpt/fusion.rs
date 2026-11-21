@@ -54,9 +54,20 @@ pub(crate) fn cancelled(cancel: &dyn Fn() -> bool) -> Result<(), String> {
 
 /// Includes hidden boundaries so a hidden adjacent face cannot masquerade as a hole.
 pub(crate) fn boundaries(mesh: &Mesh) -> Result<Vec<Boundary>, String> {
+    boundaries_cancellable(mesh, &|| false)
+}
+
+pub(crate) fn boundaries_cancellable(
+    mesh: &Mesh,
+    cancel: &dyn Fn() -> bool,
+) -> Result<Vec<Boundary>, String> {
+    cancelled(cancel)?;
     mesh.validate()?;
     let mut incidence = BTreeMap::<[usize; 2], Vec<[usize; 2]>>::new();
-    for t in &mesh.triangles {
+    for (face, t) in mesh.triangles.iter().enumerate() {
+        if face % 256 == 0 {
+            cancelled(cancel)?;
+        }
         for i in 0..3 {
             incidence
                 .entry(edge(t[i], t[(i + 1) % 3]))
@@ -66,7 +77,10 @@ pub(crate) fn boundaries(mesh: &Mesh) -> Result<Vec<Boundary>, String> {
     }
     let mut next = BTreeMap::new();
     let mut incoming = BTreeSet::new();
-    for faces in incidence.values() {
+    for (i, faces) in incidence.values().enumerate() {
+        if i % 256 == 0 {
+            cancelled(cancel)?;
+        }
         if faces.len() > 2 || faces.len() == 2 && faces[0][0] == faces[1][0] {
             return Err("Joining requires consistently oriented manifold surfaces".into());
         }
@@ -111,10 +125,17 @@ pub(crate) fn boundaries(mesh: &Mesh) -> Result<Vec<Boundary>, String> {
 }
 
 pub(crate) fn validate_surface(mesh: &Mesh) -> Result<(), String> {
-    boundaries(mesh)?;
+    validated_boundaries(mesh, &|| false).map(|_| ())
+}
+
+fn validated_boundaries(mesh: &Mesh, cancel: &dyn Fn() -> bool) -> Result<Vec<Boundary>, String> {
+    let rims = boundaries_cancellable(mesh, cancel)?;
     let mut unique = BTreeSet::new();
     let mut fans = vec![Vec::new(); mesh.vertices.len()];
-    for t in &mesh.triangles {
+    for (face, t) in mesh.triangles.iter().enumerate() {
+        if face % 256 == 0 {
+            cancelled(cancel)?;
+        }
         let mut key = *t;
         key.sort_unstable();
         let [a, b, c] = t.map(|v| mesh.vertices[v]);
@@ -127,7 +148,10 @@ pub(crate) fn validate_surface(mesh: &Mesh) -> Result<(), String> {
             fans[t[i]].push([t[(i + 1) % 3], t[(i + 2) % 3]]);
         }
     }
-    for fan in fans.iter().filter(|fan| !fan.is_empty()) {
+    for (i, fan) in fans.iter().filter(|fan| !fan.is_empty()).enumerate() {
+        if i % 256 == 0 {
+            cancelled(cancel)?;
+        }
         let mut neighbors = BTreeMap::<usize, Vec<usize>>::new();
         for &[a, b] in fan {
             neighbors.entry(a).or_default().push(b);
@@ -144,13 +168,30 @@ pub(crate) fn validate_surface(mesh: &Mesh) -> Result<(), String> {
             return Err("Joining requires a single connected face fan at each vertex".into());
         }
     }
-    Ok(())
+    Ok(rims)
 }
 
-/// Drop buried, unreferenced source vertices only at the document boundary.
+/// Drop buried, unreferenced vertices after the source-indexed overlays have been built.
 /// Local algorithms keep source indices stable for exact preservation checks.
 pub(crate) fn compact(mut mesh: Mesh) -> Mesh {
-    let used: BTreeSet<_> = mesh.triangles.iter().flatten().copied().collect();
+    let mut referenced = vec![false; mesh.vertices.len()];
+    for &v in mesh
+        .triangles
+        .iter()
+        .flatten()
+        .chain(mesh.loose_edges.iter().flatten())
+        .chain(&mesh.loose_vertices)
+    {
+        referenced[v] = true;
+    }
+    if referenced.iter().all(|&keep| keep) {
+        return mesh;
+    }
+    let used: Vec<_> = referenced
+        .iter()
+        .enumerate()
+        .filter_map(|(v, &keep)| keep.then_some(v))
+        .collect();
     let mut mapping = vec![usize::MAX; mesh.vertices.len()];
     for (next, &old) in used.iter().enumerate() {
         mapping[old] = next;
@@ -166,6 +207,12 @@ pub(crate) fn compact(mut mesh: Mesh) -> Mesh {
     }
     for t in &mut mesh.triangles {
         *t = t.map(|v| mapping[v]);
+    }
+    for v in &mut mesh.loose_vertices {
+        *v = mapping[*v];
+    }
+    for e in &mut mesh.loose_edges {
+        *e = e.map(|v| mapping[v]);
     }
     for q in &mut mesh.quads {
         *q = q.map(|v| mapping[v]);
@@ -305,8 +352,7 @@ pub(crate) fn bridge(
     options.validate()?;
     check_uv(mesh)?;
     cancelled(cancel)?;
-    validate_surface(mesh)?;
-    let available = boundaries(mesh)?;
+    let available = validated_boundaries(mesh, cancel)?;
     for ring in [first, second] {
         if !available.iter().any(|b| b.vertices == ring) {
             return Err("Choose two complete current boundary loops".into());
@@ -458,7 +504,7 @@ pub(crate) fn bridge(
         out.uv.topology = out.triangles.clone();
     }
     cancelled(cancel)?;
-    validate_surface(&out)?;
+    validated_boundaries(&out, cancel)?;
     spatial::validate_connector(&out, mesh.triangles.len(), cancel)?;
     Ok(out)
 }

@@ -72,6 +72,53 @@ cargo test --locked -j 1 --lib fusion_uv_merge_profile -- --ignored --nocapture 
 
 The seam regression reproduced the stale-map error on the baseline. The focused cases now exercise pre-unwrap seams in both modes, removal of buried seams, mixed mapped and unmapped faces, incompatible texture bindings, and an open-end join through Apply, save/reopen and Undo/Redo.
 
-## Remaining acceptance work
+## Detailed joins in the release build, 21 November 2026
 
-Review this first implementation on representative detailed production sculpts, including thin nearby sheets and attribute seams, and measure the complete application's preview/Apply memory at larger scene sizes. Visually judge transition deviation and silhouette across those fixtures. Intersection pairing currently requires mutually nearest simple loops; arbitrary junctions, tangencies, coincident faces, containment without a crossing seam and inward-facing exterior shells are unsupported. This evidence does not close either story by itself.
+The intersection fixture joins two closed, ridged parts with different tessellations and marked UV seams. A separate plate 0.024 model units thick sits above the seam. The component and face checks retain both sides of that plate and the source marks. The finished mesh has two connected components: the welded sculpt and the original plate.
+
+The smaller 48/40-segment fixture also exercises a genuine obstruction. Widening the collar to two rings with five connector segments and curvature 0.5 takes the patch through the underside of the plate at y = 0.828. Preview identifies the collision with retained geometry. A connector that crosses its own faces gives a different diagnostic. The denser 96/88 fixture clears the plate at two rings, five segments and curvature 0.7.
+
+For open ends, the two fluted parts have 96 and 112 vertices around the rims. The rendered check uses five segments, alignment offset 3 and curvature 0.7. A separate regression varies each control independently, restores a previous combination and compares the whole mesh. Mark confirmed that selecting both rims and using the join controls worked with his Huion pen.
+
+### Surface deviation and visual review
+
+For the 48/40 intersection, the test measures the distance to the nearer original sculpt surface at each patch triangle's three vertices and centroid. The plate is excluded from the distance query. The two source parts have a nominal radius of one model unit. These are sampled distances, with shared vertices counted per triangle.
+
+| Extra rings | Segments | Curvature | Samples | RMS distance | Maximum distance |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 4 | 0.5 | 2,720 | 0.05349 | 0.13590 |
+| 1 | 5 | 0.7 | 3,496 | 0.04775 | 0.12769 |
+
+The close-ups show the shaded preview on the left and the applied wireframe on the right. The ridged intersection stays closed and the plate is visible above it. Short creases remain where the patch follows a stepped source rim. The fluted connector follows the intended twist, with the original seam marks visible on either side. In both cases the applied mesh and all its attributes compare equal to the preview.
+
+![Close-up of the ridged intersection and thin plate, shaded preview and applied wireframe](review-intersection.jpg)
+
+![Close-up of the fluted connector, shaded preview and applied wireframe](review-open-ends.jpg)
+
+### Preview, Apply and cancellation in the application
+
+Measured on Linux with an i7-7500U, Rust 1.99.0 and the release profile at `7e3695c`. Each row uses a fresh application test process with a 1100 × 780 egui/wgpu viewport and one llvmpipe rendering thread. Timing starts at command dispatch, after source discovery, and ends after the first completed rendered frame with the result. Peak RSS includes the renderer, document, undo history and test snapshots. The Apply reading is cumulative for that process. Each value is a single observed run.
+
+| Scene | Source triangles | Preview | Preview peak RSS | Apply | Apply peak RSS |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Ridged intersection and plate | 16,604 | 807 ms | 215,984 KiB | 137 ms | 236,748 KiB |
+| Fluted open ends | 26,624 | 489 ms | 228,236 KiB | 194 ms | 263,032 KiB |
+| Fluted open ends, 144/160 sides and 160 axial steps | 97,280 | 1,668 ms | 324,848 KiB | 580 ms | 438,376 KiB |
+
+The large open-end case rendered six frames during Preview. Cancelling a second preview after rendering a frame took 37 microseconds to dispatch. The next frame completed after 122 ms and the original scene and selection of the active model were restored. The two published fixtures and two saved sculpt-session projects passed the on-disk save/reopen and Undo/Redo comparisons. One additional saved sculpt contained intersecting input triangles and was rejected before Apply.
+
+A separate refined-sphere scene exposed a false self-intersection on two nearly coplanar triangles that shared one corner. The regression uses the original six coordinates and also checks a real crossing away from a common corner and a folded coplanar pair.
+
+### Reproduce the rendered checks
+
+Run each case as a separate process to get an independent peak memory reading. The Linux examples use Vulkan with one software rendering thread. Set `CLAY_REVIEW_PROJECT` to use a saved two-source project. The open-ends profile selects the opening on each model nearest z = 0.
+
+```sh
+export CLAY_GPU_SOFTWARE=1 WGPU_BACKEND=vulkan LP_NUM_THREADS=1
+export CLAY_GUIDE_PREVIEW=/tmp/local-join-review
+cargo test --locked --release -j1 --lib fusion_rendered_relief_intersection -- --ignored --nocapture --test-threads=1
+cargo test --locked --release -j1 --lib fusion_rendered_fluted_open_ends -- --ignored --nocapture --test-threads=1
+cargo test --locked --lib fusion_relief_transition_deviation -- --nocapture
+```
+
+Intersection pairing requires mutually nearest simple loops. Arbitrary junctions, tangencies, coincident faces, containment without a crossing seam and inward-facing exterior shells remain unsupported.

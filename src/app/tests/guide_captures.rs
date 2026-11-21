@@ -11,6 +11,8 @@ mod cameras_capture;
 mod deformation_stack_review;
 #[path = "detached_capture.rs"]
 mod detached_capture;
+#[path = "fusion_review.rs"]
+mod fusion_review;
 #[path = "grouped_path_capture.rs"]
 mod grouped_path_capture;
 #[path = "modeling_notes_capture.rs"]

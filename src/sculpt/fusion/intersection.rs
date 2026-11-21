@@ -131,7 +131,7 @@ fn remove_polygons(
     if uv {
         out.uv.topology = out.triangles.clone();
     }
-    validate_surface(&out)?;
+    validated_boundaries(&out, cancel)?;
     Ok(out)
 }
 
@@ -189,7 +189,7 @@ pub(crate) fn join_open_ends(
         retained_triangles: mesh.triangles.len(),
         enclosed_faces: 0,
     };
-    if boundaries(&out)?.is_empty() {
+    if boundaries_cancellable(&out, cancel)?.is_empty() {
         report.finish_closed(out, true, cancel)
     } else {
         Ok((out, report))
@@ -211,7 +211,7 @@ pub(crate) fn fuse(
     check_uv(b)?;
     let prepare = |mesh: &Mesh| -> Result<Vec<bool>, String> {
         cancelled(cancel)?;
-        validate_surface(mesh)?;
+        validated_boundaries(mesh, cancel)?;
         mesh.validate_closed().map_err(|_| {
             "Intersection fusion requires closed solids; use Join open ends for holes".to_string()
         })?;
@@ -244,8 +244,8 @@ pub(crate) fn fuse(
     }
     let (a, na) = cut(a, &ib, &ca, &enclosed_a, collar, cancel)?;
     let (b, nb) = cut(b, &ia, &cb, &enclosed_b, collar, cancel)?;
-    let la = boundaries(&a)?;
-    let lb = boundaries(&b)?;
+    let la = boundaries_cancellable(&a, cancel)?;
+    let lb = boundaries_cancellable(&b, cancel)?;
     if la.is_empty() || la.len() != lb.len() || la.len() > 16 {
         return Err(
             "The cut does not form matching simple joining loops; adjust overlap or collar rings"
