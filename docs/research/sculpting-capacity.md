@@ -1,6 +1,6 @@
 # Sculpting capacity and regional detail
 
-[Issue #103](https://github.com/dustyghost/clay-form/issues/103) asks how much detail an artist can work with interactively. The largest archived workload completed fixed-topology edits on **1,204,224 quad polygons**. Those quads produce **2,408,448 triangles** for rendering and picking. A fresh position-history experiment below measures how much of a sculpt actually changed during a local stroke.
+[Issue #103](https://github.com/dustyghost/clay-form/issues/103) asks how much detail an artist can work with interactively. The largest archived workload completed fixed-topology edits on **1,204,224 quad polygons**. Those quads produce **2,408,448 triangles** for rendering and picking. Two position-history experiments below measure how much geometry a stroke changes and how quickly its first dab completes.
 
 ## What fits
 
@@ -39,11 +39,36 @@ Measured on 21 November 2026 with an AC-powered i7-7500U, 7.63 GiB RAM, Linux 7.
 | 150,528 | 75,266 / 98,790 | 1,100–1,118 | 882.0 / 32 KiB | 0.089 / 0.254 | 8.13 | 96.4 |
 | 602,112 | 301,058 / 399,848 | 4,412–4,420 | 3,528.0 / 128 KiB | 0.371 / 0.995 | 39.98 | 344.1 |
 
-At 602,112 triangles the three patches retained 384 KiB, versus 10.34 MiB for three full position arrays. The application's estimated retained history for these three complete edits was 201.9 MiB. The prototype's median position-only replay cost was 0.016 ms for Undo and 0.018 ms for Redo. Document stroke start includes cloning the geometry. Capturing positions and diffing them on release are two separate costs. The results justify testing capture at the point of mutation before changing history ownership.
+At 602,112 triangles the three patches retained 384 KiB, versus 10.34 MiB for three full position arrays. The application's estimated retained history for these three complete edits was 201.9 MiB. The prototype's median position-only replay cost was 0.016 ms for Undo and 0.018 ms for Redo. Document stroke start includes cloning the geometry. Capturing positions and diffing them on release are two separate costs. That start cost motivated a second experiment capturing positions as the brush writes them.
 
-The new probe stops at three subdivisions under the default mesh budget. A fourth would need 1,204,226 active vertices, and the archived 3,072 MiB RSS budget plus 768 MiB reserve exceeded the memory available for this session. Larger, topology-changing, painted and textured history cases are unmeasured by this experiment.
+The release example stops at three subdivisions under the default mesh budget. A fourth would need 1,204,226 active vertices, and the archived 3,072 MiB RSS budget plus 768 MiB reserve exceeded the memory available for this session. Larger, topology-changing, painted and textured history cases are unmeasured by this experiment.
 
 A full position before-image still exists during capture and finding changes still scans every vertex on release. The patch handles positions only. Its retained allocation excludes the vector header, allocator overhead, edit settings and all other channels. The application history estimate covers the whole document and settings. Process RSS includes both histories, fixture construction and a reference mesh. These quantities must be budgeted separately.
+
+## Capturing positions on the first write
+
+A [second workload](../../src/viewport/gpu/profile/capacity/write_history.rs) runs the same Standard brush and deformation guards in two documents. The editor's history takes its usual geometry snapshot. The candidate records each vertex's original position on its first bit-changing write, including corrections made by the deformation guard. A temporary bitmap deduplicates repeated dabs and mirrored writes. At release, the candidate checks the recorded vertices and drops any that returned to their original position. The editor continues to use its usual history.
+
+On the same laptop, the masked, vertex-coloured organic fixture and a variant with hidden rear faces each ran at 37,632 and 602,112 source triangles. Four trials per case alternated execution order. Each trial ran two overlapping local strokes and one broad stroke, all with X symmetry and twelve dabs. The table shows medians in milliseconds at the larger size. **First dab** includes starting the stroke and completing its first CPU edit. **Whole stroke** includes all twelve CPU edits and release. Drawing and GPU upload are outside both timers. [Timings and memory samples for all four cases](../validation/stroke-history-2026-11-21/write-capture.json)
+
+| Fixture and stroke | First dab, current → candidate | Sustained dab, current → candidate | Whole stroke, current → candidate |
+| --- | ---: | ---: | ---: |
+| Organic, local | 76.9 → 18.3 | 17.3 → 18.3 | 269.0 → 212.2 |
+| Hidden faces, local | 77.3 → 16.7 | 17.3 → 17.4 | 287.7 → 199.7 |
+| Organic, broad | 101.2 → 68.9 | 68.4 → 72.5 | 819.6 → 823.6 |
+| Hidden faces, broad | 87.4 → 62.4 | 66.8 → 68.4 | 785.6 → 778.9 |
+
+At 602,112 triangles, local strokes changed 2,317 and 2,340 of 301,058 vertices and retained 64 KiB of position entries each. The broad stroke changed 46,206 vertices and retained 1 MiB. The active stroke's bitmap needed another 37,632 bytes. These fixtures have different masks and brush paths from the release example above. The three completed edits retained 1.125 MiB of position entries, excluding settings and overhead. The editor estimated 201.9 MiB for the complete edits on the organic fixture. The maximum process high-water mark was 510.1 MiB with both documents and the reference geometry resident together. This run cannot isolate a whole-process memory saving.
+
+All 48 paired strokes matched on the active mesh, including masks, materials, visibility and every position bit. Each trial verified three Undo steps and three Redo steps against the editor, followed by restoration of the original geometry. A focused test also exercises repeated writes, a missed dab and cancellation. Local strokes started and finished faster at the larger size. Broad strokes started faster but took about the same time overall. The brush still copies positions for its deformation guard on individual dabs. This workload measures fixed-topology position history only. Integration with mixed history entries, dirty state, diagnostic exports, branching and eviction needs editor-level tests before shipping.
+
+Reproduce the paired CPU workload from the repository root. The output directory holds per-case samples and build metadata, including fingerprints for the measured source and executable.
+
+```sh
+python3 scripts/benchmark-capacity.py run target/write-capture-run \
+  --fixtures organic hidden --levels 1 3 --repeats 4 --workload write-history \
+  --max-rss-mib 900 --min-available-mib 512 --timeout 360
+```
 
 ## Regional HD editing and next work
 
@@ -51,7 +76,7 @@ In the documented **HD Geometry** workflow the artist selects an area under the 
 
 | Stage | Experiment and decision |
 | --- | --- |
-| 1. Capture local edits | Extend [#112](https://github.com/dustyghost/clay-form/issues/112) and feed [#110](https://github.com/dustyghost/clay-form/issues/110) with a change list recorded at mutation time. Capture each old value once across dabs and symmetry copies. Compare against full snapshots for sparse, broad and cancelled edits. Keep full capture for topology changes. Measure first dab, release, retained bytes and peak RSS with the same strokes. Require exact Undo/Redo, mask and paint parity, redo branching, eviction and diagnostic export before using it in the editor. |
+| 1. Capture local edits | Use the first-write results to trial a position entry in the document history alongside full entries for topology changes. Verify mixed edits, redo branching, eviction, dirty state and diagnostic export. Measure editor latency and peak RSS in separate runs for each implementation. [#112](https://github.com/dustyghost/clay-form/issues/112) can then test the changed indices for display updates. [#110](https://github.com/dustyghost/clay-form/issues/110) needs a distinct Paint-channel experiment. |
 | 2. Reuse the same regions for display | Use the changed indices from stage 1, including the neighbouring faces needed for normals. Preserve UV seams, crease fans, material channels and hidden neighbours. Combine edits across skipped frames. Exercise fan changes in [#109](https://github.com/dustyghost/clay-form/issues/109), camera-independent spatial queries in [#111](https://github.com/dustyghost/clay-form/issues/111), and textured drawing in [#113](https://github.com/dustyghost/clay-form/issues/113). Visibility culling reduces draw work while the editable mesh and history can remain fully resident. |
 | 3. Gate regional residency on evidence | In [#114](https://github.com/dustyghost/clay-form/issues/114), test an artist asset, multiple models and mixed edit sessions. If active-region memory is still the limiting cost, compare a lower-resolution overview plus one editable high-detail region with fully resident geometry. A chunked or disk-backed version must reconcile shared boundaries and mirrored edits, survive eviction and cancelled loads, and reopen and export all detail including unloaded regions. Measure page-in stalls and storage bytes before selecting a format. |
 

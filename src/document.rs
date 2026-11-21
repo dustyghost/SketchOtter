@@ -37,6 +37,8 @@ mod relax;
 mod scene;
 mod stroke;
 #[cfg(test)]
+pub(crate) mod stroke_capture;
+#[cfg(test)]
 mod tests;
 mod texture_library;
 mod thickness;

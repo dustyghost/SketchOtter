@@ -72,6 +72,11 @@ class GuardTests(unittest.TestCase):
             with self.subTest(updates=updates), self.assertRaises(ValueError):
                 capacity.validate_request(self.args(**updates))
 
+    def test_write_history_requires_cpu_only_measurement(self):
+        capacity.validate_request(self.args(workload="write-history", gpu=False))
+        with self.assertRaisesRegex(ValueError, "CPU editing only"):
+            capacity.validate_request(self.args(workload="write-history", gpu=True))
+
     def test_guard_retains_observations_when_it_kills_a_workload(self):
         for rss, available, expected, code in [(4000, 5000, "RSS budget", -9),
                                                 (1000, 600, "available memory", -9),

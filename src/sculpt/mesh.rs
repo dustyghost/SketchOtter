@@ -340,6 +340,19 @@ impl Mesh {
         stencils: &[super::alpha::Projection],
         flatten_planes: &[(Vec3, Vec3)],
     ) -> bool {
+        self.stamp_observing_positions(b, dabs, stencils, flatten_planes, &mut |_, _, _| {})
+    }
+
+    /// Report original values at proposed writes and guard reductions. The
+    /// observer may see the same vertex repeatedly, including rejected moves.
+    pub(crate) fn stamp_observing_positions(
+        &mut self,
+        b: &Brush,
+        dabs: &[Dab],
+        stencils: &[super::alpha::Projection],
+        flatten_planes: &[(Vec3, Vec3)],
+        observe: &mut impl FnMut(usize, Vec3, Vec3),
+    ) -> bool {
         if b.kind == Kind::Paint {
             return self.paint_material(b, dabs, stencils);
         }
@@ -528,23 +541,21 @@ impl Mesh {
             } else {
                 1.
             };
-            self.vertices[i] = old[i] + displacement * stamp_gain;
+            let proposed = old[i] + displacement * stamp_gain;
+            observe(i, old[i], proposed);
+            self.vertices[i] = proposed;
             deformed |= self.vertices[i] != old[i];
         }
         #[cfg(test)]
         super::stamp_profile::mark("vertex_loop");
         if deformed {
-            if b.kind == Kind::Standard
+            let directional = b.kind == Kind::Standard
                 && dabs.len() == 1
                 && matches!(
                     b.effective_stroke_mode(),
                     super::StrokeMode::DragRect | super::StrokeMode::DragDot
-                )
-            {
-                self.limit_stamp_deformation(&old, dabs[0].normal)
-            } else {
-                self.limit_sculpt_deformation(&old)
-            }
+                );
+            self.limit_brush_deformation(&old, directional.then(|| dabs[0].normal), observe)
         } else {
             false
         }
