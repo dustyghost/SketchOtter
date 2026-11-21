@@ -35,12 +35,20 @@ impl Key {
 pub(in crate::viewport) struct Cache {
     view: Option<(Key, Scene)>,
     #[cfg(test)]
-    pub(in crate::viewport) reference_picking: bool,
+    reference_picking: bool,
     // Geometric face normals/origins depend on immutable positions and triangles,
     // not the camera. Keep one dense surface per rendering role.
     face_geometry: Vec<super::FaceGeometry>,
 }
 impl Cache {
+    #[cfg(test)]
+    pub(in crate::viewport) fn for_picking_comparison(reference_picking: bool) -> Self {
+        Self {
+            reference_picking,
+            ..Self::default()
+        }
+    }
+
     pub fn clear(&mut self) {
         self.view = None;
         self.face_geometry = Vec::new();

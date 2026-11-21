@@ -27,8 +27,7 @@ fn gpu_load_profile_world_picking() {
             } else {
                 [false, true]
             } {
-                let mut cache = Cache::default();
-                cache.reference_picking = reference;
+                let mut cache = Cache::for_picking_comparison(reference);
                 let mut times = Measurements::default();
                 let mut hits = Vec::new();
                 for frame in 0..10 {

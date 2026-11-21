@@ -1452,9 +1452,14 @@ impl Gpu {
         if self.force_general_surface {
             return false;
         }
-        // UVs, face groups and extended channels require the per-corner path.
-        self.vertex_stride == 12
-            && !preview.show_polygroups
+        // These inspection modes read interpolated base channels and suppress
+        // the face-group overlay. Lighting still needs the extended corner IDs.
+        let base_channel = matches!(
+            preview.inspection,
+            InspectionMode::Color | InspectionMode::Roughness | InspectionMode::Metallic
+        );
+        (self.vertex_stride == 12 || base_channel)
+            && (!preview.show_polygroups || base_channel)
             && !preview.uv_checker
             && preview.inspection != InspectionMode::UvChecker
             && self

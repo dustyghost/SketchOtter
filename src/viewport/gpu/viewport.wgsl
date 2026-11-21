@@ -50,7 +50,7 @@ struct Surface {
 // Plain surfaces have no per-corner inputs. An indexed draw lets shared
 // shading vertices reuse vertex-shader results across adjacent triangles.
 @vertex fn basic_surface_vertex(@builtin(vertex_index) index: u32) -> Surface {
- let i=index*12u;
+ let i=index*u32(u.material_info.x);
  let p=vec3f(vertices[i],vertices[i+1u],vertices[i+2u]);
  let mask=vertices[i+9u];
  var out: Surface;
