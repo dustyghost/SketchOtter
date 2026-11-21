@@ -1,0 +1,44 @@
+name: Measure X11 desktop input and visible sculpt updates
+on:
+  push:
+    branches: [bench/103-desktop-present]
+permissions:
+  contents: read
+jobs:
+  desktop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 48
+    env:
+      WGPU_BACKEND: vulkan
+      CLAY_GPU_SOFTWARE: "1"
+      LP_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: capacity-followups-release
+      - run: sudo apt-get update && sudo apt-get install -y libwayland-dev libxkbcommon-dev libvulkan1 mesa-vulkan-drivers xvfb xauth openbox wmctrl xdotool python3-xlib x11-utils imagemagick libxkbcommon-x11-0 libxcb-present-dev
+      - name: Build native application and test fixture writer
+        run: |
+          cargo test --locked --release --lib --no-run -j 2 --message-format=json > "$RUNNER_TEMP/build.jsonl"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          binary,=[v['executable'] for line in (Path(os.environ['RUNNER_TEMP'])/'build.jsonl').read_text().splitlines() if (v:=json.loads(line)).get('reason')=='compiler-artifact' and v.get('executable') and v.get('profile',{}).get('test')]
+          with open(os.environ['GITHUB_ENV'],'a') as out:print('BENCH_BINARY='+binary,file=out)
+          PY
+          cargo build --locked --release --bin sketchotter -j 2
+      - name: Prepare and run desktop workload
+        run: |
+          python3 scripts/prepare-capacity-asset.py target/desktop-model
+          cc -std=c11 -Wall -Wextra -Werror -O2 scripts/profile-x11-present.c -lxcb -lxcb-present -o "$RUNNER_TEMP/profile-present"
+          CLAY_SESSION_STROKES=8 python3 scripts/profile-capacity-followups.py "$BENCH_BINARY" session "$RUNNER_TEMP/desktop-asset" --asset target/desktop-model --level 3 --max-rss-mib 3000 --min-available-mib 1200 || cat "$RUNNER_TEMP/desktop-asset"/case.log
+          mkdir -p target/desktop-results
+          xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/ci-desktop-capture.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: virtual-desktop-observations
+          path: target/desktop-results/*
