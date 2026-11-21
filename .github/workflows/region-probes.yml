@@ -1,0 +1,52 @@
+name: Guarded sculpting capacity measurements
+on:
+  push:
+    branches: [bench/103-capacity-followups]
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    env:
+      CLAY_GPU_SOFTWARE: "1"
+      LP_NUM_THREADS: "2"
+      WGPU_BACKEND: vulkan
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y libwayland-dev libxkbcommon-dev libvulkan1 mesa-vulkan-drivers
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: capacity-followups-release
+      - name: Build optimised library tests
+        run: |
+          cargo test --locked --release --lib --no-run -j 2 --message-format=json > "$RUNNER_TEMP/build.jsonl"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          binary, = [v['executable'] for line in (Path(os.environ['RUNNER_TEMP'])/'build.jsonl').read_text().splitlines() if (v:=json.loads(line)).get('reason')=='compiler-artifact' and v.get('executable') and v.get('profile',{}).get('test')]
+          with open(os.environ['GITHUB_ENV'],'a') as out:
+              print('BENCH_BINARY='+binary,file=out)
+          PY
+      - name: Measure selected workloads
+        run: |
+          failed=0
+          for name in allocation; do
+            for level in 3 4; do
+              if { test "$name" = visual || test "$name" = boundary; } && test "$level" = 4; then continue; fi
+              python3 scripts/ci-region-probe.py "$BENCH_BINARY" "$name" "$level" || failed=1
+            done
+          done
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: guarded-region-artifacts
+          path: |
+            ${{ runner.temp }}/capacity-results/region-*/samples.json
+            ${{ runner.temp }}/capacity-results/region-*/environment.json
+            ${{ runner.temp }}/capacity-results/region-*/case.log
+            ${{ runner.temp }}/capacity-results/region-*/*.png
