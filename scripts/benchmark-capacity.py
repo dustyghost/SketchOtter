@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run bounded, isolated capacity workloads or compare two compatible result sets."""
 import argparse
+import errno
 from contextlib import contextmanager
 import hashlib
 import json
@@ -87,7 +88,14 @@ def workload_lock():
     import fcntl
     path = Path.home() / ".cache" / "codex-build.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as lock:
+    try:
+        handle = path.open("a")
+    except OSError as error:
+        if error.errno not in (errno.EROFS, errno.EACCES):
+            raise
+        # Linux local flock also accepts a readable descriptor to the same inode.
+        handle = path.open("rb")
+    with handle as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
@@ -174,14 +182,14 @@ def build(jobs):
     return executable
 
 
-def bounded_run(executable, env, log, args):
+def bounded_run(executable, env, log, args, test_name=TEST):
     start = time.monotonic()
     reason = None
     peak_rss = peak_swap = 0
     minimum_available = None
     reserve = getattr(args, "min_available_mib", 512) * 1024
     with log.open("w") as stream, subprocess.Popen(
-        [executable, TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"],
+        [executable, test_name, "--exact", "--ignored", "--nocapture", "--test-threads=1"],
         cwd=ROOT, env=env, stdout=stream, stderr=subprocess.STDOUT,
     ) as proc:
         try:
