@@ -4,6 +4,7 @@ use crate::sculpt::{Material, Project};
 use serde::Serialize;
 use std::{collections::BTreeMap, io::Write};
 
+mod picking;
 mod write_history;
 
 const DABS: usize = 12;

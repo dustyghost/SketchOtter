@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 pub(in crate::viewport) mod cache;
 mod footprint;
 mod picking;
+mod picking_world;
 #[cfg(test)]
 pub(in crate::viewport) mod profile;
 type PickMemo = Option<(Pos2, Option<(Vec3, Vec3, usize)>)>;
@@ -29,6 +30,7 @@ pub(super) struct Scene {
     pub(super) view: Vec3,
     all_faces: Arc<Vec<(usize, f32)>>,
     picking: Arc<OnceLock<picking::Index>>,
+    world_groups: Option<Arc<OnceLock<picking_world::WorldGroups>>>,
     last_pick: Arc<Mutex<PickMemo>>,
     active: usize,
     pub(super) center: Pos2,
@@ -326,6 +328,7 @@ impl Scene {
             active_faces,
             all_faces: Arc::new(faces),
             picking: Arc::new(OnceLock::new()),
+            world_groups: None,
             last_pick: Arc::new(Mutex::new(None)),
             active,
             view,
@@ -808,16 +811,17 @@ impl Scene {
         }
         // A one-off query should not pay for building the group lookup. Reuse
         // identical queries; build bounds when a later point needs another scan.
-        let hit = if previous.is_none() && self.picking.get().is_none() {
-            pick_surface(self, &self.all_faces, point)
-        } else {
-            pick_faces(
-                self,
-                self.face_candidates(egui::Rect::from_min_max(point, point))
-                    .map(|f| f.0),
-                point,
-            )
-        };
+        let hit =
+            if previous.is_none() && self.picking.get().is_none() && self.world_groups.is_none() {
+                pick_surface(self, &self.all_faces, point)
+            } else {
+                pick_faces(
+                    self,
+                    self.face_candidates(egui::Rect::from_min_max(point, point))
+                        .map(|f| f.0),
+                    point,
+                )
+            };
         *previous = Some((point, hit));
         hit
     }

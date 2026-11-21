@@ -34,6 +34,8 @@ impl Key {
 #[derive(Default)]
 pub(in crate::viewport) struct Cache {
     view: Option<(Key, Scene)>,
+    #[cfg(test)]
+    pub(in crate::viewport) reference_picking: bool,
     // Geometric face normals/origins depend on immutable positions and triangles,
     // not the camera. Keep one dense surface per rendering role.
     face_geometry: Vec<super::FaceGeometry>,
@@ -81,7 +83,19 @@ impl Cache {
         // an unchanged camera never pay for a cache they cannot reuse.
         let face_geometry = (same_surface && geometry.mesh.triangles.len() >= 20_000)
             .then_some(&mut self.face_geometry);
-        let scene = Scene::from_geometry_with_faces(rect, camera, geometry, sort, face_geometry);
+        let mut scene =
+            Scene::from_geometry_with_faces(rect, camera, geometry, sort, face_geometry);
+        let reuse_bounds = same_surface && !sort && scene.geometry.mesh.triangles.len() >= 20_000;
+        #[cfg(test)]
+        let reuse_bounds = reuse_bounds && !self.reference_picking;
+        if reuse_bounds {
+            scene.world_groups = Some(
+                self.view
+                    .as_ref()
+                    .and_then(|(_, old)| old.world_groups.clone())
+                    .unwrap_or_default(),
+            );
+        }
         self.view = Some((key, scene.clone()));
         scene
     }
