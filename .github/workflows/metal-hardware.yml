@@ -1,0 +1,21 @@
+name: Check available Metal adapters
+on:
+  push:
+    branches: [bench/103-metal-hardware]
+permissions:
+  contents: read
+jobs:
+  adapters:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    steps:
+      - name: Check accelerated Metal device and memory
+        run: |
+          uname -sm
+          sysctl hw.memsize hw.ncpu
+          system_profiler SPDisplaysDataType
+          swift -e 'import Metal; let devices = MTLCopyAllDevices(); print("METAL_DEVICE_COUNT", devices.count); for d in devices { print("METAL_DEVICE", d.name, "low_power",d.isLowPower,"unified",d.hasUnifiedMemory,"recommended_bytes",d.recommendedMaxWorkingSetSize) }'
