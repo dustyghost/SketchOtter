@@ -2,24 +2,24 @@
 
 Copyright © 2026 Clay Form contributors.
 
-Clay Form's original code and repository content are licensed under the GNU
+SketchOtter's original code and repository content are licensed under the GNU
 General Public License, version 3 only (`GPL-3.0-only`). See [LICENSE](LICENSE)
-for the complete terms. Clay Form comes without warranty, to the extent
+for the complete terms. SketchOtter comes without warranty, to the extent
 permitted by law. Third-party components retain their own licences and
 copyright notices; see the About window and the bundled third-party notices.
 
-Official Clay Form downloads are free of charge. You may use, study, modify,
-fork and redistribute Clay Form under GPLv3. When distributing modified
+Official SketchOtter downloads are free of charge. You may use, study, modify,
+fork and redistribute SketchOtter under GPLv3. When distributing modified
 versions, preserve the licence and supply the corresponding source as required
 by GPLv3. GPLv3 permits commercial use and charging for copies.
 
 ## Your creations belong to you
 
-Using Clay Form does not give us any rights to your work. Models, textures,
-renders and other artwork you create with Clay Form are yours to use, modify,
-sell, license or keep private. You do not need to credit Clay Form, publish
+Using SketchOtter does not give us any rights to your work. Models, textures,
+renders and other artwork you create with SketchOtter are yours to use, modify,
+sell, license or keep private. You do not need to credit SketchOtter, publish
 your work or release it under GPLv3. The application's licence does not apply
-to its output merely because Clay Form created or edited it.
+to its output merely because SketchOtter created or edited it.
 
 Rights and restrictions attached to third-party material you import still
 apply. This statement does not transfer anyone else's rights to you.
@@ -37,5 +37,5 @@ The Rust retopology implementation includes ports and adaptations from QuadriFlo
 quad-rs, Boost's maximum-flow implementation and VCGLib. Their original copyright
 and licence notices are retained in [legal/retopology](legal/retopology/) and the
 bundled third-party notices. The implementation and modifications are distributed
-as part of Clay Form under GPLv3; see the [upstream audit](docs/validation/guided-retopology/upstream-audit.md)
+as part of SketchOtter under GPLv3; see the [upstream audit](docs/validation/guided-retopology/upstream-audit.md)
 for the pinned source revisions and algorithm comparisons.

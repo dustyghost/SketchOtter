@@ -7,7 +7,7 @@ fn main() -> eframe::Result {
     let project = match (args.next(), args.next()) {
         (None, None) => None,
         (Some(path), None) if path == "--help" || path == "-h" => {
-            println!("Usage: clay-form [PROJECT.clay]");
+            println!("Usage: sketchotter [PROJECT.clay]");
             return Ok(());
         }
         (Some(path), None) => match path.into_string() {
@@ -18,21 +18,28 @@ fn main() -> eframe::Result {
             }
         },
         _ => {
-            eprintln!("Usage: clay-form [PROJECT.clay]");
+            eprintln!("Usage: sketchotter [PROJECT.clay]");
             std::process::exit(2);
         }
     };
-    let title = format!("Clay Form {}", env!("CARGO_PKG_VERSION"));
+    let title = format!("SketchOtter {}", env!("CARGO_PKG_VERSION"));
     let mut options = eframe::NativeOptions {
         renderer: eframe::Renderer::Wgpu,
         viewport: egui::ViewportBuilder::default()
             .with_title(title)
+            .with_app_id("sketchotter")
+            .with_icon(
+                eframe::icon_data::from_png_bytes(include_bytes!(
+                    "../assets/branding/sketchotter.png"
+                ))
+                .expect("invalid embedded SketchOtter icon"),
+            )
             .with_inner_size([1280., 850.]),
         ..Default::default()
     };
     clay_form::configure_native_input(&mut options);
     eframe::run_native(
-        "Clay Form",
+        "SketchOtter",
         options,
         Box::new(move |cc| {
             let state = cc

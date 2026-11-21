@@ -150,7 +150,7 @@ pub fn prepare_export(
             "width": t.width, "height": t.height,
             "source": format!("source_{}.{}", channel_name(t.channel), if t.pixels.precision() == Precision::Float32 { "exr" } else { "png" })
         })).collect::<Vec<_>>(),
-        "notes": "Clay Form editing metadata. Base PBR preview only; layered BSDFs are not translated. Positions are Y-up, one unit exported as one metre. Save .clay for complete editing state."
+        "notes": "SketchOtter editing metadata. Base PBR preview only; layered BSDFs are not translated. Positions are Y-up, one unit exported as one metre. Save .clay for complete editing state."
     });
     std::fs::write(
         directory.join("clay_metadata.json"),

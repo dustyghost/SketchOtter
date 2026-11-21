@@ -506,7 +506,7 @@ impl UiState {
                         ui.close_kind(egui::UiKind::Menu);
                     }
                 }
-                if ui.button("About Clay Form").clicked() {
+                if ui.button("About SketchOtter").clicked() {
                     self.about_open = true;
                     if popup {
                         ui.close_kind(egui::UiKind::Menu);

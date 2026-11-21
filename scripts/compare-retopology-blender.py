@@ -2,7 +2,7 @@
 
 Arguments after --: source.clay output-directory target [refine-belly].
 The refinement inserts coplanar triangle centroids without moving the surface.
-No Blender dependency is added to Clay Form.
+No Blender dependency is added to SketchOtter.
 """
 import collections
 import copy

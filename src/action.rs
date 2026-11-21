@@ -644,7 +644,7 @@ impl Action {
     }
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Search => "Search Clay Form",
+            Self::Search => "Search SketchOtter",
             Self::ToggleZen => "Zen mode",
             Self::TemporaryMaskRectangle => "Temporary mask: Rectangle",
             Self::TemporaryMaskVisibleOnly(true) => "Mask visible surfaces only",

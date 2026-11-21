@@ -772,7 +772,7 @@ Quads are editable four-sided faces, visible in wireframe and Modeling face sele
 
 Fast quads always fits its result back to the pre-remesh sculpt. This fitting cannot recover detail that the grid resolution failed to capture.
 
-Both quad methods require valid closed output. If the result has unresolved crossings or folded faces, Clay Form reports an error and keeps the original model. Increase **Resolution** or explicitly choose **Triangles**; there is no automatic triangle fallback.
+Both quad methods require valid closed output. If the result has unresolved crossings or folded faces, SketchOtter reports an error and keeps the original model. Increase **Resolution** or explicitly choose **Triangles**; there is no automatic triangle fallback.
 
 All remesh algorithms preserve supported vertex colours/materials and transfer vertex groups. Each quad face receives a single group assignment.
 

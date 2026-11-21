@@ -26,7 +26,7 @@ fn about_button_opens_ownership_and_licences_without_editing_document() {
     ctx.style_mut(|s| s.animation_time = 0.);
     let before = app.document.geometry_snapshot();
     about_frame(&mut app, &ctx, vec![]);
-    for label in ["Settings", "About Clay Form"] {
+    for label in ["Settings", "About SketchOtter"] {
         let output = about_frame(&mut app, &ctx, vec![]);
         let position = output
             .shapes

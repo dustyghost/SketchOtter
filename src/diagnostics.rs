@@ -202,7 +202,7 @@ impl Manifest {
     pub fn summary(&self) -> String {
         let e = &self.environment;
         let mut text = format!(
-            "Clay Form diagnostic bundle — schema {}\n\nApp {} · build {}\nOS {} · {}\nRenderer: {} · backend: {}\nGPU: {} · driver: {}\nInput: {}\n\nCurrent stage: {} of {} (zero-based)\nRetention: {} edits, {} MiB; estimated retained bytes: {}\nEvicted: {}; redo edits discarded by new edits: {}\n",
+            "SketchOtter diagnostic bundle — schema {}\n\nApp {} · build {}\nOS {} · {}\nRenderer: {} · backend: {}\nGPU: {} · driver: {}\nInput: {}\n\nCurrent stage: {} of {} (zero-based)\nRetention: {} edits, {} MiB; estimated retained bytes: {}\nEvicted: {}; redo edits discarded by new edits: {}\n",
             self.schema_version,
             e.app_version,
             e.build,

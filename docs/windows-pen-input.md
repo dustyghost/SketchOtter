@@ -1,6 +1,6 @@
 # Windows pen input verification
 
-Clay Form observes the native pointer frame before winit 0.30 converts both
+SketchOtter observes the native pointer frame before winit 0.30 converts both
 `PT_PEN` and `PT_TOUCH` into `Touch`. The message hook returns false so winit
 still handles dispatch, capture, coordinate conversion and coalesced history.
 Native metadata stays queued until its matching egui touch event is consumed:

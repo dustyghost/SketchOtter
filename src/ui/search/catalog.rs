@@ -506,7 +506,7 @@ fn action_description(action: &Action) -> String {
         }
         Action::SaveAs => "Save the current project to another file.".into(),
         Action::Open => {
-            "Choose a Clay Form project to open. Unsaved edits keep their normal confirmation."
+            "Choose a SketchOtter project to open. Unsaved edits keep their normal confirmation."
                 .into()
         }
         Action::New => {

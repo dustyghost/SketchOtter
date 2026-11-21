@@ -724,7 +724,7 @@ impl App {
                     .ok_or("Send this texture to the external paint app first")?;
                 if !discard_local && texture.fingerprint() != exchange.baseline {
                     self.ui.uv.reload_conflict = true;
-                    return Err("This texture changed in Clay Form since export. Keep local edits, or explicitly replace them with the external image".into());
+                    return Err("This texture changed in SketchOtter since export. Keep local edits, or explicitly replace them with the external image".into());
                 }
                 if exchange.layered_path.is_some() {
                     return self.start_texture_exchange(texture, false);

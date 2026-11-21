@@ -1,22 +1,25 @@
-# Clay Form — Alpha 4
+# SketchOtter
 
-Clay Form is a desktop sculpting prototype. Shape a sphere with a mouse or pen, then save your model and return to it later.
+![SketchOtter, a sculpted teal otter](docs/images/sketchotter-splash.jpg)
 
-![A teal bearded head sculpt in Clay Form, with material and colour controls above, brushes on the left and mesh management on the right](docs/images/head-sculpt-workspace.png)
+Clay Form is now **SketchOtter**. Open your existing `.clay` projects as usual. Brushes, workspaces, preferences and recovery files use the same locations.
+
+SketchOtter is a desktop sculpting prototype. Shape a sphere with a mouse or pen, then save your model and return to it later.
+
+![A teal bearded head sculpt in SketchOtter, with material and colour controls above, brushes on the left and mesh management on the right](docs/images/head-sculpt-workspace.png)
 
 *Head Sculpt*
 
-Version **0.1.0-alpha.4** is an early testing release.
+This checkout builds **0.1.0-alpha.5**, the first SketchOtter development version.
 On startup, a development notice explains the current version and testing
-expectations. Choose **Continue to Clay Form** to begin; **Don’t show again for
+expectations. Choose **Continue to SketchOtter** to begin; **Don’t show again for
 this version** remembers your choice until the version changes.
 
-**New to Clay Form?** [Download Alpha 4](https://github.com/dustyghost/clay-form/releases/tag/v0.1.0-alpha.4) or [build from source](docs/installation.md), then [make your first sculpt](docs/guide/getting-started.md) in about ten minutes.
+**New to SketchOtter?** [Download the earlier Clay Form Alpha 4](https://github.com/dustyghost/clay-form/releases/tag/v0.1.0-alpha.4) or [build from source](docs/installation.md), then [make your first sculpt](docs/guide/getting-started.md) in about ten minutes.
 
-Clay Form is free and open source under [GPLv3](LICENSE). Official downloads
+SketchOtter is free and open source under [GPLv3](LICENSE). Official downloads
 are free of charge. **Your creations belong to you:** use, sell, license or
-keep your models, textures and other artwork private without crediting Clay
-Form or publishing source. Imported third-party material keeps its own terms.
+keep your models, textures and other artwork private without crediting SketchOtter or publishing source. Imported third-party material keeps its own terms.
 See [licensing and ownership](COPYRIGHT.md).
 
 Alpha 4 packages target Windows, macOS and Linux on x86-64 and ARM64.
@@ -27,18 +30,18 @@ Windows, macOS, Linux and ARM64 artifacts, corresponding source and checksums.
 
 ## Run
 
-To use a packaged build, [download Alpha 4](https://github.com/dustyghost/clay-form/releases/tag/v0.1.0-alpha.4). The instructions below cover running from source.
+To use a packaged build, [download the earlier Clay Form Alpha 4](https://github.com/dustyghost/clay-form/releases/tag/v0.1.0-alpha.4). The instructions below cover running from source.
 
 Windows packages require the [Microsoft Visual C++ v14 runtime](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist/)
 for their CPU architecture if it is not already installed.
 
-Follow the [installation guide](docs/installation.md) to install the tools, get the source and launch Clay Form. If you already have the source and Rust installed, run this from the repository root:
+Follow the [installation guide](docs/installation.md) to install the tools, get the source and launch SketchOtter. If you already have the source and Rust installed, run this from the repository root:
 
 ```sh
 cargo run --release
 ```
 
-The first build downloads dependencies and takes longer than later builds. When it finishes, the Clay Form window should open. Linux needs a Wayland or X11 desktop and a Vulkan-capable GPU and driver; Mesa lavapipe also supports software rendering.
+The first build downloads dependencies and takes longer than later builds. When it finishes, the SketchOtter window should open. Linux needs a Wayland or X11 desktop and a Vulkan-capable GPU and driver; Mesa lavapipe also supports software rendering.
 
 ## Documentation
 
@@ -78,9 +81,9 @@ When a feature changes, update its user guide alongside the code.
 
 ## Scope
 
-Clay Form supports sculpting, subdivision, voxel remeshing and local adaptive mesh refinement. You can also paint colour, metallic and roughness values on vertices or textures, unwrap UVs and exchange images with GIMP. Quad retopology and sculpt layers are future work.
+SketchOtter supports sculpting, subdivision, voxel remeshing and local adaptive mesh refinement. You can also paint colour, metallic and roughness values on vertices or textures, unwrap UVs and exchange images with GIMP. Quad retopology and sculpt layers are future work.
 
-Meshes default to **500,000 vertices** and **1,000,000 triangles** each. Raise these limits in **Settings → Mesh capacity**, then restart Clay Form. Settings allow up to **16 million vertices** and **32 million triangles** per mesh; usable capacity depends on your hardware and scene. Mesh and alpha file sizes remain bounded when loading. See [Change mesh capacity](docs/guide/workspace.md#change-mesh-capacity).
+Meshes default to **500,000 vertices** and **1,000,000 triangles** each. Raise these limits in **Settings → Mesh capacity**, then restart SketchOtter. Settings allow up to **16 million vertices** and **32 million triangles** per mesh; usable capacity depends on your hardware and scene. Mesh and alpha file sizes remain bounded when loading. See [Change mesh capacity](docs/guide/workspace.md#change-mesh-capacity).
 
 Meshes retain quad topology where available; triangles are used for rendering and picking. The viewport supports orthographic and perspective views with wgpu rendering. Sculpting, picking and topology operations run on the CPU, which can limit editing speed in large scenes.
 

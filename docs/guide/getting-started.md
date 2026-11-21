@@ -4,7 +4,7 @@
 
 Turn a sphere into a small moon: carve a few craters, soften their edges and save your own pocket planet. A mouse is enough; a pen works too. Allow about ten minutes.
 
-If you have not opened Clay Form yet, follow the [installation guide](../installation.md) first.
+If you have not opened SketchOtter yet, follow the [installation guide](../installation.md) first.
 
 ## 1. Start with a sphere
 

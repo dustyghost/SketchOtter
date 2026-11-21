@@ -95,7 +95,7 @@ impl UiState {
         egui::Modal::new(egui::Id::new("universal_search")).show(ctx, |ui| {
             ui.set_width((ctx.content_rect().width() - 48.).clamp(220., 620.));
             ui.horizontal(|ui| {
-                ui.heading("Search Clay Form");
+                ui.heading("Search SketchOtter");
                 if ui.button("Close").clicked() {
                     close = true;
                 }

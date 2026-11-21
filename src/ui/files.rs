@@ -180,7 +180,7 @@ impl UiState {
             } else if let Some(asset) = picker.asset {
                 asset.filter_label()
             } else if picker.save {
-                "Clay Form project (.clay) · existing files require confirmation"
+                "SketchOtter project (.clay) · existing files require confirmation"
             } else {
                 "Double-click a folder to browse or a project to open it."
             });

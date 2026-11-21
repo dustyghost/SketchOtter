@@ -1,4 +1,4 @@
-# Dependency terms, not the licence of Clay Form itself. Keep all native targets
+# Dependency terms, not the licence of SketchOtter itself. Keep all native targets
 # and build dependencies in the inventory; font licences apply to font data.
 accepted = [
     "MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC",
@@ -13,7 +13,7 @@ ignore-dev-dependencies = true
 ignore-build-dependencies = false
 ignore-transitive-dependencies = false
 
-[clay-form]
+[sketchotter]
 accepted = ["GPL-3.0-only"]
 
 [clay-retopology]

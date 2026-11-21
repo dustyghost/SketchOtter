@@ -108,7 +108,7 @@ pub fn export_bytes(
 fn ply(project: &Project, cancel: &dyn Fn() -> bool) -> Result<Vec<u8>, String> {
     let mesh = &project.mesh;
     let mut data = Vec::new();
-    write!(data,"ply\nformat binary_little_endian 1.0\ncomment Clay Form base vertex colours in sRGB; material layers not included\nelement vertex {}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nelement face {}\nproperty list uchar uint vertex_indices\nend_header\n",mesh.vertices.len(),mesh.triangles.len()).map_err(|e|e.to_string())?;
+    write!(data,"ply\nformat binary_little_endian 1.0\ncomment SketchOtter base vertex colours in sRGB; material layers not included\nelement vertex {}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nelement face {}\nproperty list uchar uint vertex_indices\nend_header\n",mesh.vertices.len(),mesh.triangles.len()).map_err(|e|e.to_string())?;
     for (i, p) in mesh.vertices.iter().enumerate() {
         if i % 1024 == 0 && cancel() {
             return Err("Export cancelled".into());

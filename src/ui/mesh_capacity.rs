@@ -50,7 +50,7 @@ impl UiState {
                     "Active: {} vertices · {} triangles",
                     active.vertices, active.triangles
                 ));
-                ui.label("Changes save automatically. Restart Clay Form to apply.");
+                ui.label("Changes save automatically. Restart SketchOtter to apply.");
                 if *limits != active {
                     ui.strong("Restart required to apply these limits.");
                 }

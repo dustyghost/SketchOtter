@@ -1,4 +1,4 @@
-"""Clay Form material exchange v1. Runs in Blender 4.0+ with a private snapshot.
+"""SketchOtter material exchange v1. Runs in Blender 4.0+ with a private snapshot.
 Shared definition groups + POINT attributes retain editable, blended material uses.
 Only ordinary Principled, Math, Mix Shader and Add Shader nodes are required.
 """
@@ -16,7 +16,7 @@ if bpy.app.version < (4, 0, 0):
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 mesh = bpy.data.meshes.new(data['name'])
-# Convert Clay Form Y-up into Blender Z-up without changing handedness.
+# Convert SketchOtter Y-up into Blender Z-up without changing handedness.
 mesh.from_pydata([(x, -z, y) for x, y, z in data['vertices']], [], data['faces'])
 mesh.update()
 obj = bpy.data.objects.new(data['name'], mesh)

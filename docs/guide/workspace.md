@@ -105,7 +105,7 @@ Raise the mesh budget before importing or building a model that exceeds the defa
 
 1. Open **Settings → Mesh capacity**.
 2. Drag **Maximum vertices** and **Maximum triangles**, or click a number to type an exact value.
-3. Save your project, close Clay Form, and start it again. The settings save automatically.
+3. Save your project, close SketchOtter, and start it again. The settings save automatically.
 4. Reopen **Mesh capacity** and check the **Active** values before continuing.
 
 | Limit per mesh | Default | Largest allowed setting |
@@ -207,7 +207,7 @@ returns them to automatic fitting.
 3. Choose **Find Roll view**, then **Add** beside Roll view. Choose **Place controls**, drag the control to a comfortable spot, and choose **Done placing controls**.
 4. Open **Workspace → Shortcuts**, search for the brush, click **Unbound** and press a key. If it conflicts, **Find binding** takes you to the existing owner so you can clear or change it.
 5. Move or hide a panel in **Built-in panels and toolbar**. Use **Restore hidden panels** to bring hidden tool panels and custom shelves back to the sidebars.
-6. Switch to another named workspace, then back. Restart Clay Form to check that your layout and shared keys have been retained.
+6. Switch to another named workspace, then back. Restart SketchOtter to check that your layout and shared keys have been retained.
 
 ## Recover a layout
 
@@ -257,7 +257,7 @@ Shifted numbers use the physical number-row key, so `!` can bind as Shift+1. Oth
 | --- | --- |
 | Save / Open / New sphere | Ctrl+S / Ctrl+O / Ctrl+N |
 | Undo / Redo | Ctrl+Z / Ctrl+Shift+Z |
-| Search Clay Form | Ctrl+F |
+| Search SketchOtter | Ctrl+F |
 | Zen mode (viewport) | Tab |
 | Reset view | F |
 | Toggle symmetry / guides | Shift+X / G |

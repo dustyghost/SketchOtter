@@ -54,7 +54,7 @@ fn startup_notice_continue_and_version_specific_opt_out_survive_restart() {
     let output = frame(&mut app, &ctx, vec![]);
     assert!(output.shapes.iter().any(|s| matches!(&s.shape,
         egui::Shape::Text(t) if t.galley.text().contains(env!("CARGO_PKG_VERSION")))));
-    click(&mut app, &ctx, "Continue to Clay Form");
+    click(&mut app, &ctx, "Continue to SketchOtter");
     assert!(!app.ui.startup_notice_open);
     assert!(!app.show_startup_notice(&ctx));
     assert!(app.ui.preferences.dismissed_startup_version.is_empty());
@@ -73,7 +73,7 @@ fn startup_notice_continue_and_version_specific_opt_out_survive_restart() {
     app.ui.startup_notice_open = true;
     frame(&mut app, &ctx, vec![]);
     click(&mut app, &ctx, "Don’t show again for this version");
-    click(&mut app, &ctx, "Continue to Clay Form");
+    click(&mut app, &ctx, "Continue to SketchOtter");
     let mut restarted = App::default();
     restarted.ui.preferences = preferences::load(&path).unwrap();
     restarted.ui.initialize_startup_notice();
