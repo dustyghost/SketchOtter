@@ -2,6 +2,14 @@
 use super::*;
 
 impl Document {
+    pub(crate) fn begin_freehand_stroke(&mut self, kind: Kind) {
+        if kind == Kind::Paint {
+            // Paint owns its before-image from the first dab through release or Escape.
+            self.end_edit();
+        } else {
+            self.begin_stroke();
+        }
+    }
     pub fn begin_stroke(&mut self) {
         self.end_edit();
         if !self.stroke_active {

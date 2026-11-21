@@ -68,6 +68,8 @@ impl Document {
             self.end_stroke();
             let dirty = self.dirty;
             self.begin_stroke();
+            #[cfg(test)]
+            crate::sculpt::texture::profile::mark("paint_snapshot");
             let mut settings = self.capture_edit_settings();
             settings.active_brush = Some(brush.clone());
             self.paint_stroke = Some((dirty, settings));
@@ -187,7 +189,19 @@ mod tests {
             delta: Vec3::default(),
             invert: false,
         };
+        doc.begin_freehand_stroke(Kind::Paint);
+        assert!(
+            doc.stroke_before.is_none(),
+            "pointer-down defers the snapshot"
+        );
+        doc.end_stroke();
+        assert_eq!(doc.history_counts(), history, "release without a dab");
+        doc.begin_freehand_stroke(Kind::Paint);
         assert!(doc.apply_dab(&brush, dab));
+        assert!(
+            doc.stroke_before.is_some(),
+            "first dab establishes the snapshot"
+        );
         assert!(doc.apply_dab(&brush, dab));
         assert_eq!(doc.history_counts(), history, "history waits until release");
         assert!(

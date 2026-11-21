@@ -4,6 +4,8 @@ use crate::sculpt::{Material, Project};
 use serde::Serialize;
 use std::{collections::BTreeMap, io::Write};
 
+mod paint_pointer;
+
 const DABS: usize = 12;
 const SCHEMA: u32 = 2;
 
