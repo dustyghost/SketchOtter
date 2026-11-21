@@ -1417,12 +1417,10 @@ impl Gpu {
                 | wgpu::TextureUsages::TEXTURE_BINDING
                 | wgpu::TextureUsages::COPY_SRC,
         );
-        let depth = Self::texture(
-            &self.device,
-            size,
-            DEPTH,
-            wgpu::TextureUsages::RENDER_ATTACHMENT,
-        );
+        let depth_usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
+        #[cfg(test)]
+        let depth_usage = depth_usage | wgpu::TextureUsages::COPY_SRC;
+        let depth = Self::texture(&self.device, size, DEPTH, depth_usage);
         let color_view = color.create_view(&Default::default());
         let depth_view = depth.create_view(&Default::default());
         let composite = self.device.create_bind_group(&wgpu::BindGroupDescriptor {

@@ -198,6 +198,21 @@ fn gpu_indexed_surfaces_match_general_pixels_and_split_buffers() {
                 &preview,
             );
             let actual = gpu.read();
+            let depth = |gpu: &Gpu| {
+                super::ui_capture::read_texture(
+                    &gpu.device,
+                    &gpu.queue,
+                    &gpu.target.as_ref().unwrap()._depth,
+                )
+            };
+            let candidate_depth = depth(&gpu);
+            assert!(
+                candidate_depth
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|v| f32::from_ne_bytes(*v) < 1.)
+            );
             gpu.force_general_surface = true;
             gpu.paint(
                 &params,
@@ -208,6 +223,11 @@ fn gpu_indexed_surfaces_match_general_pixels_and_split_buffers() {
                 &preview,
             );
             assert_eq!(actual, gpu.read(), "extended inspection and split indices");
+            assert_eq!(
+                candidate_depth,
+                depth(&gpu),
+                "extended inspection depth bits"
+            );
         }
     }
     gpu.force_general_surface = false;

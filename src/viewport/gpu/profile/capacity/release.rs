@@ -9,9 +9,9 @@ fn gpu_load_profile_release_fans() {
     crate::sculpt::capacity::initialize(benchmark_capacity(level, 2_000_000, 4_000_000).unwrap())
         .unwrap();
     let mut rows = Vec::new();
-    for fixture_name in ["sphere", "organic", "hidden", "sharpness"] {
+    for fixture_name in ["sphere", "organic", "hidden", "sharpness", "high_valence"] {
         let mut geo = fixture(
-            if fixture_name == "sharpness" {
+            if matches!(fixture_name, "sharpness" | "high_valence") {
                 "sphere"
             } else {
                 fixture_name
@@ -19,6 +19,29 @@ fn gpu_load_profile_release_fans() {
             level,
         );
         let mesh = &mut geo.mesh;
+        if fixture_name == "high_valence" {
+            // An open 4,096-face star shares one centre. Include a persistent
+            // crease and perturb its centre across repeated releases.
+            let hub = mesh.vertices.len();
+            mesh.vertices.push(Vec3(0., 0., 1.2));
+            mesh.mask.push(0.);
+            for i in 0..4096 {
+                let a = std::f32::consts::TAU * i as f32 / 4096.;
+                mesh.vertices.push(Vec3(0.1 * a.cos(), 0.1 * a.sin(), 1.2));
+                mesh.mask.push(0.);
+                mesh.triangles
+                    .push([hub, hub + 1 + i, hub + 1 + (i + 1) % 4096]);
+            }
+            mesh.creases.push([hub, hub + 1]);
+            mesh.creases.sort_unstable();
+            for group in &mut mesh.vertex_groups {
+                group.weights.resize(mesh.vertices.len(), 0.);
+            }
+            if !mesh.polygroups.is_empty() {
+                mesh.polygroups.resize(mesh.triangles.len(), 0);
+            }
+            mesh.validate().unwrap();
+        }
         let mut setup = Measurements::default();
         let topo = setup.time("topology_and_reference_angles", || {
             SurfaceShadingTopology::new(mesh)
@@ -183,7 +206,9 @@ fn gpu_load_profile_release_visual() {
             let other = render(&Arc::new(reference.clone()));
             assert_eq!(pixels, other);
             let count = pixels
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .filter(|p| p[..3] != params.background)
                 .count();
             assert!(count > 1000);

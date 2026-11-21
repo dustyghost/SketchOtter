@@ -1,0 +1,162 @@
+{
+  "display-3": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 21.90282335300003,
+      "sampled_peak_rss_bytes": 1067913216,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 14525579264
+    },
+    "preflight_kib": 15280508,
+    "capacity_kib": 16367524,
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "commit": "00a120cd24b2da1c2bf611eb6ab30a357880ff6b",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "59ec80354490089dbe8dcbf53377d6dd1313614f34cd474ad4c01026dabc7a87",
+    "utc": "2026-11-21T23:13:09Z"
+  },
+  "display-4": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 82.08352761200001,
+      "sampled_peak_rss_bytes": 3147882496,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 12095430656
+    },
+    "preflight_kib": 15144628,
+    "capacity_kib": 16367524,
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "commit": "00a120cd24b2da1c2bf611eb6ab30a357880ff6b",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "59ec80354490089dbe8dcbf53377d6dd1313614f34cd474ad4c01026dabc7a87",
+    "utc": "2026-11-21T23:14:31Z"
+  },
+  "drawing-3": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 23.90161641200001,
+      "sampled_peak_rss_bytes": 1026596864,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 14347075584
+    },
+    "preflight_kib": 15029596,
+    "capacity_kib": 16078420,
+    "cpu": "Intel(R) Xeon(R) 6975P-C",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1014-aws-x86_64-with-glibc2.39",
+    "commit": "ea0cf402f9c6dec0ae91305ac9c298c5f5309654",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "031fb8cf8a56f09a9335912ba8dcd5c3615de5f37f16bdac307c6fa1fc8ff17a",
+    "utc": "2026-11-21T23:07:27Z"
+  },
+  "drawing-4": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 71.203581853,
+      "sampled_peak_rss_bytes": 2432798720,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 12038701056
+    },
+    "preflight_kib": 14863900,
+    "capacity_kib": 16078420,
+    "cpu": "Intel(R) Xeon(R) 6975P-C",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1014-aws-x86_64-with-glibc2.39",
+    "commit": "ea0cf402f9c6dec0ae91305ac9c298c5f5309654",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "031fb8cf8a56f09a9335912ba8dcd5c3615de5f37f16bdac307c6fa1fc8ff17a",
+    "utc": "2026-11-21T23:08:39Z"
+  },
+  "picking-3": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 2.5104391769999665,
+      "sampled_peak_rss_bytes": 387895296,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 15058599936
+    },
+    "preflight_kib": 15040016,
+    "capacity_kib": 16078424,
+    "cpu": "Intel(R) Xeon(R) 6975P-C",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1014-aws-x86_64-with-glibc2.39",
+    "commit": "fb94ac585baa39ce4a5af3ce214a94b24d12b256",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "ef9ab6273384f9e672c9796acf8b9f7df25417d408238376bf87d685f1ebfac4",
+    "utc": "2026-11-21T23:01:33Z"
+  },
+  "picking-4": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 11.849272552999992,
+      "sampled_peak_rss_bytes": 1362624512,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 13909536768
+    },
+    "preflight_kib": 14800576,
+    "capacity_kib": 16078424,
+    "cpu": "Intel(R) Xeon(R) 6975P-C",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1014-aws-x86_64-with-glibc2.39",
+    "commit": "fb94ac585baa39ce4a5af3ce214a94b24d12b256",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "ef9ab6273384f9e672c9796acf8b9f7df25417d408238376bf87d685f1ebfac4",
+    "utc": "2026-11-21T23:01:45Z"
+  },
+  "release-3": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 3.4130256189999955,
+      "sampled_peak_rss_bytes": 214364160,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 15179653120
+    },
+    "preflight_kib": 15058748,
+    "capacity_kib": 16078420,
+    "cpu": "Intel(R) Xeon(R) 6975P-C",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1014-aws-x86_64-with-glibc2.39",
+    "commit": "b2881d16262567ea11f783e3ac351ae242837fb0",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "bc8b30db9c183def8b37f2ee85dbd211bbdab7b10e07d35621640d81b3e0d2dc",
+    "utc": "2026-11-21T23:13:34Z"
+  },
+  "release-4": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 17.961570880000068,
+      "sampled_peak_rss_bytes": 779038720,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 14607597568
+    },
+    "preflight_kib": 14956832,
+    "capacity_kib": 16078420,
+    "cpu": "Intel(R) Xeon(R) 6975P-C",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1014-aws-x86_64-with-glibc2.39",
+    "commit": "b2881d16262567ea11f783e3ac351ae242837fb0",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "bc8b30db9c183def8b37f2ee85dbd211bbdab7b10e07d35621640d81b3e0d2dc",
+    "utc": "2026-11-21T23:13:52Z"
+  }
+}

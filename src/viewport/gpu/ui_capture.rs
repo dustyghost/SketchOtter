@@ -163,7 +163,14 @@ pub(super) fn read_texture(
     });
     let mut encoder = device.create_command_encoder(&Default::default());
     encoder.copy_texture_to_buffer(
-        texture.as_image_copy(),
+        wgpu::TexelCopyTextureInfo {
+            aspect: if texture.format() == super::DEPTH {
+                wgpu::TextureAspect::DepthOnly
+            } else {
+                wgpu::TextureAspect::All
+            },
+            ..texture.as_image_copy()
+        },
         wgpu::TexelCopyBufferInfo {
             buffer: &buffer,
             layout: wgpu::TexelCopyBufferLayout {

@@ -98,6 +98,14 @@ The measurements suggest different approaches for different costs.
 
 **Proposed interactive target.** On the i7-7500U / HD 620, evaluate the 2.4-million-triangle fixture at a recorded desktop resolution. Aim for p95 pointer-to-visible-dab within 50 ms and pen-up within 100 ms, across at least 100 strokes including cold starts. Report orbit separately against a 33 ms frame budget. Begin with the historical 3,072 MiB process RSS guard and a 768 MiB system reserve. Count missed targets and guard stops. A sustained 6–12 million triangle run needs a machine with headroom and the same integrity checks.
 
+## Outcomes from the follow-up experiments
+
+At 2,408,448 source triangles on the hosted Xeon, a local Standard live display and completed upload fell from 56.29 to 16.85 ms. A broad Standard update still took 75.22 ms. The first hidden-surface canonical release fell from 180.3 to 130.1 ms, and the ten-view perspective orbit and pointer workload from 394 to 207 ms. These phases have different boundaries. The timings cannot be added to predict an artist's frame rate. [Method, controls and raw measurements for #109 and #111 to #114](../validation/capacity-followups-2026-11-21/README.md)
+
+On the i7-7500U laptop, removing the second Paint undo snapshot brought a warm first dab from 445 to 239 ms. The first dab after hiding faces still took 944 ms. Large hierarchies, whole-array ownership and exact history continue to set the startup and memory budgets even when a small upload meets the frame target. [Paint implementation and measurements for #110](https://github.com/dustyghost/clay-form/pull/185)
+
+Carry the bounded document revisions through the available brush and display paths before widening the supported working set. The measured full-update fallback matters for broad strokes and for changes to connectivity. A regional HD design would also need an exact boundary halo, a persistent high-resolution detail representation and coordinated history/export across regions. The regional display optimisation handles none of those storage commitments. The current workload evidence supports incremental development within the existing settings.
+
 ## Reproduce the position experiment
 
 Build once from the repository root. On Linux, run one fresh process per level and repeat the loop three times. The example uses the default application capacity. The Linux preflight below requires 1,280 MiB available before each case, allowing a 512 MiB margin above the child’s 768 MiB address-space ceiling. The recorded run also stopped on a fall below 512 MiB available.

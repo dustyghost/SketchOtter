@@ -136,7 +136,7 @@ fn gpu_load_profile_dense_materials() {
             let b = images[1].as_ref().unwrap();
             let mut max_delta = 0;
             let mut drawn = 0;
-            for (a, b) in a.chunks_exact(4).zip(b.chunks_exact(4)) {
+            for (a, b) in a.as_chunks::<4>().0.iter().zip(b.as_chunks::<4>().0) {
                 assert_eq!(a[3], b[3]);
                 assert_eq!(a[..3] == params.background, b[..3] == params.background);
                 drawn += usize::from(a[..3] != params.background);

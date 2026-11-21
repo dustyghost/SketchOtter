@@ -41,7 +41,7 @@ impl SurfaceShadingTopology {
         }
         stage("edge_threshold_and_fan_joins");
         let mut out = SurfaceShading {
-            vertices: Vec::with_capacity(mesh.vertices.len()),
+            vertices: Vec::with_capacity(mesh.vertices.len().min(corners as usize)),
             triangles: Vec::with_capacity(mesh.triangles.len()),
         };
         for (face, t) in mesh.triangles.iter().enumerate() {

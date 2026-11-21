@@ -93,7 +93,7 @@ fn surface_dab(doc: &Document, step: usize) -> Dab {
     Dab {
         center: *target,
         normal: Vec3(0., 0., 1.),
-        radius: if step % 9 == 0 { 0.32 } else { 0.12 },
+        radius: if step.is_multiple_of(9) { 0.32 } else { 0.12 },
         ..dab(step)
     }
 }
@@ -355,7 +355,9 @@ fn gpu_load_profile_upper_boundary() {
     headless.wait();
     assert!(
         gpu.read()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|p| p[..3] != params.background)
     );
     checkpoint("offscreen_draw_completed", v, t, retained);
