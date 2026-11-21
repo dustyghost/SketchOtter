@@ -25,6 +25,14 @@ The retained October runs used the i7-7500U, 7.63 GiB RAM and Intel HD 620 at 80
 | Orbit and picking | The later indexed basic-material draw completed in 16.5 ms median for orthographic organic geometry. Warm CPU scene preparation measured 17.17 ms in a separate camera experiment. A new view, first pick and lookup construction can still cost more. [Draw](../validation/indexed-surface-draw-2026-10-31/README.md) · [Camera](../validation/camera-geometry-2026-10-31/README.md) · [Picking](../validation/picking-and-scene-reuse-2026-10-31/README.md) |
 | Stroke boundaries | Cold organic Paint took 724 ms for the first dab and 111–144 ms on later starts with cached visibility. A release-shading prototype cut Standard release to 59 ms on a sphere but increased it from 257 to 310 ms on masked organic geometry. It was rejected. [Paint](../validation/paint-startup-2026-10-31/README.md) · [Release](../validation/local-release-shading-2026-10-31/README.md) |
 
+The archived runs also give baselines for memory before the first edit and for operations that change topology. These describe different workloads and fixtures.
+
+| Operation | Recorded result and boundary |
+| --- | --- |
+| Idle document | The attributed organic document occupied 106.4 MiB process RSS at 602,112 source triangles and 371.7 MiB at 2,408,448. After the benchmark cloned its reference geometry those values were 161.4 and 571.5 MiB. These are individual samples after document setup, before renderer creation. [602k record](../validation/high-capacity-2026-10-30/gpu-matrix/organic-l3.json) · [2.4m record](../validation/high-capacity-2026-10-30/gpu-matrix/organic-l4.json) |
+| Subdivision | One CPU subdivision of the attributed organic mesh took 806 ms to grow from 150,528 to 602,112 source triangles. The larger interactive matrix builds its starting stack up front and skips further subdivision. [Timed subdivision](../validation/capacity-2026-10-30/cpu/organic-l2.json) |
+| Explicit whole-mesh remesh | At voxel resolution 48, Optimized quads took a median of 7.32 s on the head and 7.86 s on the branched sculpt across three release runs each. The before/after optimisation produced byte-identical output projects. These smaller-asset results cover voxel reconstruction, optimisation, attribute transfer and validation. Adaptive topology under a moving brush at 2.4 million triangles is still unmeasured. [Remesh timings and hashes](../validation/dynamic-quads-2026-10-26/optimized-quads-performance.json) |
+
 The earlier editor work addressed shared settings accounting and worker validation in [#53](https://github.com/dustyghost/clay-form/issues/53). [#60](https://github.com/dustyghost/clay-form/issues/60) addressed live stroke feedback. The timings above identify costs that persisted after those changes. Whole-frame desktop latency, long-session residency and dense adaptive remeshing still need separate measurements.
 
 ## A bounded history experiment
@@ -73,6 +81,14 @@ python3 scripts/benchmark-capacity.py run target/write-capture-run \
 ## Regional HD editing and next work
 
 In the documented **HD Geometry** workflow the artist selects an area under the cursor to edit at high detail, leaves the region to see the coarser model, and can render the complete detail. The active area's size depends on the selected level and available memory. **SpotLight** projects image detail during painting or sculpting. Blender's multiresolution modifier separately selects sculpt, viewport and render levels. These manuals describe user-visible behaviour. They do not establish how the vendors store or page geometry internally. [HD editing controls](https://help.maxon.net/zbr/en-us/Content/html/reference-guide/tool/polymesh/geometry-hd/geometry-hd.html) · [HD workflow](https://help.maxon.net/zbr/en-us/Content/html/user-guide/3d-modeling/modeling-basics/subdivision-levels/hd-geometry/hd-geometry.html) · [SpotLight](https://help.maxon.net/zbr/en-us/Content/html/user-guide/3d-modeling/painting-your-model/spotlight/spotlight.html) · [Multiresolution](https://docs.blender.org/manual/en/5.4/modeling/modifiers/generate/multiresolution.html)
+
+The measurements suggest different approaches for different costs.
+
+| Approach | What it could improve | What would decide it |
+| --- | --- | --- |
+| Share immutable geometry or compress older history | Sharing unmodified topology and attributes across entries could reduce the cost of snapshotting. Lossless compression could reduce the bytes retained after an edit. | Compare with first-write capture on local and broad strokes in separate processes. Track copying on the next write, codec time at release/replay, memory peaks during eviction and bit-exact diagnostics. Compression alone leaves the upfront snapshot cost. |
+| Refit a spatial index | A geometry-owned index could shorten picking after camera changes. Local refits could also narrow the brush search. | Measure build, refit and first hit or miss across camera changes and topology edits against exhaustive picking. Rebuild when source indices change. |
+| Keep a coarse overview and page high-detail regions | An overview could sustain orbit while only the active high-detail region and its neighbours are resident for editing. | Compare transitions, seam and normal continuity, mirrored dabs, masks and painted detail with a fully resident control. Require save/reopen and export to include unloaded regions. Test disk-backed chunks only if memory pressure warrants the added I/O. |
 
 | Stage | Experiment and decision |
 | --- | --- |
