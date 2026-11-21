@@ -1,0 +1,46 @@
+name: Bounded Paint startup measurements
+on:
+  push:
+    branches: [bench/110-paint-pointer]
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y libwayland-dev libxkbcommon-dev
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+      - name: Build optimised library tests
+        run: |
+          cargo test --locked --release --lib --no-run -j 2 --message-format=json > "$RUNNER_TEMP/build.jsonl"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          binary, = [v['executable'] for line in (Path(os.environ['RUNNER_TEMP'])/'build.jsonl').read_text().splitlines() if (v:=json.loads(line)).get('reason')=='compiler-artifact' and v.get('executable') and v.get('profile',{}).get('test')]
+          with open(os.environ['GITHUB_ENV'],'a') as out:
+              print('BENCH_BINARY='+binary,file=out)
+          PY
+      - name: Compare cold, warm and invalidated Paint strokes
+        run: |
+          for level in 3 4; do
+            python3 scripts/profile-paint-pointer.py "$BENCH_BINARY" "target/paint-level-$level" --level "$level" --repeats 4 --max-rss-mib 4096 --min-available-mib 1024 --timeout 1200
+            python3 - "$level" <<'PY'
+          import json, sys
+          from pathlib import Path
+          folder=Path('target')/('paint-level-'+sys.argv[1])
+          for name in ['guard','samples']:
+              print('PAINT_RECORD '+name+' '+json.dumps(json.loads((folder/(name+'.json')).read_text()),separators=(',',':')))
+          PY
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paint-pointer-samples
+          path: target/paint-level-*/*

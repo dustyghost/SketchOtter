@@ -362,6 +362,7 @@ mod texture_target_tests {
         brush.material = crate::sculpt::Material::from_srgb([1., 0., 0.], 0.5, 0.);
         brush.strength = 0.2;
         let dab = crate::sculpt::texture::tests::dab();
+        doc.begin_freehand_stroke(Kind::Paint);
         assert!(doc.apply_dab(&brush, dab));
         let storage = doc.mesh().uv.textures[0].pixels.storage_id();
         assert!(doc.apply_dab(&brush, dab));
@@ -377,8 +378,13 @@ mod texture_target_tests {
         doc.undo();
         assert_eq!(doc.geometry_snapshot(), before);
         doc.redo();
-        assert_ne!(doc.geometry_snapshot(), before);
+        let painted = doc.geometry_snapshot();
+        let history = doc.history_counts();
+        assert_ne!(painted, before);
+        doc.begin_freehand_stroke(Kind::Paint);
         assert!(doc.apply_dab(&brush, dab));
         assert!(doc.cancel_paint_stroke());
+        assert_eq!(doc.geometry_snapshot(), painted);
+        assert_eq!(doc.history_counts(), history);
     }
 }
