@@ -80,5 +80,10 @@ sleep 5
 if command -v import >/dev/null; then
     import -window root -resize 640x360 "$output/desktop-before.png"
 fi
+# The saved two-model workload opens with the right-hand bottle active.
+# An arbitrary project can select another exposed surface with the two variables.
+target_x=0.53125
+target_y=0.50
+if (( $# )); then target_x=0.621; target_y=0.45; fi
 timeout 120 /usr/bin/python3 "$(dirname "$0")/profile-x11-pointer.py" "$output/pointer.json" \
-    --window "$window" --executable "$binary" --present-helper "$output/present-observer"
+    --target "${CLAY_DESKTOP_X:-$target_x}" "${CLAY_DESKTOP_Y:-$target_y}" --window "$window" --executable "$binary" --present-helper "$output/present-observer"

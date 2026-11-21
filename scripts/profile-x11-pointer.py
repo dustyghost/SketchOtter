@@ -22,14 +22,18 @@ def main():
     parser.add_argument("--window", type=int, required=True, help="SketchOtter's X window ID")
     parser.add_argument("--present-helper", type=Path, help="compiled profile-x11-present observer")
     parser.add_argument("--executable", type=Path, help="native binary from this run")
+    parser.add_argument("--target", nargs=2, type=float, default=(0.53125, 0.5),
+                        metavar=("X", "Y"), help="model point as fractions of the client area")
     args = parser.parse_args()
+    if not all(0.1 <= c <= 0.9 for c in args.target):
+        parser.error("target must lie within the middle 80% of the client area")
     connection = display.Display()
     screen = connection.screen()
     win = connection.create_resource_object("window", args.window)
     geo = win.get_geometry()
     origin = screen.root.translate_coords(win, 0, 0)
     width, height = geo.width, geo.height
-    cx, cy = width // 2 + width // 32, height // 2
+    cx, cy = round(width * args.target[0]), round(height * args.target[1])
     size = min(width, height) // 5
     def move(x, y):
         xtest.fake_input(connection, X.MotionNotify, x=origin.x+x, y=origin.y+y)
@@ -131,7 +135,7 @@ def main():
     report = {"server_present_events":len(events),"matched_content_presentations":len(qualified),
               "matched_presentation_median_ms":statistics.median(qualified) if qualified else None,
               "screen_pixels":[screen.width_in_pixels,screen.height_in_pixels],"window_pixels":[width,height],
-              "sample_region_pixels":size,"window_origin":[origin.x,origin.y],"distinct_released_images":persistent,
+              "target_fraction":args.target,"sample_region_pixels":size,"window_origin":[origin.x,origin.y],"distinct_released_images":persistent,
               "timed_changes":len(good),"median_visible_change_ms":statistics.median(good) if good else None,
               "display":os.environ["DISPLAY"],"x_server":subprocess.check_output(["xdpyinfo"],text=True).split("number of extensions:")[0][-800:],
               "measurement":"XTest press and short drag to the first X11 read containing at least eight changed pixels confirmed after release and pointer removal; excludes physical tablet and scan-out",
