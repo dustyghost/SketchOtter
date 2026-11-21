@@ -21,6 +21,8 @@ pub(crate) struct InteractionSession {
     pub(super) scene_preview: Option<std::sync::Arc<super::gpu::DisplayMesh>>,
     pub(crate) join_rims: Vec<super::JoinRim>,
     pub(crate) join_pick: Option<(usize, usize)>,
+    pub(crate) show_join_patch: bool,
+    pub(crate) show_join_removed: bool,
     pub(crate) join_patch: Vec<[Vec3; 2]>,
     pub(crate) join_removed: Vec<[Vec3; 2]>,
     pub(crate) gesture: Option<Gesture>,

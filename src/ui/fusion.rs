@@ -171,7 +171,8 @@ impl UiState {
                         }
                         ui.separator();
                         if s.ready {
-                            ui.checkbox(&mut s.show_patch, "Highlight new patch");
+                            let label = if s.intersections { "Highlight new patch" } else { "Highlight patch and rims" };
+                            ui.checkbox(&mut s.show_patch, label);
                             if s.has_removed_faces {
                                 ui.checkbox(&mut s.show_removed, "Show removed source faces");
                             }

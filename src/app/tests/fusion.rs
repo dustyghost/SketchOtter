@@ -174,8 +174,9 @@ fn fusion_closed_bridge_previews_and_commits_the_cull_in_one_undo() {
     assert!(app.ui.fusion.notice.contains("Culled 6 enclosed polygons"));
     assert!(app.ui.fusion.has_removed_faces);
     assert!(
-        app.fusion
-            .removed
+        app.viewport
+            .session
+            .join_removed
             .iter()
             .flatten()
             .all(|v| interior.vertices.contains(v))
@@ -235,9 +236,106 @@ fn intersection_fusion_previews_wider_collars_and_more_segments_on_overlapping_s
                 .notice
                 .contains(&format!("{collar} collar rings · {segments} segments"))
         );
-        assert_ne!(app.fusion.patch.len(), previous_edges);
-        previous_edges = app.fusion.patch.len();
+        assert_ne!(app.viewport.session.join_patch.len(), previous_edges);
+        previous_edges = app.viewport.session.join_patch.len();
     }
     app.dispatch(Command::ApplyFusion, &ctx);
     app.document.mesh().validate_closed().unwrap();
+}
+
+#[test]
+fn fusion_intersection_protection_errors_keep_both_sources_and_history() {
+    use crate::sculpt::fusion::tests::relief_parts;
+    for hidden in [false, true] {
+        let [mut a, b] = relief_parts(32);
+        let point = a
+            .vertices
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.1.abs() < 0.2 && p.2.abs() < 0.2)
+            .max_by(|(_, p), (_, q)| p.0.total_cmp(&q.0))
+            .unwrap()
+            .0;
+        if hidden {
+            a.hidden_faces.resize(a.triangles.len(), false);
+            for (triangle, flag) in a.triangles.iter().zip(&mut a.hidden_faces) {
+                *flag = triangle.contains(&point);
+            }
+        } else {
+            a.mask[point] = 1.;
+        }
+        let mut geometry = Geometry::new(a);
+        geometry.submodels.push(Submodel {
+            name: "Second relief".into(),
+            mesh: b,
+            mesh_settings: Default::default(),
+            metadata: Default::default(),
+        });
+        let mut app = App::default();
+        let ctx = egui::Context::default();
+        app.document.replace_geometry(geometry).unwrap();
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        app.dispatch(Command::OpenFusion, &ctx);
+        finish_fusion(&mut app);
+        app.ui.fusion.intersections = true;
+        app.dispatch(Command::PreviewFusion, &ctx);
+        finish_fusion(&mut app);
+        assert!(
+            app.ui.fusion.notice_is_error && !app.ui.fusion.ready,
+            "{}",
+            app.ui.fusion.notice
+        );
+        assert!(
+            app.ui.fusion.notice.contains("hidden or masked"),
+            "{}",
+            app.ui.fusion.notice
+        );
+        assert_eq!(app.document.geometry_snapshot(), before);
+        assert_eq!(app.document.history_counts(), history);
+    }
+}
+
+#[test]
+fn fusion_open_end_settings_change_the_patch_and_repeat_exactly() {
+    let (mut app, ctx) = setup_fusion();
+    app.dispatch(Command::OpenFusion, &ctx);
+    finish_fusion(&mut app);
+    app.ui.fusion.selected = [Some(1), Some(0)];
+    let original = app.document.geometry_snapshot();
+    let mut previous = None;
+    let mut tuned = None;
+    for (segments, twist, curvature) in [
+        (4, 0, 0.5),
+        (5, 0, 0.5),
+        (5, 1, 0.5),
+        (5, 1, 0.8),
+        (4, 0, 0.5),
+        (5, 1, 0.8),
+    ] {
+        app.ui.fusion.options = crate::sculpt::fusion::JoinOptions {
+            segments,
+            twist,
+            curvature,
+        };
+        app.dispatch(Command::ClearFusion, &ctx);
+        app.dispatch(Command::PreviewFusion, &ctx);
+        finish_fusion(&mut app);
+        assert!(app.ui.fusion.ready, "{}", app.ui.fusion.notice);
+        assert!(app.document.geometry_matches(&original));
+        let current = app.fusion.preview_mesh();
+        if let Some(last) = &previous {
+            assert_ne!(current, last);
+        }
+        if curvature == 0.8 {
+            if let Some(expected) = &tuned {
+                assert_eq!(current, expected);
+            } else {
+                tuned = Some(current.clone());
+            }
+        }
+        previous = Some(current.clone());
+    }
+    app.dispatch(Command::ApplyFusion, &ctx);
+    assert_eq!(app.document.mesh(), tuned.as_ref().unwrap());
 }

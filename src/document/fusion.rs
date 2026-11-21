@@ -45,7 +45,6 @@ impl Document {
         sources: [usize; 2],
     ) -> Result<Geometry, String> {
         self.require_fusion_sources(sources)?;
-        let mesh = crate::sculpt::fusion::compact(mesh);
         mesh.validate()?;
         let mut models = self.ordered_models();
         let mut number = 1;

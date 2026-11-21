@@ -656,16 +656,8 @@ impl App {
             _ => None,
         };
         self.viewport.set_join_preview(self.fusion.display.clone());
-        self.viewport.session.join_patch = if self.ui.fusion.show_patch {
-            self.fusion.patch.clone()
-        } else {
-            Vec::new()
-        };
-        self.viewport.session.join_removed = if self.ui.fusion.show_removed {
-            self.fusion.removed.clone()
-        } else {
-            Vec::new()
-        };
+        self.viewport.session.show_join_patch = self.ui.fusion.show_patch;
+        self.viewport.session.show_join_removed = self.ui.fusion.show_removed;
         self.viewport.session.guided.enabled = self.ui.guide_paths
             && !self.ui.mask_active
             && !temporary_visibility

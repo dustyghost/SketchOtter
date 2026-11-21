@@ -324,20 +324,21 @@ pub(crate) fn validate_connector(
         if i % 128 == 0 {
             cancelled(cancel)?;
         }
-        let mut hit = false;
+        let mut hit = None;
         index.contacts(mesh.triangles[i].map(|v| mesh.vertices[v]), |j| {
             if j < i {
-                hit = true;
+                hit = Some(hit.map_or(j, |earlier: usize| earlier.min(j)));
             }
         });
-        if hit && first_new == 0 {
-            return Err("The solid contains self-intersecting faces".into());
-        }
-        if hit {
-            return Err(
-                "The connector intersects a surface; adjust alignment, curvature or the openings"
-                    .into(),
-            );
+        if let Some(other) = hit {
+            let reason = if first_new == 0 {
+                "The solid contains self-intersecting faces"
+            } else if other < first_new {
+                "The connector intersects retained geometry. Reduce its width or adjust the openings"
+            } else {
+                "The connector intersects itself. Adjust the alignment or curvature"
+            };
+            return Err(reason.into());
         }
     }
     Ok(())
