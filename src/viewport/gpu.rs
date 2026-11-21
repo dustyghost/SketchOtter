@@ -1608,7 +1608,7 @@ impl Gpu {
 mod display;
 #[cfg(all(test, target_os = "linux"))]
 mod indexed_test;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod profile;
 #[cfg(test)]
 mod scene_cache_tests;
@@ -1628,7 +1628,7 @@ mod perspective_test;
 mod rotation_test;
 #[cfg(all(test, target_os = "linux"))]
 mod slice_test;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 pub(super) mod ui_capture;
 #[cfg(all(test, target_os = "linux"))]
 mod visibility_test;

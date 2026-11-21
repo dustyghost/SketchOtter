@@ -10,14 +10,18 @@ pub(super) struct Headless {
 impl Headless {
     pub fn new() -> Self {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN,
+            backends: if cfg!(target_os = "macos") {
+                wgpu::Backends::METAL
+            } else {
+                wgpu::Backends::VULKAN
+            },
             ..Default::default()
         });
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             force_fallback_adapter: std::env::var_os("CLAY_GPU_SOFTWARE").is_some(),
             ..Default::default()
         }))
-        .expect("a Vulkan adapter (e.g. Mesa lavapipe) is required");
+        .expect("a native wgpu adapter is required");
         eprintln!("wgpu adapter: {:?}", adapter.get_info());
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))

@@ -141,6 +141,19 @@ fn fingerprint(value: &impl Serialize) -> String {
     format!("{:016x}", hash.0)
 }
 
+#[cfg(target_os = "macos")]
+fn memory() -> serde_json::Value {
+    let rss = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .map(|v| v * 1024);
+    serde_json::json!({"rss_bytes":rss})
+}
+
+#[cfg(target_os = "linux")]
 fn memory() -> serde_json::Value {
     let status = std::fs::read_to_string("/proc/self/status").unwrap();
     let get = |name: &str| {
