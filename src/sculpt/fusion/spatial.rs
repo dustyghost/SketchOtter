@@ -257,7 +257,15 @@ fn intersects(a: [Vec3; 3], b: [Vec3; 3]) -> bool {
         .collect::<Vec<_>>();
     for (p, q) in [(a, b), (b, a)] {
         for i in 0..3 {
-            let d = p[(i + 1) % 3] - p[i];
+            let end = p[(i + 1) % 3];
+            // This segment already meets the other plane at its shared vertex.
+            // A nearly coplanar ray can misplace that known hit along the edge.
+            // Opposite edges still detect crossings beyond the vertex, and the
+            // planar overlap test below handles segments lying in both planes.
+            if q.contains(&p[i]) || q.contains(&end) {
+                continue;
+            }
+            let d = end - p[i];
             if let Some([t, u, w]) = ray_hit(p[i], d, q)
                 && (-1e-8..=1. + 1e-8).contains(&t)
                 && u >= -1e-8
@@ -431,4 +439,34 @@ pub(super) fn enclosed_triangles(
         return Err("Intersection fusion requires outward-facing exterior solid shells".into());
     }
     Ok(shell_of.into_iter().map(|shell| enclosed[shell]).collect())
+}
+
+#[cfg(test)]
+mod contact_tests {
+    use super::*;
+
+    #[test]
+    fn fusion_shared_vertex_contacts_on_nearly_coplanar_faces() {
+        // Two refined faces of a sphere. Their only contact is the shared corner.
+        let p = Vec3(-0.7330128, -0.50000006, 0.75);
+        let a = [
+            p,
+            Vec3(-0.727329, -0.5483384, 0.7150356),
+            Vec3(-0.7190062, -0.5523666, 0.7173666),
+        ];
+        let b = [
+            p,
+            Vec3(-0.7708377, -0.51208466, 0.7150356),
+            Vec3(-0.7520493, -0.51611286, 0.72435945),
+        ];
+        assert!(!intersects(a, b));
+        assert!(!intersects(b, a));
+
+        let p = Vec3::default();
+        let a = [p, Vec3(2., 0., 0.), Vec3(0., 2., 0.)];
+        let crossing = [p, Vec3(0.5, 0.5, -1.), Vec3(0.5, 0.5, 1.)];
+        assert!(intersects(a, crossing));
+        let folded = [p, Vec3(2., 0., 0.), Vec3(0.5, 0.5, 0.)];
+        assert!(intersects(a, folded));
+    }
 }
