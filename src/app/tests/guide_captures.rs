@@ -389,6 +389,25 @@ fn local_fusion_controls_offscreen_review() {
     g.app.dispatch(Command::OpenFusion, &g.ctx);
     super::fusion::finish_fusion(&mut g.app);
     g.save("08-small-window-controls");
+    click_guide_label(&mut g, "Intersections");
+    click_guide_label(&mut g, "Preview join");
+    super::fusion::finish_fusion(&mut g.app);
+    assert!(g.app.ui.fusion.notice_is_error);
+    g.save("09-small-window-join-error");
+    let message = format!("Join failed: {}", g.app.ui.fusion.notice);
+    let notice = g
+        .text_positions
+        .iter()
+        .find(|(label, _)| label == &message)
+        .expect("The join error is visible above the action buttons")
+        .1;
+    let preview = g
+        .text_positions
+        .iter()
+        .find(|(label, _)| label == "Preview join")
+        .unwrap()
+        .1;
+    assert!(notice.y > 0. && notice.y < preview.y && preview.y < 480.);
     click_guide_label(&mut g, "Cancel join");
     assert!(!g.app.ui.fusion.open);
 }

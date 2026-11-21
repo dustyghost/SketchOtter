@@ -26,6 +26,11 @@ pub(super) fn finish_fusion(app: &mut App) {
 #[test]
 fn fusion_preview_is_private_and_apply_restores_both_sources_in_one_undo() {
     let (mut app, ctx) = setup_fusion();
+    let mut scene = app.document.geometry_snapshot();
+    scene.mesh.uv.seams = vec![[0, 8]];
+    scene.submodels[0].mesh.uv.seams = vec![[1, 13]];
+    app.document.replace_geometry(scene).unwrap();
+    app.document.mark_saved("join.clay");
     let before = app.document.geometry_snapshot();
     let history = app.document.history_counts();
     app.dispatch(Command::OpenFusion, &ctx);
@@ -53,6 +58,8 @@ fn fusion_preview_is_private_and_apply_restores_both_sources_in_one_undo() {
     );
     assert_eq!(app.document.history_counts().0, history.0 + 1);
     let after = app.document.geometry_snapshot();
+    let offset = before.mesh.vertices.len();
+    assert_eq!(after.mesh.uv.seams, [[0, 8], [offset + 1, offset + 13]]);
     let encoded = serde_json::to_string(&app.document.project()).unwrap();
     let mut restored = Document::default();
     restored
@@ -188,4 +195,49 @@ fn fusion_closed_bridge_previews_and_commits_the_cull_in_one_undo() {
     assert_eq!(app.document.geometry_snapshot(), scene);
     app.dispatch(Command::Redo, &ctx);
     assert_eq!(app.document.geometry_snapshot(), joined);
+}
+
+#[test]
+fn intersection_fusion_previews_wider_collars_and_more_segments_on_overlapping_spheres() {
+    use crate::sculpt::{Primitive, PrimitiveKind, Vec3};
+    let mut left = Primitive::for_kind(PrimitiveKind::UvSphere).mesh().unwrap();
+    let mut right = left.clone();
+    for p in &mut left.vertices {
+        *p = *p + Vec3(-0.3, 0., 0.);
+    }
+    for p in &mut right.vertices {
+        *p = *p + Vec3(0.3, 0.03, 0.02);
+    }
+    let mut geometry = Geometry::new(left);
+    geometry.submodels.push(Submodel {
+        name: "Right sphere".into(),
+        mesh: right,
+        mesh_settings: Default::default(),
+        metadata: Default::default(),
+    });
+    let mut app = App::default();
+    let ctx = egui::Context::default();
+    app.document.replace_geometry(geometry).unwrap();
+    app.dispatch(Command::OpenFusion, &ctx);
+    finish_fusion(&mut app);
+    app.ui.fusion.intersections = true;
+    let mut previous_edges = 0;
+    for (collar, segments) in [(1, 4), (1, 5), (2, 5), (2, 8)] {
+        app.ui.fusion.collar = collar;
+        app.ui.fusion.options.segments = segments;
+        app.dispatch(Command::ClearFusion, &ctx);
+        app.dispatch(Command::PreviewFusion, &ctx);
+        finish_fusion(&mut app);
+        assert!(app.ui.fusion.ready, "{}", app.ui.fusion.notice);
+        assert!(
+            app.ui
+                .fusion
+                .notice
+                .contains(&format!("{collar} collar rings · {segments} segments"))
+        );
+        assert_ne!(app.fusion.patch.len(), previous_edges);
+        previous_edges = app.fusion.patch.len();
+    }
+    app.dispatch(Command::ApplyFusion, &ctx);
+    app.document.mesh().validate_closed().unwrap();
 }

@@ -861,7 +861,7 @@ impl App {
         if let Err(error) = result {
             self.diagnostic_warning("An application command failed; detailed error text withheld to exclude personal paths");
             if self.ui.fusion.open {
-                self.ui.fusion.notice = error.clone();
+                self.ui.fusion.show_error(error.clone());
             }
             self.ui.status = error;
         }

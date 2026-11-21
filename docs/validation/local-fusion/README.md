@@ -54,6 +54,24 @@ Commands were serialized under `/home/mark/.cache/codex-build.lock`, with one co
 
 The deeper-overlap 96-segment sphere experiment with a one-ring collar was rejected by connector intersection validation. A larger source density is not a promise that every collar setting succeeds. Invalid previews leave both sources intact and require a different collar, correspondence or overlap; there is no fallback to whole-mesh remeshing.
 
+## UV-mapped source preparation, 21 November 2026
+
+Both join modes combine source attributes. On `ea4b362`, each mapped triangle triggered a comparison of its source's complete saved UV topology against the current topology. The join now performs that check before the face loop.
+
+| Combined source triangles | Before | After |
+| ---: | ---: | ---: |
+| 4,416 | 52 ms | 49 ms |
+| 18,048 | 413 ms | 220 ms |
+| 40,896 | 1,534 ms | 429 ms |
+
+The manual `fusion_uv_merge_profile` measures the complete `fusion::merge` call on two UV spheres, including mesh validation and copying the geometry and UVs. Each size has three timed merges per revision. The table shows their medians on an i7-7500U under Linux, using Rust 1.99.0 and the unoptimised test profile. Fixture construction, intersection detection, stitching, viewport updates and Apply are outside the timed region.
+
+```sh
+cargo test --locked -j 1 --lib fusion_uv_merge_profile -- --ignored --nocapture --test-threads=1
+```
+
+The seam regression reproduced the stale-map error on the baseline. The focused cases now exercise pre-unwrap seams in both modes, removal of buried seams, mixed mapped and unmapped faces, incompatible texture bindings, and an open-end join through Apply, save/reopen and Undo/Redo.
+
 ## Remaining acceptance work
 
 Review this first implementation on representative detailed production sculpts, including thin nearby sheets and attribute seams, and measure the complete application's preview/Apply memory at larger scene sizes. Visually judge transition deviation and silhouette across those fixtures. Intersection pairing currently requires mutually nearest simple loops; arbitrary junctions, tangencies, coincident faces, containment without a crossing seam and inward-facing exterior shells are unsupported. This evidence does not close either story by itself.

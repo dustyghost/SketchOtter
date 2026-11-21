@@ -1,7 +1,7 @@
 //! Local surface joining. Source polygons and vertices are never resampled.
 use super::uv::{UvMap, edge};
 use super::{Mesh, Vec3, max_triangles, max_vertices};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 pub(crate) mod boolean;
 mod intersection;
 mod spatial;
@@ -190,8 +190,26 @@ pub(crate) fn compact(mut mesh: Mesh) -> Mesh {
 }
 
 fn check_uv(mesh: &Mesh) -> Result<(), String> {
-    if !mesh.uv.is_empty() && !mesh.uv.current(mesh) {
+    if (!mesh.uv.corners.is_empty() || !mesh.uv.textures.is_empty()) && !mesh.uv.current(mesh) {
         return Err("Restore or clear the inactive UV mapping before joining".into());
+    }
+    // Seam marks can exist before the first unwrap. They still have to name
+    // edges of this source before a second source's vertex offset is applied.
+    if !mesh.uv.seams.is_empty() {
+        let mut missing: HashSet<_> = mesh.uv.seams.iter().copied().collect();
+        for &[a, b, c] in &mesh.triangles {
+            for e in [edge(a, b), edge(b, c), edge(c, a)] {
+                missing.remove(&e);
+            }
+            if missing.is_empty() {
+                break;
+            }
+        }
+        if !missing.is_empty() {
+            return Err(
+                "Clear or remark UV seams that no longer match source edges before joining".into(),
+            );
+        }
     }
     Ok(())
 }
@@ -201,11 +219,19 @@ fn check_uv(mesh: &Mesh) -> Result<(), String> {
 pub(crate) fn merge(a: &Mesh, b: &Mesh) -> Result<Mesh, String> {
     check_uv(a)?;
     check_uv(b)?;
-    if !a.uv.textures.is_empty() && !b.uv.textures.is_empty() && a.uv.textures != b.uv.textures {
+    // A mapped face without an image would pick up the other model's atlas.
+    // An unmapped face can safely share the result's texture bindings.
+    let uses_binding =
+        |uv: &UvMap| !uv.textures.is_empty() || (0..uv.corners.len()).any(|f| uv.mapped(f));
+    if uses_binding(&a.uv)
+        && uses_binding(&b.uv)
+        && (a.uv.textures.len() != b.uv.textures.len()
+            || !a.uv.textures.iter().all(|t| b.uv.textures.contains(t)))
+    {
         return Err("The two meshes use different texture images; bake them to a shared atlas before joining".into());
     }
     let mut out = a.merged_with(b)?;
-    if a.uv.current(a) || b.uv.current(b) {
+    if !a.uv.corners.is_empty() || !b.uv.corners.is_empty() {
         out.uv = UvMap {
             textures: if a.uv.textures.is_empty() {
                 b.uv.textures.clone()
@@ -222,21 +248,19 @@ pub(crate) fn merge(a: &Mesh, b: &Mesh) -> Result<Mesh, String> {
                 out.uv
                     .masks
                     .push(mesh.uv.masks.get(i).copied().unwrap_or([0.; 3]));
-                out.uv
-                    .removed
-                    .push(!mesh.uv.current(mesh) || !mesh.uv.mapped(i));
+                out.uv.removed.push(!mesh.uv.mapped(i));
             }
         }
         out.uv.topology = out.triangles.clone();
-        out.uv.seams =
-            a.uv.seams
-                .iter()
-                .copied()
-                .chain(b.uv.seams.iter().map(|e| e.map(|v| v + a.vertices.len())))
-                .collect();
-        out.uv.seams.sort_unstable();
-        out.uv.seams.dedup();
     }
+    out.uv.seams =
+        a.uv.seams
+            .iter()
+            .copied()
+            .chain(b.uv.seams.iter().map(|e| e.map(|v| v + a.vertices.len())))
+            .collect();
+    out.uv.seams.sort_unstable();
+    out.uv.seams.dedup();
     out.validate()?;
     Ok(out)
 }
@@ -268,23 +292,6 @@ fn position(mesh: &Mesh, weights: &[(usize, f32)]) -> Vec3 {
     weights
         .iter()
         .fold(Vec3::default(), |s, &(v, w)| s + mesh.vertices[v] * w)
-}
-
-fn outward_tangents(mesh: &Mesh, ring: &[usize]) -> Vec<Vec3> {
-    let chosen: BTreeSet<_> = ring.iter().copied().collect();
-    let mut sums = vec![Vec3::default(); mesh.vertices.len()];
-    for p in mesh.polygons() {
-        for &v in &p.vertices {
-            if chosen.contains(&v) {
-                for &other in &p.vertices {
-                    if !chosen.contains(&other) {
-                        sums[v] = sums[v] + (mesh.vertices[v] - mesh.vertices[other]);
-                    }
-                }
-            }
-        }
-    }
-    sums.into_iter().map(Vec3::norm).collect()
 }
 
 /// Add just the connector; existing vertices, triangles, quads and attributes stay exact.
@@ -364,8 +371,7 @@ pub(crate) fn bridge(
     {
         return Err("The connector exceeds the mesh budget; reduce segments".into());
     }
-    let ta = outward_tangents(mesh, &a);
-    let tb = outward_tangents(mesh, &b);
+    let normals = mesh.normals();
     let mut out = mesh.clone();
     out.polygroups.resize(out.triangles.len(), 0);
     out.hidden_faces.resize(out.triangles.len(), false);
@@ -380,18 +386,17 @@ pub(crate) fn bridge(
             let p = position(mesh, &wa);
             let q = position(mesh, &wb);
             let delta = q - p;
-            let da = wa
-                .iter()
-                .fold(Vec3::default(), |s, &(v, w)| s + ta[v] * w)
-                .norm();
-            let db = wb
-                .iter()
-                .fold(Vec3::default(), |s, &(v, w)| s + tb[v] * w)
-                .norm();
-            let length = delta.len();
-            // Hermite endpoint tangents blend toward the straight connector.
-            let ma = delta * (1. - options.curvature) + da * (length * options.curvature);
-            let mb = delta * (1. - options.curvature) - db * (length * options.curvature);
+            // Project the crossing direction onto each source tangent plane.
+            // A stepped cut rim can point sideways along its own boundary.
+            let tangent = |weights: &[(usize, f32)]| {
+                let n = weights
+                    .iter()
+                    .fold(Vec3::default(), |sum, &(v, w)| sum + normals[v] * w)
+                    .norm();
+                delta - n * (options.curvature * n.dot(delta))
+            };
+            let ma = tangent(&wa);
+            let mb = tangent(&wb);
             let point = p * (2. * t * t * t - 3. * t * t + 1.)
                 + q * (-2. * t * t * t + 3. * t * t)
                 + ma * (t * t * t - 2. * t * t + t)

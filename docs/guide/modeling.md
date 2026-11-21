@@ -942,7 +942,7 @@ When the result closes, the preview removes separate shells fully enclosed by it
 
 ### Attributes and supported sources
 
-Untouched masks, vertex materials, group weights, creases and compatible face-corner UVs survive. Separate source groups remain separate, with duplicate names renamed. New vertices interpolate materials and group weights from both rims; new faces have no polygroup and are unmapped in UVs. New edges are not creased. Unwrap the connector afterwards. Sources with different texture images must first share an atlas; stale UV mappings must be restored or cleared.
+Untouched masks, vertex materials, group weights, creases and compatible face-corner UVs survive. Separate source groups remain separate, with duplicate names renamed. New vertices interpolate materials and group weights from both rims; new faces have no polygroup and are unmapped in UVs. New edges are not creased. Unwrap the connector afterwards. You can join before unwrapping. Marked seams on surviving edges carry over from both sources. Mapped faces from both models need matching texture bindings in each channel, including faces using vertex colour alone. Unmapped faces can join a textured model. Restore or clear stale UV mappings before joining.
 
 Convert parametric primitives and apply or remove Thickness before joining. Disable symmetry: this tool operates on the explicitly chosen pair. It uses each source's current stored mesh level and gives the joined result a fresh subdivision stack. Higher and lower levels remain on the hidden originals. Path bindings remain attached to those originals; the joined result is an independent sculpt mesh.
 
