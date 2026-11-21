@@ -66,33 +66,51 @@ def main():
     for sample in range(12):
         dx = (sample % 5 - 2) * 8
         dy = (sample // 5 - 1) * 10
+        move(width//12, height//12)
+        time.sleep(.18)
+        clean = stable()
         move(cx+dx, cy+dy)
         time.sleep(.16)
         before = stable()
         start = time.monotonic_ns()
         xtest.fake_input(connection, X.ButtonPress, 1)
         connection.flush()
-        last_unchanged = start
-        first_visible = None
+        # Include a short, fixed drag so the normal desktop gesture recogniser
+        # receives a stroke. Correlate frames with the final model below.
+        move(cx+dx+7, cy+dy+3)
         observations = 0
-        # Press at the established hover position. The first changed pixels
-        # precede dragging, so a moving hover ring cannot supply the first sample.
-        while time.monotonic_ns()-start < 2_500_000_000:
+        transitions = []
+        previous = before
+        last_read = start
+        while time.monotonic_ns()-start < 900_000_000:
             value = capture()
             observed = time.monotonic_ns()
             observations += 1
-            if value != before:
-                first_visible = observed
-                break
-            last_unchanged = observed
-            time.sleep(.001)
-        move(cx+dx+9,cy+dy+4)
-        time.sleep(.04)
+            if value != previous:
+                transitions.append((last_read, observed, value))
+                previous = value
+            last_read = observed
+            time.sleep(.002)
         xtest.fake_input(connection, X.ButtonRelease, 1)
         connection.sync()
         move(width//12, height//12)
         time.sleep(.22)
         after = stable()
+        # Select changed model pixels with the same value after brush release
+        # and pointer removal. Exclude both the starting hover and clean image.
+        clean_pixels = memoryview(clean).cast("I")
+        before_pixels = memoryview(before).cast("I")
+        after_pixels = memoryview(after).cast("I")
+        changed = [i for i, pixel in enumerate(after_pixels)
+                   if pixel != clean_pixels[i] and pixel != before_pixels[i]]
+        last_unchanged = last_read
+        first_visible = None
+        for preceding, observed, value in transitions:
+            pixels = memoryview(value).cast("I")
+            if sum(pixels[i] == after_pixels[i] for i in changed) >= 8:
+                last_unchanged = preceding
+                first_visible = observed
+                break
         # Only claim a content-correlated completion if one server timestamp
         # falls between the last unchanged read and first changed read. Keep
         # multiple or absent events explicitly ambiguous.
@@ -100,7 +118,7 @@ def main():
         rows.append({"trial":sample, "matched_present_ms":(matching[0][0]-start)/1e6 if len(matching)==1 else None,
                      "present_events_in_pixel_interval":len(matching), "first_change_ms":(first_visible-start)/1e6 if first_visible else None,
                      "last_unchanged_ms":(last_unchanged-start)/1e6,"polls":observations,
-                     "before_sha256":digest(before),"after_release_digest":digest(after)})
+                     "persistent_model_pixels":len(changed),"before_sha256":digest(before),"after_release_digest":digest(after)})
     if helper:
         helper.terminate()
         helper.wait(timeout=5)
@@ -113,7 +131,7 @@ def main():
               "sample_region_pixels":size,"window_origin":[origin.x,origin.y],"distinct_released_images":persistent,
               "timed_changes":len(good),"median_visible_change_ms":statistics.median(good) if good else None,
               "display":os.environ["DISPLAY"],"x_server":subprocess.check_output(["xdpyinfo"],text=True).split("number of extensions:")[0][-800:],
-              "measurement":"XTest input flush to first changed pixels read from X11 window; excludes physical tablet, monitor and scan-out",
+              "measurement":"XTest press and short drag to the first X11 read containing at least eight changed pixels confirmed after release and pointer removal; excludes physical tablet and scan-out",
               "rows":rows}
     args.output.write_text(json.dumps(report,indent=2)+"\n")
     print("DESKTOP_RECORD",json.dumps(report,separators=(",",":")),flush=True)
