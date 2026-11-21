@@ -169,10 +169,10 @@ fn gpu_load_profile_mixed_session() {
             None
         };
         let start = Instant::now();
-        let mut changed = false;
+        let initial_revision = doc.display_revision();
         for i in 0..2 {
             touch.center.0 += 0.008 * i as f32;
-            changed |= timing.time(&format!("stroke_{mode}.dab"), || {
+            timing.time(&format!("stroke_{mode}.dab"), || {
                 doc.apply_dab(&brush, touch)
             });
             let display = timing.time("live_display", || renderer.geometry(&doc));
@@ -182,6 +182,8 @@ fn gpu_load_profile_mixed_session() {
                 headless.wait();
             });
         }
+        // Mask dabs update the document while returning false for deformation.
+        let changed = doc.display_revision() != initial_revision;
         let cancel = step % 16 == 3;
         if cancel {
             assert!(doc.cancel_paint_stroke());
@@ -217,11 +219,7 @@ fn gpu_load_profile_mixed_session() {
                 );
             }
         }
-        changes[mode] += usize::from(if kind == Kind::Mask {
-            doc.undo_label() == Some("Brush stroke")
-        } else {
-            changed
-        });
+        changes[mode] += usize::from(changed);
         if step == total / 2 {
             let mut cancelled = doc.geometry_snapshot();
             let polls = std::cell::Cell::new(0usize);

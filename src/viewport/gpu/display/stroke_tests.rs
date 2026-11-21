@@ -802,3 +802,79 @@ fn accumulated_document_regions_match_full_scan_and_packed_upload() {
         expected.vertices(expected.vertex_stride())
     );
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires Vulkan; compare live ranges, split buffers and history transitions"]
+fn mixed_edit_region_uploads_match_rebuilt_gpu_buffers() {
+    use crate::camera::Camera;
+    use crate::viewport::gpu::{COLOR, Gpu, Params, Preview, WireMode, ui_capture::Headless};
+    let headless = Headless::new();
+    let mut doc = document(source());
+    let mut live = Arc::new(DisplayMesh::new(&doc));
+    let mut reference = live.clone();
+    let mut gpus: Vec<_> = (0..4)
+        .map(|_| Gpu::new(&headless.state.device, &headless.state.queue, COLOR))
+        .collect();
+    let rect =
+        eframe::egui::Rect::from_min_size(eframe::egui::Pos2::ZERO, eframe::egui::vec2(129., 101.));
+    let (right, up, view) = Camera::default().basis();
+    let mut validate = |next: &Arc<DisplayMesh>, full: &Arc<DisplayMesh>| {
+        let params = Params::new(rect, right, up, view, 38., rect.center(), next.depth_extent);
+        let mut oracle = None;
+        for (index, gpu) in gpus.iter_mut().enumerate() {
+            let surface = if index % 2 == 0 { next } else { full };
+            if index % 2 == 1 {
+                gpu.clear();
+            }
+            gpu.upload(surface);
+            if index >= 2 {
+                gpu.upload_meshes(surface, 262_144);
+                assert!(gpu.meshes.len() > 1);
+            }
+            gpu.paint(
+                &params,
+                [129, 101],
+                false,
+                WireMode::Visible,
+                false,
+                &Preview::default(),
+            );
+            let pixels = gpu.read();
+            if let Some(expected) = &oracle {
+                assert_eq!(expected, &pixels);
+            } else {
+                oracle = Some(pixels);
+            }
+        }
+    };
+    validate(&live, &reference);
+    for kind in [Kind::Standard, Kind::Clay, Kind::Mask, Kind::Paint] {
+        let mut brush = Brush::new(kind);
+        brush.set_paint_colour(false, [0.7, 0.2, 0.1]);
+        for _ in 0..2 {
+            doc.apply_dab(&brush, dab());
+        }
+        Arc::make_mut(&mut reference).disable_region_input();
+        live = Arc::new(live.during_stroke(&doc).unwrap());
+        reference = Arc::new(reference.during_stroke(&doc).unwrap());
+        validate(&live, &reference);
+    }
+    // An unseen final dab must be incorporated in the released display.
+    doc.apply_dab(&Brush::new(Kind::Standard), dab());
+    doc.end_stroke();
+    live = live
+        .after_stroke(&doc)
+        .unwrap_or_else(|| Arc::new(DisplayMesh::new(&doc)));
+    validate(&live, &Arc::new(DisplayMesh::new(&doc)));
+    doc.undo();
+    let undo = Arc::new(DisplayMesh::new(&doc));
+    validate(&undo, &Arc::new(DisplayMesh::new(&doc)));
+    doc.redo();
+    let redo = Arc::new(DisplayMesh::new(&doc));
+    validate(&redo, &Arc::new(DisplayMesh::new(&doc)));
+    doc.duplicate_model(false).unwrap();
+    doc.select_submodel(0).unwrap();
+    let switched = Arc::new(DisplayMesh::new(&doc));
+    validate(&switched, &Arc::new(DisplayMesh::new(&doc)));
+}

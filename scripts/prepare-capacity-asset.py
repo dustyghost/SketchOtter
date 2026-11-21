@@ -44,7 +44,7 @@ def prepare(output):
     positions = unpack(primitive["attributes"]["POSITION"], "<3f")
     texcoords = unpack(primitive["attributes"]["TEXCOORD_0"], "<2f")
     indices = [i for i, in unpack(primitive["indices"], "<H")]
-    welded = dict(zip(dict.fromkeys(positions), range(1, len(positions)+1)))
+    welded = {point: index for index, point in enumerate(dict.fromkeys(positions), start=1)}
     kept = 0
     with (output / "WaterBottle.obj").open("w") as dest:
         for p in welded:

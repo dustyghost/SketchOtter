@@ -112,3 +112,53 @@ impl super::Document {
         self.regions.add(before, self.display_revision, edits);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn changed_regions_expire_on_replacement_eviction_and_large_updates() {
+        let mut journal = Journal::default();
+        let first = Stamp(journal.identity, 0);
+        let unrelated = Stamp(Journal::default().identity, 0);
+        for i in 0..FRAMES {
+            journal.add(
+                i as u64,
+                (i + 1) as u64,
+                Edits {
+                    positions: vec![2, i],
+                    mask: vec![3],
+                    materials: vec![i],
+                },
+            );
+        }
+        let values = journal.since(first, FRAMES as u64).unwrap();
+        assert_eq!(values.positions, (0..FRAMES).collect::<Vec<_>>());
+        assert_eq!(values.mask, [3]);
+        assert_eq!(values.materials, (0..FRAMES).collect::<Vec<_>>());
+        assert!(journal.since(unrelated, FRAMES as u64).is_none());
+        journal.add(FRAMES as u64, FRAMES as u64 + 1, Edits::default());
+        assert!(journal.since(first, FRAMES as u64 + 1).is_none());
+        let recent = Stamp(journal.identity, FRAMES as u64);
+        journal.add(
+            100,
+            101,
+            Edits {
+                positions: vec![7],
+                ..Default::default()
+            },
+        );
+        assert!(journal.since(recent, 101).is_none());
+        let from = Stamp(journal.identity, 100);
+        journal.add(
+            101,
+            102,
+            Edits {
+                materials: vec![0; LIMIT + 1],
+                ..Default::default()
+            },
+        );
+        assert!(journal.since(from, 102).is_none());
+    }
+}

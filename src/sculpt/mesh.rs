@@ -340,18 +340,27 @@ impl Mesh {
         stencils: &[super::alpha::Projection],
         flatten_planes: &[(Vec3, Vec3)],
     ) -> bool {
-        self.stamp_observing_positions(b, dabs, stencils, flatten_planes, &mut |_, _, _| {})
+        self.stamp_observing_changes(
+            b,
+            dabs,
+            stencils,
+            flatten_planes,
+            &mut |_, _, _| {},
+            &mut |_| {},
+        )
     }
 
     /// Report original values at proposed writes and guard reductions. The
-    /// observer may see the same vertex repeatedly, including rejected moves.
-    pub(crate) fn stamp_observing_positions(
+    /// position observer may see the same vertex repeatedly, including rejected moves.
+    /// The mask observer sees only indices whose stored bits changed.
+    pub(crate) fn stamp_observing_changes(
         &mut self,
         b: &Brush,
         dabs: &[Dab],
         stencils: &[super::alpha::Projection],
         flatten_planes: &[(Vec3, Vec3)],
         observe: &mut impl FnMut(usize, Vec3, Vec3),
+        observe_mask: &mut impl FnMut(usize),
     ) -> bool {
         if b.kind == Kind::Paint {
             return self.paint_material(b, dabs, stencils);
@@ -509,7 +518,11 @@ impl Mesh {
                 continue;
             }
             if b.kind == Kind::Mask {
-                self.mask[i] = (self.mask[i] + strongest * mask_sign).clamp(0., 1.);
+                let value = (self.mask[i] + strongest * mask_sign).clamp(0., 1.);
+                if value.to_bits() != self.mask[i].to_bits() {
+                    observe_mask(i);
+                }
+                self.mask[i] = value;
                 continue;
             }
             // Average directions smoothly across overlaps, but retain the strongest
