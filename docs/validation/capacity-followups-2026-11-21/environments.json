@@ -1,4 +1,24 @@
 {
+  "boundary-3": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 58.535661557000026,
+      "sampled_peak_rss_bytes": 5976440832,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 9243971584
+    },
+    "preflight_kib": 15177320,
+    "capacity_kib": 16367524,
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "commit": "9e1f7217a8413ccbb95d64873e19408268a95a3a",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "30d95860ebc34c3f865d19128404bf2236e945ce36b68dbb941b521fa9495f54",
+    "utc": "2026-11-21T23:25:51Z"
+  },
   "display-3": {
     "status": {
       "status": "measured",
@@ -79,6 +99,66 @@
     "binary_sha256": "031fb8cf8a56f09a9335912ba8dcd5c3615de5f37f16bdac307c6fa1fc8ff17a",
     "utc": "2026-11-21T23:08:39Z"
   },
+  "high-valence-3": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 4.5171397600000205,
+      "sampled_peak_rss_bytes": 236175360,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 15384293376
+    },
+    "preflight_kib": 15252916,
+    "capacity_kib": 16367524,
+    "cpu": "AMD EPYC 9V45 96-Core Processor",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "commit": "7ddeefe26f8b797ad66386b79b018e27f3b6e296",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "0729f54000f46446a825fdf2ce3ee6538c253bffff62e6adbf40df2d0d3fe810",
+    "utc": "2026-11-21T23:28:29Z"
+  },
+  "high-valence-4": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 23.483942851999984,
+      "sampled_peak_rss_bytes": 792350720,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 14659043328
+    },
+    "preflight_kib": 15142620,
+    "capacity_kib": 16367524,
+    "cpu": "AMD EPYC 9V45 96-Core Processor",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "commit": "7ddeefe26f8b797ad66386b79b018e27f3b6e296",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "0729f54000f46446a825fdf2ce3ee6538c253bffff62e6adbf40df2d0d3fe810",
+    "utc": "2026-11-21T23:28:53Z"
+  },
+  "metalarm64-3": {
+    "platform": "macOS-15.8.2-arm64-arm-64bit-Mach-O",
+    "architecture": "arm64",
+    "mem_bytes": 7516192768,
+    "initial_available": 4683776000,
+    "budget": 1887436800,
+    "reserve": 536870912,
+    "peak_rss_bytes": 671301632,
+    "minimum_available_bytes": 3509600256
+  },
+  "metalarm64-4": {
+    "platform": "macOS-15.8.2-arm64-arm-64bit-Mach-O",
+    "architecture": "arm64",
+    "mem_bytes": 7516192768,
+    "initial_available": 4391092224,
+    "budget": 3774873600,
+    "reserve": 536870912,
+    "peak_rss_bytes": 1856831488,
+    "minimum_available_bytes": 2633498624
+  },
   "picking-3": {
     "status": {
       "status": "measured",
@@ -158,5 +238,65 @@
     "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
     "binary_sha256": "bc8b30db9c183def8b37f2ee85dbd211bbdab7b10e07d35621640d81b3e0d2dc",
     "utc": "2026-11-21T23:13:52Z"
+  },
+  "session-3": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 3.2143642309999905,
+      "sampled_peak_rss_bytes": 329756672,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 15039393792
+    },
+    "preflight_kib": 14878876,
+    "capacity_kib": 16367524,
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "commit": "9e1f7217a8413ccbb95d64873e19408268a95a3a",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "30d95860ebc34c3f865d19128404bf2236e945ce36b68dbb941b521fa9495f54",
+    "utc": "2026-11-21T23:24:08Z"
+  },
+  "session-4": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 43.901351474999956,
+      "sampled_peak_rss_bytes": 2047369216,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 13684543488
+    },
+    "preflight_kib": 14976444,
+    "capacity_kib": 16367524,
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "commit": "9e1f7217a8413ccbb95d64873e19408268a95a3a",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "30d95860ebc34c3f865d19128404bf2236e945ce36b68dbb941b521fa9495f54",
+    "utc": "2026-11-21T23:24:52Z"
+  },
+  "visual-3": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 14.45725508399994,
+      "sampled_peak_rss_bytes": 1004068864,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 14547988480
+    },
+    "preflight_kib": 15325856,
+    "capacity_kib": 16367524,
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "commit": "9e1f7217a8413ccbb95d64873e19408268a95a3a",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "30d95860ebc34c3f865d19128404bf2236e945ce36b68dbb941b521fa9495f54",
+    "utc": "2026-11-21T23:24:04Z"
   }
 }

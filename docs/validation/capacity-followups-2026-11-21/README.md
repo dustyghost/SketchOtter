@@ -1,6 +1,6 @@
 # Dense sculpting follow-ups
 
-These paired comparisons use identical source data and the same release executable for each reference and candidate. They retain the current application capacity defaults. The Linux host has a Xeon 6975P-C and 15.33 GiB RAM. Guarded probes used an 8,000 MiB process budget, 1,200 MiB system reserve and a 30-minute timeout. Raw samples for each resolution are gzip-compressed JSON. The environment records include the executable digest, commit, compiler, sampled process high-water RSS and minimum available RAM. [Environment records](environments.json)
+These paired comparisons use identical source data and the same release executable for each reference and candidate. They retain the current application capacity defaults. The primary Linux shading, picking and drawing comparisons used a Xeon 6975P-C with 15.33 GiB RAM. Display updates and mixed sessions used an EPYC 7763 with 15.61 GiB. Guarded probes used an 8,000 MiB process budget, 1,200 MiB system reserve and a 30-minute timeout. Raw samples for each resolution are gzip-compressed JSON. The environment records include the executable digest, commit, compiler, sampled process high-water RSS and minimum available RAM. [Environment records](environments.json)
 
 ## Canonical shading on release (#109)
 
@@ -18,6 +18,8 @@ The table shows reference / compact kernel times in milliseconds at 2,408,448 so
 At 602,112 triangles the first masked release fell from 36.8 to 22.7 ms and the hidden release from 36.3 to 23.2 ms. The sharpness control alternates fan counts between 1,205,290 and 1,204,226 at the larger size. Both implementations produced the same source-to-fan mapping and normal bits on each release. The all-edge pass avoids a discovery scan followed by a second full fallback when a mask boundary, sharp edge or broad edit changes connectivity. The retained angle cache remains the same size. The original reconstruction handles indices above the compact representation.
 
 [602k samples](release-3.json.gz) · [2.4m samples](release-4.json.gz) · [Paired release run](https://github.com/dustyghost/clay-form/actions/runs/44959959909)
+
+An additional open star placed 4,096 faces at one vertex with an explicit crease. At 2.4m source triangles plus the star, first release took 169.9 / 93.8 ms on an EPYC 9V45. This control also compared every emitted normal and corner index across accumulated and broad edits. GPU captures compare packed data, coverage and pixels against a fresh canonical reconstruction with ordinary and forced-split buffers. [High-valence 602k](high-valence-3.json.gz) · [High-valence 2.4m](high-valence-4.json.gz) · [High-valence run](https://github.com/dustyghost/clay-form/actions/runs/44961724331)
 
 ## Camera picking (#111)
 

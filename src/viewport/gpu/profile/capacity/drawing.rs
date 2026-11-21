@@ -101,7 +101,7 @@ fn gpu_load_profile_dense_materials() {
             let eligible = gpu.basic_surface_eligible(&preview);
             let mut timing = [Measurements::default(), Measurements::default()];
             let mut images = [None, None];
-            for repetition in 0..4 {
+            for repetition in 0..env_limit("CLAY_DRAW_REPEATS", 4).clamp(2, 20) {
                 for arm in if repetition % 2 == 0 { [0, 1] } else { [1, 0] } {
                     gpu.force_general_surface = arm == 0;
                     let phases = &mut timing[arm];

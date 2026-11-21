@@ -78,6 +78,11 @@ fn prepare_asset(dir: &std::path::Path, subdivisions: usize) -> Geometry {
 
 fn surface_dab(doc: &Document, step: usize) -> Dab {
     let y = 0.18 * ((step % 11) as f32 / 5. - 1.);
+    let centre_x = if doc.active_model_index() == 0 {
+        0.
+    } else {
+        0.65
+    };
     let target = doc
         .mesh()
         .vertices
@@ -85,7 +90,7 @@ fn surface_dab(doc: &Document, step: usize) -> Dab {
         .zip(&doc.mesh().mask)
         .filter(|(_, m)| **m < 0.99)
         .max_by(|(a, _), (b, _)| {
-            let score = |v: &Vec3| v.2 - 2. * v.0.abs() - 1.5 * (v.1 - y).abs();
+            let score = |v: &Vec3| v.2 - 2. * (v.0 - centre_x).abs() - 1.5 * (v.1 - y).abs();
             score(a).total_cmp(&score(b))
         })
         .unwrap()
@@ -141,6 +146,9 @@ fn gpu_load_profile_mixed_session() {
     let path = out.with_file_name("mixed-session.clay");
     let mut changes = [0; 4];
     for step in 0..total {
+        if step > 0 && step.is_multiple_of(32) {
+            doc.select_submodel(1 - doc.active_model_index()).unwrap();
+        }
         let mode = step % 4;
         let kind = [Kind::Standard, Kind::Paint, Kind::Mask, Kind::Paint][mode];
         doc.texture_paint = (mode == 3).then_some(Channel::Color);
@@ -216,9 +224,17 @@ fn gpu_load_profile_mixed_session() {
         });
         if step == total / 2 {
             let mut cancelled = doc.geometry_snapshot();
-            let before = cancelled.mesh.vertices.len();
-            assert!(cancelled.subdivide_cancellable(&|| true).is_err());
-            assert_eq!(before, cancelled.mesh.vertices.len());
+            let polls = std::cell::Cell::new(0usize);
+            assert!(
+                cancelled
+                    .subdivide_cancellable(&|| {
+                        polls.set(polls.get() + 1);
+                        polls.get() >= 3
+                    })
+                    .is_err()
+            );
+            assert!(polls.get() >= 3);
+            assert_eq!(cancelled, doc.geometry_snapshot());
             // Rebuild a subdivision level from the original model to exercise
             // topology replacement and its undo without multiplying the largest level.
             let mut replacement = doc.geometry_snapshot();
@@ -237,8 +253,10 @@ fn gpu_load_profile_mixed_session() {
             let reopened = timing.time("reopen", || {
                 crate::persistence::load_project(path.to_str().unwrap()).unwrap()
             });
-            assert_eq!(p.mesh, reopened.mesh);
-            assert_eq!(p.submodels, reopened.submodels);
+            assert!(
+                p == reopened,
+                "complete persisted project differs after reload"
+            );
             let mut recovered = Document::default();
             recovered
                 .replace_project(reopened, path.to_str().unwrap())
@@ -246,7 +264,8 @@ fn gpu_load_profile_mixed_session() {
             assert_eq!(p.mesh, *recovered.mesh());
             assert_eq!(recovered.model_count(), doc.model_count());
         }
-        rows.push(serde_json::json!({"stroke":step,"mode":mode,"changed":changed,"cancelled":cancel,"input_through_release_upload_ms":request_ms,"history":doc.history_counts(),"estimated_history_bytes":doc.diagnostic_manifest(Default::default()).retained_estimated_bytes,"display_payload_bytes":display.level_cache_bytes(),"gpu_mesh_buffer_bytes":gpu_buffers,"rendered_triangles":display.mesh.triangles.len(),"memory":memory()}));
+        let history = doc.diagnostic_manifest(Default::default());
+        rows.push(serde_json::json!({"active_model":doc.active_model_index(),"estimated_document_geometry_bytes":doc.estimated_geometry_bytes(),"evicted_edits":history.evicted_edits,"stroke":step,"mode":mode,"changed":changed,"cancelled":cancel,"input_through_release_upload_ms":request_ms,"history":doc.history_counts(),"estimated_history_bytes":history.retained_estimated_bytes,"display_payload_bytes":display.level_cache_bytes(),"gpu_mesh_buffer_bytes":gpu_buffers,"rendered_triangles":display.mesh.triangles.len(),"memory":memory()}));
     }
     assert!(
         changes.iter().all(|&n| n > 0),

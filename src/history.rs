@@ -152,7 +152,7 @@ impl History {
     }
 }
 
-fn geometry_bytes(geometry: &Geometry) -> usize {
+pub(crate) fn geometry_bytes(geometry: &Geometry) -> usize {
     let path_bytes: usize = geometry
         .paths
         .iter()

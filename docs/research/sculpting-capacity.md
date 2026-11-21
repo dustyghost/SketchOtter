@@ -100,7 +100,7 @@ The measurements suggest different approaches for different costs.
 
 ## Outcomes from the follow-up experiments
 
-At 2,408,448 source triangles on the hosted Xeon, a local Standard live display and completed upload fell from 56.29 to 16.85 ms. A broad Standard update still took 75.22 ms. The first hidden-surface canonical release fell from 180.3 to 130.1 ms, and the ten-view perspective orbit and pointer workload from 394 to 207 ms. These phases have different boundaries. The timings cannot be added to predict an artist's frame rate. [Method, controls and raw measurements for #109 and #111 to #114](../validation/capacity-followups-2026-11-21/README.md)
+At 2,408,448 source triangles on the hosted EPYC 7763, a local Standard live display and completed upload fell from 56.29 to 16.85 ms. A broad Standard update still took 75.22 ms. On the hosted Xeon 6975P-C, the first hidden-surface canonical release fell from 180.3 to 130.1 ms, and the ten-view perspective orbit and pointer workload from 394 to 207 ms. These phases have different boundaries. The timings cannot be added to predict an artist's frame rate. [Method, controls and raw measurements for #109 and #111 to #114](../validation/capacity-followups-2026-11-21/README.md)
 
 On the i7-7500U laptop, removing the second Paint undo snapshot brought a warm first dab from 445 to 239 ms. The first dab after hiding faces still took 944 ms. Large hierarchies, whole-array ownership and exact history continue to set the startup and memory budgets even when a small upload meets the frame target. [Paint implementation and measurements for #110](https://github.com/dustyghost/clay-form/pull/185)
 

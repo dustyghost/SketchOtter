@@ -167,7 +167,7 @@ fn gpu_load_profile_release_visual() {
         let scene = Scene::from_geometry(
             rect,
             &Camera {
-                yaw: 0.44,
+                yaw: if name == "hidden" { 2.2 } else { 0.44 },
                 pitch: 0.15,
                 perspective: true,
                 ..Default::default()
