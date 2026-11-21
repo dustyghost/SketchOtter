@@ -631,3 +631,140 @@ fn fusion_dense_source_profile() {
         joined.validate_closed().unwrap();
     }
 }
+
+#[test]
+#[ignore = "manual UV-mapped source preparation timing"]
+fn fusion_uv_merge_profile() {
+    for segments in [48, 96, 144] {
+        let [mut a, mut b] = spheres([segments; 2], 1.7);
+        for mesh in [&mut a, &mut b] {
+            mesh.uv.topology = mesh.triangles.clone();
+            mesh.uv.corners = vec![[[0., 0.], [1., 0.], [0., 1.]]; mesh.triangles.len()];
+        }
+        let mut elapsed = Vec::new();
+        for _ in 0..3 {
+            let start = std::time::Instant::now();
+            let merged = merge(&a, &b).unwrap();
+            elapsed.push(start.elapsed());
+            assert!(merged.uv.current(&merged));
+        }
+        elapsed.sort_unstable();
+        eprintln!(
+            "{} source triangles, median merge {:?}",
+            a.triangles.len() + b.triangles.len(),
+            elapsed[1]
+        );
+    }
+}
+
+#[test]
+fn fusion_open_ends_keep_marked_seams_before_unwrap() {
+    let mut a = tube(8, -2., -0.5, 0.7);
+    let mut b = tube(12, 0.5, 2., 0.9);
+    a.uv.seams.push([0, 8]);
+    b.uv.seams.push([1, 13]);
+    let offset = a.vertices.len();
+    for mapped in [false, true] {
+        if mapped {
+            b.uv.topology = b.triangles.clone();
+            b.uv.corners = vec![[[0., 0.], [1., 0.], [0., 1.]]; b.triangles.len()];
+            b.uv.remove_islands(&[0]).unwrap();
+            b.uv.masks = vec![[0.2, 0.3, 0.4]; b.triangles.len()];
+        }
+        let mesh = merge(&a, &b).unwrap();
+        let loops = boundaries(&mesh).unwrap();
+        let (joined, _) = join_open_ends(
+            &mesh,
+            &loops[1].vertices,
+            &loops[2].vertices,
+            JoinOptions::default(),
+            &|| false,
+        )
+        .unwrap();
+        let joined = compact(joined);
+        assert_eq!(joined.uv.seams, [[0, 8], [offset + 1, offset + 13]]);
+        assert_eq!(joined.uv.current(&joined), mapped);
+        if mapped {
+            let b_start = a.triangles.len();
+            let patch = b_start + b.triangles.len();
+            assert_eq!(joined.uv.corners[b_start..patch], b.uv.corners);
+            assert_eq!(joined.uv.masks[b_start..patch], b.uv.masks);
+            assert!((0..b_start).all(|f| !joined.uv.mapped(f)));
+            assert!(!joined.uv.mapped(b_start));
+            assert!((b_start + 1..patch).all(|f| joined.uv.mapped(f)));
+            assert!((patch..joined.triangles.len()).all(|f| !joined.uv.mapped(f)));
+        }
+    }
+}
+
+#[test]
+fn fusion_intersection_keeps_exposed_seam_marks_before_unwrap() {
+    let [mut a, mut b] = spheres([48, 48], 0.6);
+    let mut expected = Vec::new();
+    for (mesh, outward) in [(&mut a, -1.), (&mut b, 1.)] {
+        let edge_beyond = |axis: f32, threshold: f32| {
+            let t = mesh
+                .triangles
+                .iter()
+                .find(|t| t.iter().all(|&v| axis * mesh.vertices[v].0 > threshold))
+                .unwrap();
+            edge(t[0], t[1])
+        };
+        let exposed = edge_beyond(outward, 1.);
+        let buried = edge_beyond(-outward, 0.6);
+        mesh.uv.seams = vec![exposed, buried];
+        expected.push(exposed.map(|i| mesh.vertices[i]));
+    }
+    let (joined, _) = fuse(&a, &b, 1, JoinOptions::default(), &|| false).unwrap();
+    let joined = compact(joined);
+    assert!(joined.uv.corners.is_empty());
+    assert_eq!(
+        joined
+            .uv
+            .seams
+            .iter()
+            .map(|s| s.map(|v| joined.vertices[v]))
+            .collect::<Vec<_>>(),
+        expected
+    );
+}
+
+#[test]
+fn fusion_uv_rejects_stale_maps_and_seams_before_reindexing_sources() {
+    let a = tube(8, -2., -0.5, 0.7);
+    let mut b = tube(12, 0.5, 2., 0.9);
+    for seam in [[0, 6], [0, usize::MAX]] {
+        b.uv.seams = vec![seam];
+        assert!(merge(&a, &b).unwrap_err().contains("seams"));
+    }
+    b.uv.seams.clear();
+    b.uv.corners = vec![[[0.; 2]; 3]; b.triangles.len()];
+    b.uv.topology = b.triangles.clone();
+    b.uv.topology.swap(0, 1);
+    assert!(merge(&a, &b).unwrap_err().contains("inactive UV"));
+}
+
+#[test]
+fn fusion_uv_preserves_texture_bindings_on_mapped_faces() {
+    use super::super::texture::{Channel, Texture};
+    let mut a = tube(8, -2., -0.5, 0.7);
+    a.uv.corners = vec![[[0.; 2]; 3]; a.triangles.len()];
+    a.uv.topology = a.triangles.clone();
+    let mut b = a.clone();
+    a.uv.textures = [Channel::Color, Channel::Roughness]
+        .into_iter()
+        .map(|channel| Texture::new(channel, 32, &Default::default()).unwrap())
+        .collect();
+    for (left, right) in [(&a, &b), (&b, &a)] {
+        assert!(merge(left, right).unwrap_err().contains("shared atlas"));
+    }
+    b.uv.removed = vec![true; b.triangles.len()];
+    let merged = merge(&b, &a).unwrap();
+    assert_eq!(merged.uv.textures, a.uv.textures);
+    assert!((0..b.triangles.len()).all(|f| !merged.uv.mapped(f)));
+    b.uv.removed.clear();
+    b.uv.textures = a.uv.textures.iter().rev().cloned().collect();
+    assert_eq!(merge(&a, &b).unwrap().uv.textures, a.uv.textures);
+    b.uv.textures[0].pixels.u16_mut()[0] ^= 1;
+    assert!(merge(&a, &b).unwrap_err().contains("shared atlas"));
+}

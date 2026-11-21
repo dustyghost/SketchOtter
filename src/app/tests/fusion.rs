@@ -26,6 +26,11 @@ pub(super) fn finish_fusion(app: &mut App) {
 #[test]
 fn fusion_preview_is_private_and_apply_restores_both_sources_in_one_undo() {
     let (mut app, ctx) = setup_fusion();
+    let mut scene = app.document.geometry_snapshot();
+    scene.mesh.uv.seams = vec![[0, 8]];
+    scene.submodels[0].mesh.uv.seams = vec![[1, 13]];
+    app.document.replace_geometry(scene).unwrap();
+    app.document.mark_saved("join.clay");
     let before = app.document.geometry_snapshot();
     let history = app.document.history_counts();
     app.dispatch(Command::OpenFusion, &ctx);
@@ -53,6 +58,8 @@ fn fusion_preview_is_private_and_apply_restores_both_sources_in_one_undo() {
     );
     assert_eq!(app.document.history_counts().0, history.0 + 1);
     let after = app.document.geometry_snapshot();
+    let offset = before.mesh.vertices.len();
+    assert_eq!(after.mesh.uv.seams, [[0, 8], [offset + 1, offset + 13]]);
     let encoded = serde_json::to_string(&app.document.project()).unwrap();
     let mut restored = Document::default();
     restored
