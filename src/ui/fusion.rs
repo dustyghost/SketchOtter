@@ -16,6 +16,7 @@ pub(crate) struct FusionControls {
     pub show_removed: bool,
     pub has_removed_faces: bool,
     pub notice: String,
+    pub notice_is_error: bool,
 }
 impl Default for FusionControls {
     fn default() -> Self {
@@ -34,6 +35,7 @@ impl Default for FusionControls {
             show_removed: false,
             has_removed_faces: false,
             notice: String::new(),
+            notice_is_error: false,
         }
     }
 }
@@ -46,6 +48,11 @@ pub(crate) struct FusionKey {
     pub collar: usize,
 }
 impl FusionControls {
+    pub(crate) fn show_error(&mut self, reason: String) {
+        self.notice = reason;
+        self.notice_is_error = true;
+    }
+
     pub(crate) fn key(&self) -> FusionKey {
         FusionKey {
             sources: self.sources,
@@ -163,17 +170,26 @@ impl UiState {
                             commands.push(Command::ClearFusion);
                         }
                         ui.separator();
-                        ui.add(egui::Label::new(&s.notice).wrap());
                         if s.ready {
                             ui.checkbox(&mut s.show_patch, "Highlight new patch");
                             if s.has_removed_faces {
                                 ui.checkbox(&mut s.show_removed, "Show removed source faces");
                             }
                         }
-                        if s.busy { ui.spinner(); }
                         ui.weak("Apply creates a joined model and hides both originals, retaining their subdivision levels. New connector faces are unmapped in UVs. Escape cancels.");
                     });
                 ui.separator();
+                ui.horizontal_wrapped(|ui| {
+                    if s.busy {
+                        ui.spinner();
+                    }
+                    let message = if s.notice_is_error {
+                        egui::RichText::new(format!("Join failed: {}", s.notice)).color(ui.visuals().error_fg_color)
+                    } else {
+                        egui::RichText::new(&s.notice)
+                    };
+                    ui.add(egui::Label::new(message).wrap());
+                });
                 ui.horizontal_wrapped(|ui| {
                     let unchanged = old == s.key();
                     let can_preview = !s.busy && unchanged && (s.intersections || s.selected.iter().all(Option::is_some));

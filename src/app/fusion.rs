@@ -54,6 +54,7 @@ impl App {
         self.viewport.session.join_removed.clear();
         self.viewport.set_join_preview(None);
         self.ui.fusion.ready = false;
+        self.ui.fusion.notice_is_error = false;
         self.ui.fusion.busy = false;
         self.ui.fusion.notice = if self.ui.fusion.intersections {
             "Preview the local intersection patches."
@@ -181,11 +182,15 @@ impl App {
             };
             match result {
                 Ok(ResultMesh::Openings(mesh, loops)) => {
-                    self.ui.fusion.notice = format!(
-                        "{} and {} openings found. Select the intended pair.",
-                        loops[0].len(),
-                        loops[1].len()
-                    );
+                    self.ui.fusion.notice = if self.ui.fusion.intersections {
+                        "Sources ready. Preview the intersection.".into()
+                    } else {
+                        format!(
+                            "{} and {} openings found. Select the intended pair.",
+                            loops[0].len(),
+                            loops[1].len()
+                        )
+                    };
                     self.ui.fusion.loops = loops;
                     self.fusion.prepared = Some((Arc::new(mesh), worker.revision, worker.sources));
                 }
@@ -236,10 +241,13 @@ impl App {
                             self.viewport.set_join_preview(self.fusion.display.clone());
                             self.ui.fusion.notice = if self.ui.fusion.intersections {
                                 format!(
-                                    "{} join(s) · {} + {} source polygons removed · {} original polygons retained. Inspect the new local patches.",
-                                    report.joins,
+                                    "Preview ready · {} collar rings · {} segments · {} patch triangles. Removed {} + {} source polygons across {} join(s), retained {}.",
+                                    self.ui.fusion.collar,
+                                    self.ui.fusion.options.segments,
+                                    mesh.triangles.len() - report.retained_triangles,
                                     report.removed_faces[0],
                                     report.removed_faces[1],
+                                    report.joins,
                                     report.retained_faces
                                 )
                             } else {
@@ -259,10 +267,10 @@ impl App {
                                 key: worker.key.expect("preview job has settings"),
                             });
                         }
-                        Err(e) => self.ui.fusion.notice = e,
+                        Err(e) => self.ui.fusion.show_error(e),
                     }
                 }
-                Err(e) => self.ui.fusion.notice = e,
+                Err(e) => self.ui.fusion.show_error(e),
             }
         }
         if self.ui.fusion.open

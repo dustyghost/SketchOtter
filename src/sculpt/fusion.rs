@@ -294,23 +294,6 @@ fn position(mesh: &Mesh, weights: &[(usize, f32)]) -> Vec3 {
         .fold(Vec3::default(), |s, &(v, w)| s + mesh.vertices[v] * w)
 }
 
-fn outward_tangents(mesh: &Mesh, ring: &[usize]) -> Vec<Vec3> {
-    let chosen: BTreeSet<_> = ring.iter().copied().collect();
-    let mut sums = vec![Vec3::default(); mesh.vertices.len()];
-    for p in mesh.polygons() {
-        for &v in &p.vertices {
-            if chosen.contains(&v) {
-                for &other in &p.vertices {
-                    if !chosen.contains(&other) {
-                        sums[v] = sums[v] + (mesh.vertices[v] - mesh.vertices[other]);
-                    }
-                }
-            }
-        }
-    }
-    sums.into_iter().map(Vec3::norm).collect()
-}
-
 /// Add just the connector; existing vertices, triangles, quads and attributes stay exact.
 pub(crate) fn bridge(
     mesh: &Mesh,
@@ -388,8 +371,7 @@ pub(crate) fn bridge(
     {
         return Err("The connector exceeds the mesh budget; reduce segments".into());
     }
-    let ta = outward_tangents(mesh, &a);
-    let tb = outward_tangents(mesh, &b);
+    let normals = mesh.normals();
     let mut out = mesh.clone();
     out.polygroups.resize(out.triangles.len(), 0);
     out.hidden_faces.resize(out.triangles.len(), false);
@@ -404,18 +386,17 @@ pub(crate) fn bridge(
             let p = position(mesh, &wa);
             let q = position(mesh, &wb);
             let delta = q - p;
-            let da = wa
-                .iter()
-                .fold(Vec3::default(), |s, &(v, w)| s + ta[v] * w)
-                .norm();
-            let db = wb
-                .iter()
-                .fold(Vec3::default(), |s, &(v, w)| s + tb[v] * w)
-                .norm();
-            let length = delta.len();
-            // Hermite endpoint tangents blend toward the straight connector.
-            let ma = delta * (1. - options.curvature) + da * (length * options.curvature);
-            let mb = delta * (1. - options.curvature) - db * (length * options.curvature);
+            // Project the crossing direction onto each source tangent plane.
+            // A stepped cut rim can point sideways along its own boundary.
+            let tangent = |weights: &[(usize, f32)]| {
+                let n = weights
+                    .iter()
+                    .fold(Vec3::default(), |sum, &(v, w)| sum + normals[v] * w)
+                    .norm();
+                delta - n * (options.curvature * n.dot(delta))
+            };
+            let ma = tangent(&wa);
+            let mb = tangent(&wb);
             let point = p * (2. * t * t * t - 3. * t * t + 1.)
                 + q * (-2. * t * t * t + 3. * t * t)
                 + ma * (t * t * t - 2. * t * t + t)
