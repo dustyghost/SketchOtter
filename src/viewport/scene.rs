@@ -8,6 +8,8 @@ mod footprint;
 mod picking;
 mod picking_world;
 #[cfg(test)]
+pub(in crate::viewport) use picking_world::profile_refit;
+#[cfg(test)]
 pub(in crate::viewport) mod profile;
 type PickMemo = Option<(Pos2, Option<(Vec3, Vec3, usize)>)>;
 #[derive(Clone, Copy, Debug, PartialEq)]

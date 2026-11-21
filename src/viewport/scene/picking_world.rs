@@ -10,18 +10,20 @@ impl WorldGroups {
             .mesh
             .triangles
             .chunks(GROUP)
-            .map(|faces| {
-                let mut lo = Vec3(f32::INFINITY, f32::INFINITY, f32::INFINITY);
-                let mut hi = Vec3(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
-                for &v in faces.iter().flatten() {
-                    let p = surface.mesh.vertices[v];
-                    lo = Vec3(lo.0.min(p.0), lo.1.min(p.1), lo.2.min(p.2));
-                    hi = Vec3(hi.0.max(p.0), hi.1.max(p.1), hi.2.max(p.2));
-                }
-                [lo, hi]
-            })
+            .map(|faces| Self::bounds(surface, faces))
             .collect();
         Self(bounds)
+    }
+
+    fn bounds(surface: &DisplayMesh, faces: &[[usize; 3]]) -> [Vec3; 2] {
+        let mut lo = Vec3(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+        let mut hi = Vec3(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+        for &v in faces.iter().flatten() {
+            let p = surface.mesh.vertices[v];
+            lo = Vec3(lo.0.min(p.0), lo.1.min(p.1), lo.2.min(p.2));
+            hi = Vec3(hi.0.max(p.0), hi.1.max(p.1), hi.2.max(p.2));
+        }
+        [lo, hi]
     }
 
     pub fn project(&self, scene: &Scene) -> Vec<egui::Rect> {
@@ -65,4 +67,82 @@ impl WorldGroups {
             })
             .collect()
     }
+}
+
+/// Compare rebuilding all world blocks with maintaining an extra reverse map.
+/// This measurement includes constructing the reverse map and old bounds.
+#[cfg(test)]
+pub(in crate::viewport) fn profile_refit(
+    before: &DisplayMesh,
+    after: &DisplayMesh,
+) -> serde_json::Value {
+    use std::time::Instant;
+    let positions = &before.mesh.vertices;
+    assert_eq!(before.mesh.triangles, after.mesh.triangles);
+    let start = Instant::now();
+    let mut original = WorldGroups::build(before);
+    let first_build = start.elapsed();
+    let start = Instant::now();
+    // Store one block ID per distinct source vertex/block pair. Iteration is in
+    // block order, so a single last-seen value per vertex removes duplicates.
+    let mut counts = vec![0u32; positions.len() + 1];
+    let mut last = vec![u32::MAX; positions.len()];
+    for (g, faces) in before.mesh.triangles.chunks(GROUP).enumerate() {
+        for &i in faces.iter().flatten() {
+            if last[i] != g as u32 {
+                counts[i + 1] += 1;
+                last[i] = g as u32;
+            }
+        }
+    }
+    for i in 0..positions.len() {
+        counts[i + 1] += counts[i];
+    }
+    let mut cursor = counts[..positions.len()].to_vec();
+    let mut groups = vec![0u32; counts[positions.len()] as usize];
+    last.fill(u32::MAX);
+    for (g, faces) in before.mesh.triangles.chunks(GROUP).enumerate() {
+        for &i in faces.iter().flatten() {
+            if last[i] != g as u32 {
+                groups[cursor[i] as usize] = g as u32;
+                cursor[i] += 1;
+                last[i] = g as u32;
+            }
+        }
+    }
+    drop(last);
+    drop(cursor);
+    let reverse_build = start.elapsed();
+    let scan = Instant::now();
+    let changed: Vec<_> = positions
+        .iter()
+        .zip(after.mesh.vertices.iter())
+        .enumerate()
+        .filter_map(|(i, (a, b))| (a != b).then_some(i))
+        .collect();
+    let scan_time = scan.elapsed();
+    let refit = Instant::now();
+    let mut dirty: Vec<_> = changed
+        .iter()
+        .flat_map(|&i| {
+            groups[counts[i] as usize..counts[i + 1] as usize]
+                .iter()
+                .copied()
+        })
+        .collect();
+    dirty.sort_unstable();
+    dirty.dedup();
+    for &g in &dirty {
+        let i = g as usize * GROUP;
+        original.0[g as usize] = WorldGroups::bounds(
+            after,
+            &after.mesh.triangles[i..(i + GROUP).min(after.mesh.triangles.len())],
+        );
+    }
+    let refit_time = refit.elapsed();
+    let rebuild = Instant::now();
+    let expected = WorldGroups::build(after);
+    let rebuild_time = rebuild.elapsed();
+    assert_eq!(original.0, expected.0);
+    serde_json::json!({"changed_vertices":changed.len(),"dirty_blocks":dirty.len(),"blocks":original.0.len(),"reference_bounds_bytes":original.0.capacity()*std::mem::size_of::<[Vec3;2]>(),"reverse_map_bytes":(counts.capacity()+groups.capacity())*4,"initial_bounds_ms":first_build.as_secs_f64()*1000.,"reverse_build_ms":reverse_build.as_secs_f64()*1000.,"whole_array_discovery_ms":scan_time.as_secs_f64()*1000.,"refit_ms":refit_time.as_secs_f64()*1000.,"rebuild_ms":rebuild_time.as_secs_f64()*1000.})
 }

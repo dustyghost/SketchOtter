@@ -13,8 +13,10 @@ spec.loader.exec_module(capacity)
 CASES = {
     "picking": "picking::gpu_load_profile_world_picking",
     "drawing": "drawing::gpu_load_profile_dense_materials",
+    "visual": "release::gpu_load_profile_release_visual",
     "release": "release::gpu_load_profile_release_fans",
     "display": "regions::gpu_load_profile_changed_regions",
+    "boundary": "session::gpu_load_profile_upper_boundary",
     "session": "session::gpu_load_profile_mixed_session",
 }
 

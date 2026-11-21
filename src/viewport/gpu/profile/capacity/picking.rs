@@ -95,5 +95,10 @@ fn gpu_load_profile_world_picking() {
             }
         }
     }
-    std::fs::write(output, serde_json::to_vec(&serde_json::json!({"triangles":doc.mesh().triangles.len(),"rows":rows,"memory":memory()})).unwrap()).unwrap();
+    let before = DisplayMesh::new(&doc);
+    assert!(doc.apply_dab(&brush, dab(1)));
+    doc.end_stroke();
+    let after = DisplayMesh::new(&doc);
+    let refit = crate::viewport::scene::profile_refit(&before, &after);
+    std::fs::write(output, serde_json::to_vec(&serde_json::json!({"triangles":doc.mesh().triangles.len(),"rows":rows,"refit":refit,"memory":memory()})).unwrap()).unwrap();
 }

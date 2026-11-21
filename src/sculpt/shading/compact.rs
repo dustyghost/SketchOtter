@@ -22,7 +22,7 @@ impl SurfaceShadingTopology {
             .checked_mul(3)
             .and_then(|v| u32::try_from(v).ok())
         else {
-            return self.shade(mesh);
+            return self.shade_wide(mesh);
         };
         let mut parents: Vec<u32> = (0..corners).collect();
         stage("parents");

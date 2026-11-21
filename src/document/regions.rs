@@ -42,6 +42,9 @@ impl Default for Journal {
     }
 }
 impl Journal {
+    pub(super) fn clear(&mut self) {
+        self.changes.clear();
+    }
     pub(super) fn add(&mut self, before: u64, after: u64, mut edits: Edits) {
         if edits.len() > LIMIT {
             self.changes.clear();
@@ -88,7 +91,7 @@ impl super::Document {
     }
     pub(super) fn display_changed_in(&mut self, edits: Edits) {
         let before = self.display_revision;
-        self.display_changed();
+        self.invalidate_display();
         self.regions.add(before, self.display_revision, edits);
     }
 }

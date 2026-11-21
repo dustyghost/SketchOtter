@@ -24,13 +24,38 @@ fn prepare_asset(dir: &std::path::Path, subdivisions: usize) -> Geometry {
     }
     let mut geo = Geometry::new(mesh);
     for _ in 0..subdivisions {
+        // The edit operation intentionally clears stale UVs. For this
+        // triangle-only benchmark asset, interpolate the source face's own
+        // corners along the same four child triangles, keeping seams split.
+        assert!(geo.mesh.quads.is_empty());
+        assert_eq!(geo.mesh.uv.corners.len(), geo.mesh.triangles.len());
+        let mid = |a: [f32; 2], b: [f32; 2]| [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5];
+        let corners = geo
+            .mesh
+            .uv
+            .corners
+            .iter()
+            .flat_map(|&[a, b, c]| {
+                let (ab, bc, ca) = (mid(a, b), mid(b, c), mid(c, a));
+                [[a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]]
+            })
+            .collect::<Vec<_>>();
         geo.subdivide().unwrap();
+        assert_eq!(corners.len(), geo.mesh.triangles.len());
+        geo.mesh.uv.topology = geo.mesh.triangles.clone();
+        geo.mesh.uv.corners = corners;
     }
     let mesh = &mut geo.mesh;
+    let back = mesh
+        .vertices
+        .iter()
+        .map(|p| p.2)
+        .fold(f32::INFINITY, f32::min)
+        * 0.75;
     mesh.hidden_faces = mesh
         .triangles
         .iter()
-        .map(|t| t.iter().all(|&i| mesh.vertices[i].2 < -0.19))
+        .map(|t| t.iter().all(|&i| mesh.vertices[i].2 < back))
         .collect();
     mesh.mask = mesh
         .vertices
@@ -233,4 +258,105 @@ fn gpu_load_profile_mixed_session() {
     drop(renderer);
     drop(doc);
     std::fs::write(out,serde_json::to_vec(&serde_json::json!({"source":"Khronos WaterBottle CC0","initial":first_inventory,"final":final_inventory,"changes":changes,"timings":timing.summary(),"samples":rows,"pre_clear_memory":before_clear,"post_clear_memory":memory(),"driver":format!("{:?}",headless.state.adapter.get_info())})).unwrap()).unwrap();
+}
+
+#[test]
+#[ignore = "manual guarded single-process 9.6m triangle boundary probe"]
+fn gpu_load_profile_upper_boundary() {
+    use crate::sculpt::capacity::{MeshCapacity, initialize};
+    initialize(MeshCapacity {
+        vertices: 5_500_000,
+        triangles: 11_000_000,
+    })
+    .unwrap();
+    let out = std::path::PathBuf::from(std::env::var_os("CLAY_REGION_OUTPUT").unwrap());
+    let mut rows = Vec::new();
+    let mut tick = Instant::now();
+    let mut checkpoint = |stage: &str, vertices: usize, triangles: usize, retained: usize| {
+        rows.push(serde_json::json!({"stage":stage,"source_vertices":vertices,"source_triangles":triangles,"retained_level_triangles":retained,"elapsed_since_previous_ms":tick.elapsed().as_secs_f64()*1000.,"memory":memory()}));
+        let tmp = out.with_extension("tmp");
+        std::fs::write(
+            &tmp,
+            serde_json::to_vec(&serde_json::json!({"stage":stage,"rows":rows})).unwrap(),
+        )
+        .unwrap();
+        std::fs::rename(tmp, &out).unwrap();
+        tick = Instant::now();
+    };
+    let mut geometry = Geometry::new(Mesh::starting_sphere());
+    for _ in 0..5 {
+        checkpoint(
+            "about_to_subdivide",
+            geometry.mesh.vertices.len(),
+            geometry.mesh.triangles.len(),
+            geometry
+                .settings
+                .lower
+                .iter()
+                .map(|m| m.triangles.len())
+                .sum(),
+        );
+        if let Err(reason) = geometry.subdivide() {
+            checkpoint(
+                &format!("capacity_stopped: {reason}"),
+                geometry.mesh.vertices.len(),
+                geometry.mesh.triangles.len(),
+                geometry
+                    .settings
+                    .lower
+                    .iter()
+                    .map(|m| m.triangles.len())
+                    .sum(),
+            );
+            return;
+        }
+    }
+    let (v, t) = (geometry.mesh.vertices.len(), geometry.mesh.triangles.len());
+    let retained = geometry
+        .settings
+        .lower
+        .iter()
+        .map(|m| m.triangles.len())
+        .sum();
+    checkpoint("subdivision_complete", v, t, retained);
+    let mut doc = document(geometry);
+    checkpoint("document_validated", v, t, retained);
+    let before = fingerprint(doc.mesh());
+    assert!(doc.apply_dab(&brush(Kind::Standard), dab(0)));
+    doc.end_stroke();
+    checkpoint("first_stroke_released", v, t, retained);
+    let after = fingerprint(doc.mesh());
+    assert_ne!(before, after);
+    doc.undo();
+    assert_eq!(fingerprint(doc.mesh()), before);
+    doc.redo();
+    assert_eq!(fingerprint(doc.mesh()), after);
+    checkpoint("exact_undo_redo", v, t, retained);
+    let headless = Headless::new();
+    let mut renderer = Renderer::new(&headless.state).unwrap();
+    let display = renderer.geometry(&doc);
+    checkpoint("cpu_display_built", v, t, retained);
+    let mut gpu = renderer.gpu.lock().unwrap();
+    gpu.upload(&display);
+    gpu.queue.submit([]);
+    headless.wait();
+    checkpoint("gpu_upload_completed", v, t, retained);
+    let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800., 600.));
+    let (r, u, f) = Camera::default().basis();
+    let params = Params::new(rect, r, u, f, 210., rect.center(), display.depth_extent);
+    gpu.paint(
+        &params,
+        [800, 600],
+        false,
+        WireMode::Visible,
+        false,
+        &Preview::default(),
+    );
+    headless.wait();
+    assert!(
+        gpu.read()
+            .chunks_exact(4)
+            .any(|p| p[..3] != params.background)
+    );
+    checkpoint("offscreen_draw_completed", v, t, retained);
 }

@@ -1,6 +1,5 @@
 //! Display-only normal fans. Sculpt topology remains welded at hard edges.
 use super::{Mesh, Vec3};
-#[cfg(test)]
 mod compact;
 use std::collections::HashMap;
 
@@ -184,6 +183,9 @@ impl SurfaceShadingTopology {
     }
 
     pub(crate) fn shade(&self, mesh: &Mesh) -> SurfaceShading {
+        self.compact_shade(mesh, |_| {})
+    }
+    fn shade_wide(&self, mesh: &Mesh) -> SurfaceShading {
         let mut parents: Vec<_> = (0..mesh.triangles.len() * 3).collect();
         let normals = face_normals(mesh);
         for &[a, x] in &self.paired_corners {

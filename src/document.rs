@@ -180,11 +180,16 @@ impl Document {
     // Invalidate edit tokens and level caches while retaining the current
     // positions, topology and normals (texture edits or preview commitment).
     fn display_changed_preserving_geometry(&mut self) {
+        self.regions.clear();
         self.hidden_face_count.take();
         self.display_revision = self.display_revision.wrapping_add(1);
         self.level_content_revision = self.display_revision;
     }
     fn display_changed(&mut self) {
+        self.regions.clear();
+        self.invalidate_display();
+    }
+    fn invalidate_display(&mut self) {
         self.hidden_face_count.take();
         self.instance_cache.take();
         self.display_revision = self.display_revision.wrapping_add(1);

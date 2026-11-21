@@ -99,3 +99,110 @@ fn gpu_load_profile_release_fans() {
     )
     .unwrap();
 }
+
+#[test]
+#[ignore = "manual dense release captures compared to freshly reconstructed canonical shading"]
+fn gpu_load_profile_release_visual() {
+    let level = env_limit("CLAY_REGION_LEVEL", 3);
+    crate::sculpt::capacity::initialize(benchmark_capacity(level, 2_000_000, 4_000_000).unwrap())
+        .unwrap();
+    let output = std::path::PathBuf::from(std::env::var_os("CLAY_REGION_OUTPUT").unwrap());
+    let headless = Headless::new();
+    let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(320., 240.));
+    let mut rows = Vec::new();
+    for name in ["sphere", "organic", "hidden"] {
+        let mut doc = document(fixture(name, level));
+        let original = DisplayMesh::new(&doc);
+        let mut brush = brush(Kind::Clay);
+        brush.strength = 0.85;
+        for i in 0..4 {
+            doc.apply_dab(&brush, dab(i));
+        }
+        let live = original.during_stroke(&doc).unwrap();
+        doc.end_stroke();
+        let released = Arc::new(live).after_stroke(&doc).unwrap();
+        let mut reference = (*released).clone();
+        let canonical = doc.mesh().surface_shading();
+        let geometry = Arc::make_mut(&mut reference.geometry);
+        geometry.shading.triangles = Arc::new(
+            geometry
+                .source_faces
+                .iter()
+                .map(|&f| canonical.triangles[f])
+                .collect(),
+        );
+        geometry.shading.vertices = Arc::new(canonical.vertices);
+        assert_eq!(released.shading.triangles, reference.shading.triangles);
+        let a = released.vertices(released.vertex_stride());
+        let b = reference.vertices(reference.vertex_stride());
+        assert_eq!(
+            bytemuck::cast_slice::<f32, u32>(&a),
+            bytemuck::cast_slice::<f32, u32>(&b)
+        );
+        drop(a);
+        drop(b);
+        let scene = Scene::from_geometry(
+            rect,
+            &Camera {
+                yaw: 0.44,
+                pitch: 0.15,
+                perspective: true,
+                ..Default::default()
+            },
+            released.clone(),
+            false,
+        );
+        let mut params = Params::new(
+            rect,
+            scene.right,
+            scene.up,
+            scene.view,
+            scene.scale,
+            scene.center,
+            released.depth_extent,
+        );
+        params.set_perspective(scene.eye_distance, released.depth_extent);
+        let mut gpu = Gpu::new(&headless.state.device, &headless.state.queue, COLOR);
+        for split in [false, true] {
+            let mut render = |surface: &Arc<DisplayMesh>| {
+                gpu.upload(surface);
+                if split {
+                    gpu.upload_meshes(surface, 4 << 20);
+                }
+                gpu.paint(
+                    &params,
+                    [320, 240],
+                    false,
+                    WireMode::Visible,
+                    false,
+                    &Preview::default(),
+                );
+                gpu.read()
+            };
+            let pixels = render(&released);
+            let other = render(&Arc::new(reference.clone()));
+            assert_eq!(pixels, other);
+            let count = pixels
+                .chunks_exact(4)
+                .filter(|p| p[..3] != params.background)
+                .count();
+            assert!(count > 1000);
+            rows.push(serde_json::json!({"fixture":name,"split":split,"drawn_pixels":count,"different_pixels":0,"triangles":released.mesh.triangles.len()}));
+            if !split {
+                image::save_buffer(
+                    output.with_file_name(format!("release-{name}.png")),
+                    &pixels,
+                    320,
+                    240,
+                    image::ColorType::Rgba8,
+                )
+                .unwrap();
+            }
+        }
+    }
+    std::fs::write(
+        output,
+        serde_json::to_vec(&serde_json::json!({"rows":rows,"memory":memory()})).unwrap(),
+    )
+    .unwrap();
+}
