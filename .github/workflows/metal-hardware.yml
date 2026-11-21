@@ -1,0 +1,37 @@
+name: Guarded native Metal material comparisons
+on:
+  push:
+    branches: [bench/103-metal-hardware]
+permissions:
+  contents: read
+jobs:
+  draw:
+    env:
+      CLAY_DRAW_REPEATS: "13"
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: capacity-metal-release
+      - name: Build optimised tests
+        run: |
+          cargo test --locked --release --lib --no-run -j 2 --message-format=json > "$RUNNER_TEMP/build.jsonl"
+          python3 - <<'PY'
+          import os,json
+          from pathlib import Path
+          exe,=[v['executable'] for line in (Path(os.environ['RUNNER_TEMP'])/'build.jsonl').read_text().splitlines() if (v:=json.loads(line)).get('reason')=='compiler-artifact' and v.get('executable') and v.get('profile',{}).get('test')]
+          with open(os.environ['GITHUB_ENV'],'a') as out:print('BENCH_BINARY='+exe,file=out)
+          PY
+      - name: Guard and measure Metal surface drawing
+        run: |
+          python3 scripts/metal-region-run.py "$BENCH_BINARY" 3
+          if test "$(uname -m)" = arm64; then python3 scripts/metal-region-run.py "$BENCH_BINARY" 4; fi
