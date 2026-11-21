@@ -8,6 +8,7 @@ mod drawing;
 mod picking;
 mod regions;
 mod release;
+mod session;
 mod write_history;
 
 const DABS: usize = 12;
