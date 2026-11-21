@@ -159,6 +159,16 @@
     "peak_rss_bytes": 1856831488,
     "minimum_available_bytes": 2633498624
   },
+  "metalx86_64-3": {
+    "platform": "macOS-15.7.9-x86_64-i386-64bit-Mach-O",
+    "architecture": "x86_64",
+    "mem_bytes": 15032385536,
+    "initial_available": 9916182528,
+    "budget": 1887436800,
+    "reserve": 536870912,
+    "peak_rss_bytes": 621625344,
+    "minimum_available_bytes": 9055760384
+  },
   "picking-3": {
     "status": {
       "status": "measured",
@@ -198,6 +208,46 @@
     "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
     "binary_sha256": "ef9ab6273384f9e672c9796acf8b9f7df25417d408238376bf87d685f1ebfac4",
     "utc": "2026-11-21T23:01:45Z"
+  },
+  "refit-3": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 4.017020871999989,
+      "sampled_peak_rss_bytes": 582823936,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 15131561984
+    },
+    "preflight_kib": 15271168,
+    "capacity_kib": 16366512,
+    "cpu": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "commit": "03d79c918362de31cd78bb9bb64637ea6854f6bb",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "522dfc3aee1efafafd4059439b9f548ef895f3e32a96bb469fdffdb72dcf874b",
+    "utc": "2026-11-21T23:31:40Z"
+  },
+  "refit-4": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 17.573492959000077,
+      "sampled_peak_rss_bytes": 2168291328,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 13263474688
+    },
+    "preflight_kib": 14946280,
+    "capacity_kib": 16366512,
+    "cpu": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "commit": "03d79c918362de31cd78bb9bb64637ea6854f6bb",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "522dfc3aee1efafafd4059439b9f548ef895f3e32a96bb469fdffdb72dcf874b",
+    "utc": "2026-11-21T23:31:58Z"
   },
   "release-3": {
     "status": {

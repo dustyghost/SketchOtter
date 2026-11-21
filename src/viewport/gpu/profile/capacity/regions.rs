@@ -18,6 +18,9 @@ fn gpu_load_profile_changed_regions() {
         let mut expected = None;
         for reference in if wide { [false, true] } else { [true, false] } {
             let mut doc = document(fixture("hidden", level));
+            if reference {
+                doc.disable_display_regions();
+            }
             let mut gpu = Gpu::new(&headless.state.device, &headless.state.queue, COLOR);
             let mut phases = Measurements::default();
             let mut live = phases.time("initial_display", || Arc::new(DisplayMesh::new(&doc)));
@@ -36,6 +39,7 @@ fn gpu_load_profile_changed_regions() {
             {
                 let brush = brush(kind);
                 for frame in 0..8 {
+                    let from_input = Instant::now();
                     let mut touch = dab(frame);
                     if wide {
                         touch.radius = 0.72;
@@ -47,9 +51,6 @@ fn gpu_load_profile_changed_regions() {
                             doc.apply_dab(&brush, touch);
                         }
                     });
-                    if reference {
-                        Arc::make_mut(&mut live).disable_region_input();
-                    }
                     let overall = Instant::now();
                     let next = phases.time(&format!("{kind:?}.display"), || {
                         Arc::new(live.during_stroke(&doc).unwrap())
@@ -62,6 +63,12 @@ fn gpu_load_profile_changed_regions() {
                         headless.wait()
                     });
                     let total = overall.elapsed().as_secs_f64() * 1000.;
+                    phases
+                        .values
+                        .entry(format!("{kind:?}.input_through_upload"))
+                        .or_default()
+                        .push(from_input.elapsed().as_secs_f64() * 1000.);
+
                     phases
                         .values
                         .entry(format!("{kind:?}.display_plus_upload"))

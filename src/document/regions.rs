@@ -30,6 +30,8 @@ impl Edits {
 }
 pub(super) struct Journal {
     identity: u64,
+    #[cfg(test)]
+    disabled: bool,
     changes: VecDeque<(u64, u64, Edits)>,
 }
 impl Default for Journal {
@@ -37,6 +39,8 @@ impl Default for Journal {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         Self {
             identity: NEXT.fetch_add(1, Ordering::Relaxed),
+            #[cfg(test)]
+            disabled: false,
             changes: VecDeque::new(),
         }
     }
@@ -83,6 +87,19 @@ impl Journal {
     }
 }
 impl super::Document {
+    pub(super) fn track_display_regions(&self) -> bool {
+        #[cfg(test)]
+        if self.regions.disabled {
+            return false;
+        }
+        self.mesh().vertices.len() >= 20_000
+    }
+    #[cfg(test)]
+    pub(crate) fn disable_display_regions(&mut self) {
+        self.regions.clear();
+        self.regions.disabled = true;
+    }
+
     pub(crate) fn region_stamp(&self) -> Stamp {
         Stamp(self.regions.identity, self.display_revision)
     }

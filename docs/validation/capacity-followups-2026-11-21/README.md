@@ -38,6 +38,8 @@ At 2.4m the median orthographic first hit fell from 7.07 to 0.56 ms and the next
 
 [602k samples](picking-3.json.gz) · [2.4m samples](picking-4.json.gz) · [First orbit comparison](https://github.com/dustyghost/clay-form/actions/runs/44959190339)
 
+A separate sparse deformation compared rebuilding the world boxes with maintaining a reverse vertex-to-block index. At 2.4m, 6,267 changed vertices touched 135 of 11,315 blocks. Refitting took 0.29 ms against 13.30 ms for rebuilding, but constructing the reverse map cost 16.18 ms and retained 8.41 MiB. Scanning positions to discover the edits took another 2.62 ms. At 602k, refitting 36 blocks took 0.09 ms against 3.32 ms, with 4.61 ms to build a 2.07 MiB reverse map. Refit bounds matched the rebuild exactly. The shipped path retains the boxes alone (265 KiB at 2.4m), discards them when geometry changes, and rebuilds on a subsequent camera reuse. The larger map would need repeated camera reuse after edits to recover its setup cost. [602k refit](refit-3.json.gz) · [2.4m refit](refit-4.json.gz) · [Refit run](https://github.com/dustyghost/clay-form/actions/runs/44961868806)
+
 ## Live display and GPU uploads (#112)
 
 A bounded, document-owned edit history carries changed positions, mask values and complete vertex materials through the dense fixed-topology path. Stamps include document identity and revision. Unknown mutations, topology changes, stale frames and oversized regions take the full path. The journal retains at most eight edits and 16,384 indices per edit. A sparse normal update returns the affected fans in canonical order. The uploader uses the fan list only when its packed bytes belong to the exact previous display geometry. Split buffers keep the existing packing path. Older immutable snapshots continue to own their payloads.
@@ -73,6 +75,28 @@ The software Vulkan comparison used a 256 × 192 framebuffer. Each mode was rend
 At 2.4m the basic and extended mesh buffers occupied 160.1 and 319.9 MiB respectively. The extended layout split across ten draws. Both paths shared their geometry allocations in the comparison. All 48 Linux size/layout/mode combinations compared alpha, coverage and RGB against the original pipeline. The dense comparison allows one 8-bit rounding step in colour only, matching the previous test. All observed Linux pixels were identical. Normal and forced-split regressions additionally cover translucent backs, wire modes, masks, brush alpha, symmetry and perspective.
 
 [602k samples](drawing-3.json.gz) · [2.4m samples](drawing-4.json.gz) · [Linux drawing run](https://github.com/dustyghost/clay-form/actions/runs/44959838775) · [Original HD 620 basic draw measurements](../indexed-surface-draw-2026-10-31/README.md)
+
+The Metal comparison on an Apple Silicon VM identified a unified-memory integrated adapter. At 2.4m, extended inspection medians were 13.27 / 9.70 ms for colour, 18.68 / 9.46 ms for roughness and 18.00 / 9.87 ms for metallic. At 602k, the short colour comparison was 8.23 / 9.92 ms while roughness and metallic were close. On the Intel Mac VM, wgpu reported a discrete paravirtual adapter. At 602k its three comparisons were 21.55 / 9.75, 24.59 / 5.69 and 21.96 / 6.51 ms. Its recommended device budget was 1 GiB, so the larger case was confined to the unified-memory device. The environments identify guest-visible devices and the working-set limits reported by Metal. [Integrated 602k](metalarm64-3.json.gz) · [Integrated 2.4m](metalarm64-4.json.gz) · [Discrete 602k](metalx86_64-3.json.gz) · [Metal run](https://github.com/dustyghost/clay-form/actions/runs/44960865971)
+
+## Mixed sessions and the upper boundary (#114)
+
+The pinned Water Bottle from Microsoft is distributed under CC0 in the Khronos sample collection. Its original 2,549 position records and 4,510 triangles become 2,385 exactly welded positions with independent face-corner UVs. The workload normalises its size, preserves each UV seam when interpolating the child triangles, and uses a 128 × 128 copy of the original colour map. Two offset submodels share the texture. The script mixes symmetric sculpt, vertex Paint, mask and UV-image Paint, includes hidden faces, cancels image edits, changes subdivision topology and verifies Undo/Redo as well as save/reopen. [Asset and licence](https://github.com/KhronosGroup/glTF-Sample-Assets/blob/4995a638c96dbc94376d3d6164e70fee3ac7f7a2/Models/WaterBottle/README.md) · [Pinned asset preparation](../../../scripts/prepare-capacity-asset.py)
+
+| Two-model 96-stroke session on the EPYC 7763 | Smaller asset | Denser asset |
+| --- | ---: | ---: |
+| Active vertices per model | 9,282 | 145,374 |
+| Source polygons / triangles per model | 18,040 | 288,640 |
+| Total rendered triangles | 32,366 | 515,446 |
+| Peak retained history entries | 24 | 15 |
+| Peak estimated history | 102.28 MiB | 1,020.80 MiB |
+| Peak display payload / GPU mesh buffers | 5.89 / 3.20 MiB | 91.04 / 50.67 MiB |
+| Whole-process sampled high-water RSS | 314.5 MiB | 1,952.6 MiB |
+| Two dabs through live and release uploads, p50 / p95 | 27.4 / 34.1 ms | 489.2 / 612.2 ms |
+| Two dabs through live and release uploads, slowest | 46.0 ms | 646.7 ms |
+
+The denser model retained 4,510, 18,040 and 72,160 source triangles in its three lower levels, per model. The 1 GiB history budget evicted entries before reaching the 24-edit default. At the end of the denser session, RSS was about 1,834 MiB with caches and document live and 1,662 MiB after dropping both. Allocator and driver memory can remain resident. GPU mesh buffer figures sum actual vertex, index, colour and UV buffer sizes. Texture atlas, swapchain, driver bookkeeping and transient allocations are outside that figure. The X11 presentation timings are a separate workload. [Small session samples](session-3.json.gz) · [Dense session samples](session-4.json.gz)
+
+A fresh guarded process reached **9,633,792 active triangles and 4,816,898 vertices** on a synthetic sphere, with another 3,208,128 triangles in its retained subdivision stack. It validated the source, applied a Standard stroke, restored the exact hashes with Undo/Redo, built the display, uploaded and drew at 800 × 600 through software Vulkan. Peak RSS was **5.57 GiB** with at least **8.61 GiB** system memory available. The final subdivision took 14.7 s, document validation 25.3 s, CPU display construction 4.2 s and initial upload 2.7 s. The 0.98 s final interval includes draw, GPU completion and pixel readback. This establishes a bounded functional result at 9.6m. The real-asset session provides the evidence for repeated editing. A 12m interactive workload and a physical tablet-to-monitor latency measurement remain outside this run. [Stage and memory checkpoints](boundary-3.json.gz) · [Session and boundary measurements](https://github.com/dustyghost/clay-form/actions/runs/44961238925)
 
 ## Reproduction
 

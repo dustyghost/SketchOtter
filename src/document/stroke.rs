@@ -88,6 +88,7 @@ impl Document {
             // symmetry copy gets the initial surface patch on its own side.
             self.stroke_flatten_planes = self.geometry.mesh.surface_planes(&dabs);
         }
+        let track_dense = self.track_display_regions();
         let settings = &self.geometry.settings.adaptive;
         let stencils = stencil.map_or_else(Vec::new, |s| s.copies(&self.symmetry));
         let region = crate::sculpt::AdaptiveRegion {
@@ -106,7 +107,7 @@ impl Document {
             .mesh
             .prepare_stenciled_stamp(brush, &dabs, &stencils, settings);
         let old_mask = (brush.kind == Kind::Mask).then(|| self.geometry.mesh.mask.clone());
-        let track = self.geometry.mesh.vertices.len() >= 20_000
+        let track = track_dense
             && !settings.enabled
             && !before_topology
             && matches!(brush.kind, Kind::Standard | Kind::Clay | Kind::Mask);
