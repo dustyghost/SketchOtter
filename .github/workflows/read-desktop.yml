@@ -1,0 +1,27 @@
+name: Inspect desktop capture
+on:
+  push:
+    branches: [bench/103-desktop-diagnostics]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: virtual-desktop-observations
+          run-id: 44963384325
+          github-token: ${{ github.token }}
+          path: results
+      - run: |
+          python3 - <<'PY'
+          import base64,gzip,json
+          from pathlib import Path
+          for path in Path('results').rglob('desktop-before.png'):
+              v=base64.b64encode(gzip.compress(json.dumps({'png':base64.b64encode(path.read_bytes()).decode()}).encode())).decode()
+              for i in range(0,len(v),8000):print('REGION_RECORD',path.parent.name.replace('-','_'),3,i//8000,v[i:i+8000])
+          for path in Path('results').rglob('*-app.log'):
+              print(path.name, path.read_text()[-1000:])
+          PY
