@@ -1,0 +1,19 @@
+name: Read desktop startup diagnostics
+on:
+  push:
+    branches: [bench/103-desktop-diagnostics]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 44961284825
+          name: virtual-desktop-observations
+          path: desktop
+          github-token: ${{ github.token }}
+      - run: tail -c 4000 desktop/sphere-app.log && tail -c 1000 desktop/wm.log
