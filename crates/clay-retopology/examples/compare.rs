@@ -6,8 +6,13 @@ use std::{io::Write, time::Instant};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if !(args.len() == 4 || (args.len() == 5 && args[4] == "--regularize")) {
-        return Err("usage: compare source.clay output.obj target-quads [--regularize]".into());
+    if !(args.len() == 4
+        || (args.len() == 5 && ["--regularize", "--integer-grid"].contains(&args[4].as_str())))
+    {
+        return Err(
+            "usage: compare source.clay output.obj target-quads [--regularize|--integer-grid]"
+                .into(),
+        );
     }
     let source = std::fs::canonicalize(&args[1])?;
     if std::path::Path::new(&args[2]).exists() {
@@ -30,7 +35,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Options::default()
     };
     let start = Instant::now();
-    let reconstruct = if args.len() == 5 {
+    let reconstruct = if args.get(4).is_some_and(|s| s == "--integer-grid") {
+        clay_retopology::reconstruct_integer_grid_with_progress
+    } else if args.len() == 5 {
         reconstruct_regularized_with_progress
     } else {
         reconstruct_with_progress

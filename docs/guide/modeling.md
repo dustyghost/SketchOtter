@@ -796,7 +796,9 @@ Mesh operations run in the background. Cancel keeps the original surface; Undo r
 
 ## Guide a retopology preview
 
-Use **Mesh → Guided retopology…** to reconstruct a fresh quad layout from a sculpt's surface. This experimental Rust solver accepts open or closed manifold meshes. Convert parametric primitives first, show hidden faces and use a source without UVs or textures.
+Use **Mesh → Guided retopology…** to reconstruct a fresh quad layout from a sculpt's surface. The default **Surface field** method accepts open or closed manifold meshes. Convert parametric primitives first, show hidden faces and use a source without UVs or textures.
+
+**Layout method** starts at **Surface field**. **Integer grid (experimental)** tries a different layout using mixed-integer surface parameterization. It currently requires a closed surface, **Layout symmetry → Off**, and **Protect sharp bends** unchecked. It can reject a difficult map or reach its bounded solve limit; it never silently switches methods. Preview and inspect either result before applying it. Changing the method clears the previous preview.
 
 1. Open **Guided retopology…**, set **Target quads** (large models start at 10,000), and try **Preview layout** without guides or paint first. **Input triangle limit** defaults to 200,000; raise it to at least the displayed source count for larger tests. Preparation and reconstruction run in the background, with progress and cancellation. The count is a target, not an exact promise.
 2. To direct edges, draw and save **Surface** paths in **Editable paths**, then choose guides individually or use **Select all** under **Edge direction**. **Path strength** controls their influence. **Mirror paths** reflects them across world X = 0. Open curves and closed loops steer nearby edges; a closed guide does not guarantee a continuous edge loop.

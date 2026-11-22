@@ -232,6 +232,7 @@ impl App {
         self.clear_projection_preview();
         self.viewport.cancel(&mut self.document);
         let options = self.ui.projection.layout;
+        options.require_method_settings()?;
         options.require_input_budget(self.document.mesh())?;
         self.ui.projection.density_paint = None;
         let paths = self
@@ -269,7 +270,7 @@ impl App {
         let view = settings
             .view_input
             .get_or_insert_with(|| serde_json::json!({}));
-        view["guided_retopology"] = serde_json::json!({"backend":"native_surface_field","input_triangle_limit":options.input_triangle_limit,"target":options.target,"paths":self.ui.projection.flow_paths,"path_strength":options.flow,"density_strength":options.density,"shape_adaptation":options.adaptive,"mirror_path_x":options.mirror_path_x,"preserve_sharp":options.preserve_sharp,"sharp_angle_degrees":options.sharp_angle_degrees,"symmetry_axis":options.symmetry_axis,"symmetry_center":options.symmetry_center,"symmetry_centreline":options.symmetry_centreline,"symmetry_source":options.symmetry_source});
+        view["guided_retopology"] = serde_json::json!({"backend":options.method.diagnostic_name(),"input_triangle_limit":options.input_triangle_limit,"target":options.target,"paths":self.ui.projection.flow_paths,"path_strength":options.flow,"density_strength":options.density,"shape_adaptation":options.adaptive,"mirror_path_x":options.mirror_path_x,"preserve_sharp":options.preserve_sharp,"sharp_angle_degrees":options.sharp_angle_degrees,"symmetry_axis":options.symmetry_axis,"symmetry_center":options.symmetry_center,"symmetry_centreline":options.symmetry_centreline,"symmetry_source":options.symmetry_source});
         self.projection.worker = Some(Worker {
             job,
             progress: Some(progress),

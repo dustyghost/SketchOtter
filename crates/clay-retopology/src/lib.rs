@@ -14,6 +14,7 @@ mod field;
 mod flow;
 mod geometry;
 mod integer;
+mod miq;
 mod quad;
 pub mod resample;
 mod sat;
@@ -22,6 +23,7 @@ mod symmetry;
 mod topology;
 
 pub use glam::DVec3 as Vec3;
+pub use miq::reconstruct as reconstruct_integer_grid_with_progress;
 
 #[cfg_attr(feature = "audit", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug)]
@@ -108,6 +110,12 @@ pub enum Stage {
     },
     Orientation,
     Position,
+    Parameterization {
+        remaining: usize,
+    },
+    MapValidation {
+        faces: usize,
+    },
     Regularity {
         defects: usize,
     },
@@ -432,6 +440,118 @@ fn finish_extracted(
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+    #[test]
+    fn experimental_integer_grid_maps_a_closed_sphere() {
+        let s = sphere(2);
+        let options = Options {
+            target_quads: 80,
+            preserve_sharp: false,
+            ..Options::default()
+        };
+        assert!(crate::miq::test_map(&s, &options).unwrap() > 0);
+    }
+    #[test]
+    fn experimental_integer_grid_reconstructs_and_validates_a_closed_sphere() {
+        let s = sphere(2);
+        let options = Options {
+            target_quads: 80,
+            preserve_sharp: false,
+            ..Options::default()
+        };
+        let result =
+            reconstruct_integer_grid_with_progress(&s, &options, &|| false, &|_| {}).unwrap();
+        assert!(
+            result.quads.len() > 40 && result.quads.len() < 160,
+            "{} quads",
+            result.quads.len()
+        );
+        assert_eq!(
+            topology::validate(&Surface {
+                positions: result.positions,
+                triangles: result.triangles
+            })
+            .unwrap(),
+            topology::validate(&s).unwrap()
+        );
+    }
+    #[test]
+    fn experimental_integer_grid_rounds_poles_before_seams_on_a_redistributed_sphere() {
+        let s = sphere(2);
+        let options = Options {
+            target_quads: 80,
+            preserve_sharp: false,
+            ..Options::default()
+        };
+        let prepared = resample::prepare(&s, &options, 4, &|| false, &|_| {}).unwrap();
+        assert!(crate::miq::test_map(&prepared.surface, &options).unwrap() > 0);
+    }
+    #[test]
+    fn experimental_integer_grid_signed_density_and_direction_guide() {
+        let s = sphere(2);
+        let options = Options {
+            target_quads: 80,
+            preserve_sharp: false,
+            detail: s.positions.iter().map(|p| 0.3 * p.x).collect(),
+            guides: vec![Guide {
+                position: Vec3::Y,
+                normal: Vec3::Y,
+                tangent: Vec3::X,
+                radius: 0.8,
+                strength: 0.4,
+            }],
+            ..Options::default()
+        };
+        let before = s.clone();
+        let result =
+            reconstruct_integer_grid_with_progress(&s, &options, &|| false, &|_| {}).unwrap();
+        assert!(result.quads.len() > 40 && result.quads.len() < 160);
+        assert_eq!(
+            topology::validate(&Surface {
+                positions: result.positions,
+                triangles: result.triangles
+            })
+            .unwrap(),
+            topology::validate(&s).unwrap()
+        );
+        assert_eq!(s.positions, before.positions);
+        assert_eq!(s.triangles, before.triangles);
+    }
+    #[test]
+    fn experimental_integer_grid_rejection_and_cancellation_keep_the_source() {
+        let s = sphere(2);
+        let before = s.clone();
+        let mut options = Options {
+            target_quads: 80,
+            preserve_sharp: true,
+            ..Options::default()
+        };
+        assert!(
+            reconstruct_integer_grid_with_progress(&s, &options, &|| false, &|_| {})
+                .err()
+                .unwrap()
+                .contains("Protect sharp bends")
+        );
+        options.preserve_sharp = false;
+        let cancel = std::cell::Cell::new(false);
+        let error =
+            reconstruct_integer_grid_with_progress(&s, &options, &|| cancel.get(), &|stage| {
+                if matches!(stage, Stage::Parameterization { .. }) {
+                    cancel.set(true);
+                }
+            })
+            .err()
+            .unwrap();
+        assert_eq!(error, "Retopology cancelled");
+        assert_eq!(s.positions, before.positions);
+        assert_eq!(s.triangles, before.triangles);
+        let open = plane(4);
+        assert!(
+            reconstruct_integer_grid_with_progress(&open, &options, &|| false, &|_| {})
+                .err()
+                .unwrap()
+                .contains("closed surfaces")
+        );
+    }
     fn sphere(levels: usize) -> Surface {
         let mut s = Surface {
             positions: vec![Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, Vec3::Z, -Vec3::Z],

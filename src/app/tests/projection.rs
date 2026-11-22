@@ -426,6 +426,106 @@ fn guided_retopology_keeps_source_and_attributes_and_roundtrips_as_one_edit() {
 }
 
 #[test]
+fn integer_grid_retopology_preview_apply_history_and_persistence() {
+    use crate::sculpt::{Material, Primitive, PrimitiveKind, retopology::Method};
+    let mut primitive = Primitive::for_kind(PrimitiveKind::Icosphere);
+    primitive.subdivisions = 2;
+    let mut mesh = primitive.mesh().unwrap();
+    mesh.mask = mesh
+        .vertices
+        .iter()
+        .map(|p| (p.1 + 0.5).clamp(0., 1.))
+        .collect();
+    mesh.materials = mesh
+        .mask
+        .iter()
+        .map(|&w| Material::from_srgb([0.2 + 0.5 * w, 0.3, 0.4], 0.5, w))
+        .collect();
+    let mut app = App::default();
+    app.document
+        .replace_geometry(Geometry::new(mesh.clone()))
+        .unwrap();
+    app.document.mark_saved("integer-grid-source.clay");
+    let before = app.document.project();
+    let history = app.document.history_counts();
+    let ctx = egui::Context::default();
+    app.dispatch(Command::OpenRetopology, &ctx);
+    assert_eq!(app.ui.projection.layout.method, Method::SurfaceField);
+    app.ui.projection.layout.method = Method::IntegerGrid;
+    app.ui.projection.layout.target = 80;
+    app.ui.projection.layout.symmetry_axis = None;
+    app.ui.projection.layout.preserve_sharp = true;
+    app.dispatch(Command::PreviewProjection, &ctx);
+    assert!(!app.ui.projection.busy && app.projection.draft.is_none());
+    assert!(app.document.project() == before && !app.document.is_dirty());
+    assert_eq!(app.document.history_counts(), history);
+    app.ui.projection.layout.preserve_sharp = false;
+    app.dispatch(Command::PreviewProjection, &ctx);
+    app.dispatch(Command::CancelProjection, &ctx);
+    app.poll_projection();
+    assert!(!app.ui.projection.busy && app.projection.draft.is_none());
+    assert!(app.document.project() == before && !app.document.is_dirty());
+    assert_eq!(app.document.history_counts(), history);
+    app.dispatch(Command::OpenRetopology, &ctx);
+    app.ui.projection.layout.target = 80;
+    app.ui.projection.layout.symmetry_axis = None;
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish_projection(&mut app);
+    let draft = app
+        .projection
+        .draft
+        .as_ref()
+        .unwrap_or_else(|| panic!("{} {:?}", app.ui.status, app.ui.projection.error));
+    assert_eq!(
+        draft.settings.view_input.as_ref().unwrap()["guided_retopology"]["backend"],
+        "native_miq_integer_grid_experimental"
+    );
+    draft.mesh.validate_closed().unwrap();
+    assert!(!draft.mesh.quads.is_empty());
+    assert!(app.document.project() == before && !app.document.is_dirty());
+    app.dispatch(Command::ApplyProjection, &ctx);
+    assert_eq!(app.document.history_counts().0, history.0 + 1);
+    assert_eq!(app.document.model(1).unwrap().mesh, &mesh);
+    let result = app.document.mesh();
+    assert!(result.mask.iter().any(|&w| w < 0.1) && result.mask.iter().any(|&w| w > 0.9));
+    assert!(
+        result
+            .materials
+            .iter()
+            .zip(&result.mask)
+            .all(|(m, w)| (m.metallic - w).abs() < 1e-6)
+    );
+    let saved = app.document.project();
+    let mut reopened = Document::default();
+    reopened
+        .replace_project(
+            serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap(),
+            "integer-grid.clay",
+        )
+        .unwrap();
+    assert!(reopened.project() == saved);
+    app.document.undo();
+    assert!(app.document.project() == before);
+    app.document.redo();
+    assert!(app.document.project() == saved);
+
+    app.document.undo();
+    app.dispatch(Command::OpenRetopology, &ctx);
+    app.ui.projection.layout.target = 80;
+    app.ui.projection.layout.symmetry_axis = None;
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish_projection(&mut app);
+    assert!(app.projection.draft.is_some(), "{}", app.ui.status);
+    app.document.duplicate_model(false).unwrap();
+    let changed = app.document.project();
+    let history = app.document.history_counts();
+    app.dispatch(Command::ApplyProjection, &ctx);
+    assert!(app.document.project() == changed);
+    assert_eq!(app.document.history_counts(), history);
+    assert!(app.ui.status.contains("scene changed"), "{}", app.ui.status);
+}
+
+#[test]
 fn guided_retopology_input_limit_allows_larger_preview_and_apply() {
     use crate::sculpt::{Primitive, PrimitiveKind};
     let mut primitive = Primitive::for_kind(PrimitiveKind::Plane);

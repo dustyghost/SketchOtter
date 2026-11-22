@@ -1,5 +1,5 @@
 {
-  "Cargo.lock": "b2a6b3c551a187a9186e21a763c23c542cd85bab520edb7fb3e0f385740beb89",
+  "Cargo.lock": "02aa5fda78f748fee7ef9a6881b2e24953ce91f1b984f4e1ac9e1d9202f8b303",
   "Cargo.toml": "3a61bddaaf3679818b2d85ecab5193fc51a7744457d51953f83e580b732a2400",
   "about.toml": "1d4e855a5c0d74f4df2880313c34d390270d845608f749c608808b61796e32cb",
   "scripts/generate-notices.py": "fe277a59bc163c4d49f10b86648c455f4f5712be01433a1578b539cca5068196",
@@ -10,6 +10,6 @@
   "legal/notice-supplements.json": "35f889d7701100d22ebbb063b0b45942fbe0751fda301bc8570da5fefc521b4c",
   "legal/review-decisions.json": "3397f00556c43706af47dcceffefd8e0619a10284260fe4dc28a3e98598168de",
   "legal/release-review.json": "3e654494e8d6cb4ba62338a8f173e48083ff79ee780911eeef3d8a9d15371876",
-  "legal/third-party.json": "7747efcb438a334acffb6e48bc874cf8f2517e6e6d012e0a7347057b8d93fc2b",
-  "THIRD-PARTY-NOTICES.html": "b72870d0a945b7e2e323c6234f05d398229905399fe93ac485d0d212eee60207"
+  "legal/third-party.json": "2c6c0728bbc5d7c9044c8daa4925ee8ba1a4cb9682b021df90f8d0a53d9e4209",
+  "THIRD-PARTY-NOTICES.html": "fc1504f90e54edf2fba1ac3259dd85f2be0d9b20b85c7d4e62ea8fb3808b49b4"
 }

@@ -13,8 +13,23 @@ pub(crate) struct Layout {
     pub polygons: usize,
     pub guides: GuideCurves,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Method {
+    #[default]
+    SurfaceField,
+    IntegerGrid,
+}
+impl Method {
+    pub(crate) fn diagnostic_name(self) -> &'static str {
+        match self {
+            Self::SurfaceField => "native_surface_field",
+            Self::IntegerGrid => "native_miq_integer_grid_experimental",
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Options {
+    pub method: Method,
     pub input_triangle_limit: usize,
     pub target: usize,
     pub flow: f32,
@@ -31,6 +46,7 @@ pub(crate) struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            method: Method::SurfaceField,
             input_triangle_limit: 200_000,
             target: 500,
             flow: 1.,
@@ -47,6 +63,14 @@ impl Default for Options {
     }
 }
 impl Options {
+    pub(crate) fn require_method_settings(&self) -> Result<(), String> {
+        if self.method == Method::IntegerGrid
+            && (self.symmetry_axis.is_some() || self.preserve_sharp)
+        {
+            return Err("Integer grid (experimental) currently requires Layout symmetry Off and Protect sharp bends unchecked".into());
+        }
+        Ok(())
+    }
     pub(crate) fn require_input_budget(&self, mesh: &Mesh) -> Result<(), String> {
         if !(1..=super::max_triangles()).contains(&self.input_triangle_limit) {
             return Err(format!(
@@ -121,6 +145,7 @@ impl Mesh {
         progress: &dyn Fn(clay_retopology::Stage),
     ) -> Result<Layout, String> {
         check(cancel)?;
+        options.require_method_settings()?;
         options.require_input_budget(self)?;
         self.require_retopology_input()?;
         self.validate()?;
@@ -272,9 +297,14 @@ impl Mesh {
                 triangles: self.triangles.clone(),
             };
             (
-                clay_retopology::reconstruct_regularized_with_progress(
-                    &source, &settings, cancel, progress,
-                )?,
+                match options.method {
+                    Method::SurfaceField => clay_retopology::reconstruct_regularized_with_progress(
+                        &source, &settings, cancel, progress,
+                    )?,
+                    Method::IntegerGrid => clay_retopology::reconstruct_integer_grid_with_progress(
+                        &source, &settings, cancel, progress,
+                    )?,
+                },
                 self,
             )
         };
@@ -464,6 +494,8 @@ pub(crate) fn progress_label(stage: clay_retopology::Stage) -> String {
     use clay_retopology::Stage::*;
     match stage {
         Preparation { iteration, .. } => format!("Preparing surface · pass {iteration}"),
+        Parameterization { remaining } => format!("Mapping the grid… {remaining} constraints left"),
+        MapValidation { .. } => "Checking the integer-grid map…".into(),
         RetryPreparation => {
             "Grid repair failed. Retrying with different surface preparation…".into()
         }

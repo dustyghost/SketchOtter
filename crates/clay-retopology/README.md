@@ -4,7 +4,19 @@ Experimental Rust implementation for the automatic-retopology replacement in
 PR #119. It now powers the app's experimental guided-retopology preview.
 It is not a quality-equivalent release of QuadriFlow.
 
-The pipeline follows Huang et al., [QuadriFlow (2018)](https://stanford.edu/~jingweih/papers/quadriflow/):
+`reconstruct_integer_grid_with_progress` is a separate experimental alternative
+based on MIQ (2009) parameterization and IGM (2013) orientation conditions.
+It reuses the native orientation/sizing field, then solves seamless charts with
+integer singularities and translations and extracts unit grid cells directly.
+It does not use the lattice repair below. Closed surfaces, signed density and
+soft direction guides are supported; boundaries, sharp-bend protection and the
+app's symmetry modes are currently rejected. Clarabel supplies continuous Rust
+quadratic solves, with bounded rounding, cancellation and independent residual,
+map, topology and original-surface checks. The 60-second solve budget can reject
+a difficult input. This is a greedy experiment, not the 2013 paper's global
+optimizer; see [scope, measurements and limitations](../../docs/validation/guided-retopology/experimental-integer-grid.md).
+
+The default Surface field pipeline follows Huang et al., [QuadriFlow (2018)](https://stanford.edu/~jingweih/papers/quadriflow/):
 
 1. Conforming surface sampling and an area-weighted hierarchy.
 2. Fourfold tangent-orientation and position fields.

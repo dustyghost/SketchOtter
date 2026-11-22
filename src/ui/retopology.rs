@@ -14,6 +14,23 @@ fn setting_label(ui: &mut egui::Ui, glyph: Glyph, label: &str) {
 
 impl ProjectionControls {
     fn layout_options(&mut self, ui: &mut egui::Ui, document: &Document, camera: &Camera) {
+        use crate::sculpt::retopology::Method;
+        ui.label("Layout method");
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(
+                &mut self.layout.method,
+                Method::SurfaceField,
+                "Surface field",
+            );
+            ui.selectable_value(
+                &mut self.layout.method,
+                Method::IntegerGrid,
+                "Integer grid (experimental)",
+            );
+        });
+        if self.layout.method == Method::IntegerGrid {
+            ui.weak("A different quad layout for closed surfaces. Symmetry and sharp-bend protection are not yet supported.");
+        }
         ui.horizontal(|ui| {
             setting_label(ui, Glyph::Mesh, "Target quads");
             let range = 4..=50_000;
@@ -206,7 +223,7 @@ impl UiState {
             ui.label(format!("Source · {}", source.name));
             ui.label(format!("{} source triangles", document.mesh().triangles.len()));
             ui.weak("Experimental automatic quad reconstruction. Apply adds an editable model and keeps the source below it for detail projection.");
-            let budget = state.layout.require_input_budget(document.mesh());
+            let budget = state.layout.require_input_budget(document.mesh()).and_then(|()| state.layout.require_method_settings());
             if let Err(error) = &budget {
                 ui.label(error);
             }
