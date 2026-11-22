@@ -11,6 +11,7 @@ spec = importlib.util.spec_from_file_location("capacity", Path(__file__).with_na
 capacity = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(capacity)
 CASES = {
+    "allocation": "allocation::gpu_load_profile_allocation_refusal",
     "picking": "picking::gpu_load_profile_world_picking",
     "drawing": "drawing::gpu_load_profile_dense_materials",
     "visual": "release::gpu_load_profile_release_visual",

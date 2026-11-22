@@ -357,11 +357,9 @@ impl DisplayMesh {
             let mut affected = affected?;
             if !edits.mask.is_empty() || !edits.materials.is_empty() {
                 let topology = self.stroke_topology.as_ref()?;
-                let corners = topology
-                    .source
-                    .normal_corners
-                    .get_or_init(|| live_normals::VertexCorners::new(source))
-                    .as_ref()?;
+                // A Paint or Mask stroke alone needs no normal adjacency.
+                // Until a sculpt stroke has built it, retain the full packer.
+                let corners = topology.source.normal_corners.get()?.as_ref()?;
                 for &vertex in edits.mask.iter().chain(&edits.materials) {
                     for &corner in corners.incident(vertex) {
                         affected.push(fans[corner as usize / 3][corner as usize % 3]);

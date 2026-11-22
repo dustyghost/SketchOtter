@@ -4,6 +4,8 @@ use crate::sculpt::{Material, Project};
 use serde::Serialize;
 use std::{collections::BTreeMap, io::Write};
 
+#[cfg(target_os = "linux")]
+mod allocation;
 mod drawing;
 mod picking;
 mod regions;
