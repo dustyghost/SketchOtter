@@ -68,6 +68,8 @@ impl Document {
             self.end_stroke();
             let dirty = self.dirty;
             self.begin_stroke();
+            #[cfg(test)]
+            crate::sculpt::texture::profile::mark("paint_snapshot");
             let mut settings = self.capture_edit_settings();
             settings.active_brush = Some(brush.clone());
             self.paint_stroke = Some((dirty, settings));
@@ -193,7 +195,19 @@ mod tests {
             delta: Vec3::default(),
             invert: false,
         };
+        doc.begin_freehand_stroke(Kind::Paint);
+        assert!(
+            doc.stroke_before.is_none(),
+            "pointer-down defers the snapshot"
+        );
+        doc.end_stroke();
+        assert_eq!(doc.history_counts(), history, "release without a dab");
+        doc.begin_freehand_stroke(Kind::Paint);
         assert!(doc.apply_dab(&brush, dab));
+        assert!(
+            doc.stroke_before.is_some(),
+            "first dab establishes the snapshot"
+        );
         assert!(doc.apply_dab(&brush, dab));
         assert_eq!(doc.history_counts(), history, "history waits until release");
         assert!(
@@ -345,6 +359,77 @@ mod texture_target_tests {
         assert_eq!(doc.geometry_snapshot(), before);
     }
     #[test]
+    fn freehand_paint_matches_a_fresh_stroke_after_input_edits() {
+        let mut brush = Brush::new(Kind::Paint);
+        brush.material = crate::sculpt::Material::from_srgb([1., 0., 0.], 0.5, 0.);
+        brush.strength = 0.2;
+        let dab = crate::sculpt::texture::tests::dab();
+        for target in [None, Some(Channel::Color)] {
+            for edit in ["material", "mask", "topology", "visibility", "occluder"] {
+                let mut doc = document();
+                doc.duplicate_model(false).unwrap();
+                doc.texture_paint = target;
+                doc.begin_freehand_stroke(Kind::Paint);
+                assert!(doc.apply_dab(&brush, dab));
+                doc.end_stroke();
+
+                // Keep counts stable for topology, visibility and occluder changes.
+                let mut geometry = doc.geometry_snapshot();
+                let mesh = &mut geometry.mesh;
+                match edit {
+                    "material" => {
+                        mesh.materials = vec![brush.material.clone(); mesh.vertices.len()]
+                    }
+                    "mask" => mesh.mask[0] = 1.,
+                    "topology" => {
+                        mesh.triangles.swap(0, 1);
+                        mesh.uv.topology.swap(0, 1);
+                        mesh.uv.corners.swap(0, 1);
+                    }
+                    "visibility" => mesh.hidden_faces = vec![true, false, false, false],
+                    "occluder" => {
+                        for p in &mut geometry.submodels[0].mesh.vertices {
+                            p.2 += 0.5;
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+                doc.replace_geometry(geometry).unwrap();
+                let before = doc.geometry_snapshot();
+                let history = doc.history_counts();
+                let dirty = doc.is_dirty();
+
+                let mut reference = document();
+                reference.replace_geometry(before.clone()).unwrap();
+                reference.texture_paint = target;
+                reference.begin_stroke();
+                let changed = reference.apply_dab(&brush, dab);
+                reference.end_stroke();
+                let expected = reference.geometry_snapshot();
+
+                doc.begin_freehand_stroke(Kind::Paint);
+                assert_eq!(doc.apply_dab(&brush, dab), changed, "{edit}");
+                assert!(doc.cancel_paint_stroke());
+                assert_eq!(doc.geometry_snapshot(), before);
+                assert_eq!(doc.history_counts(), history);
+                assert_eq!(doc.is_dirty(), dirty);
+
+                doc.begin_freehand_stroke(Kind::Paint);
+                assert_eq!(doc.apply_dab(&brush, dab), changed, "{edit}");
+                doc.end_stroke();
+                assert_eq!(doc.geometry_snapshot(), expected, "{edit}");
+                assert_eq!(doc.history_counts().0, history.0 + usize::from(changed));
+                if changed {
+                    doc.undo();
+                    assert_eq!(doc.geometry_snapshot(), before);
+                    doc.redo();
+                    assert_eq!(doc.geometry_snapshot(), expected);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn shared_images_detach_once_per_stroke_and_snapshots_are_canonical() {
         let mut doc = document();
         doc.duplicate_model(false).unwrap();
@@ -354,6 +439,7 @@ mod texture_target_tests {
         brush.material = crate::sculpt::Material::from_srgb([1., 0., 0.], 0.5, 0.);
         brush.strength = 0.2;
         let dab = crate::sculpt::texture::tests::dab();
+        doc.begin_freehand_stroke(Kind::Paint);
         assert!(doc.apply_dab(&brush, dab));
         let storage = doc.mesh().uv.textures[0].pixels.storage_id();
         assert!(doc.apply_dab(&brush, dab));
@@ -369,8 +455,13 @@ mod texture_target_tests {
         doc.undo();
         assert_eq!(doc.geometry_snapshot(), before);
         doc.redo();
-        assert_ne!(doc.geometry_snapshot(), before);
+        let painted = doc.geometry_snapshot();
+        let history = doc.history_counts();
+        assert_ne!(painted, before);
+        doc.begin_freehand_stroke(Kind::Paint);
         assert!(doc.apply_dab(&brush, dab));
         assert!(doc.cancel_paint_stroke());
+        assert_eq!(doc.geometry_snapshot(), painted);
+        assert_eq!(doc.history_counts(), history);
     }
 }

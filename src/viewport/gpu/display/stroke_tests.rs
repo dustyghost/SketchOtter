@@ -772,6 +772,7 @@ fn accumulated_document_regions_match_full_scan_and_packed_upload() {
     {
         let mut b = Brush::new(kind);
         b.set_paint_colour(false, [0.8, 0.1, 0.3]);
+        doc.begin_freehand_stroke(kind);
         for _ in 0..3 {
             doc.apply_dab(&b, dab());
         }

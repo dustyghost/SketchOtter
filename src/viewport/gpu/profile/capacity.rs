@@ -776,6 +776,8 @@ fn gpu_load_profile_release_upload() {
     std::fs::write(output, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
 }
 
+mod paint_pointer;
+
 #[test]
 #[ignore = "manual paint startup diagnosis; excluded from routine GPU CI"]
 fn gpu_load_profile_paint_startup() {

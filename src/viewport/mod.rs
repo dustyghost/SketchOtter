@@ -1307,7 +1307,7 @@ impl Viewport {
             }
             let brush = brush.clone();
             if brush.effective_stroke_mode() == StrokeMode::Freehand {
-                document.begin_stroke();
+                document.begin_freehand_stroke(brush.kind);
                 self.session.sculpt.stabilizer = pointer
                     .filter(|_| brush.stabilize && brush.supports_stabilization())
                     .map(|start| stabilizer::Stabilizer::new(start, brush.stabilizer_distance));
