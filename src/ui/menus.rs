@@ -772,6 +772,12 @@ impl UiState {
                         commands,
                     );
                 });
+                ui.add_enabled_ui(!self.mesh_busy && document.primitive().is_none(), |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.add(design::button(ui, Glyph::Mask, "Clear mask")).customize(Action::ClearMask).clicked() { commands.push(Command::ClearMask); }
+                        if ui.add(design::button(ui, Glyph::Restore, "Invert mask")).on_hover_text("Swap masked and unmasked areas, preserving soft mask values on every subdivision level.").customize(Action::InvertMask).clicked() { commands.push(Command::InvertMask); }
+                    });
+                });
                 if let Some(reason) = self.action_unavailable(&Action::SplitMasked, document) {
                     ui.weak(reason);
                 }
@@ -787,8 +793,6 @@ impl UiState {
                             commands.push(Command::Action(Action::MaskLasso));
                             if popup { ui.close_kind(egui::UiKind::Menu); }
                         }
-                        if ui.add(design::button(ui, Glyph::Mask, "Clear mask")).customize(Action::ClearMask).clicked() { commands.push(Command::ClearMask); }
-                        if ui.add(design::button(ui, Glyph::Restore, "Invert mask")).on_hover_text("Swap masked and unmasked areas, preserving soft mask values on every subdivision level.").customize(Action::InvertMask).clicked() { commands.push(Command::InvertMask); }
                         ui.horizontal(|ui| {
                             if ui.add(design::button(ui, Glyph::Plus, "Expand mask")).on_hover_text("Spread soft mask values by one mesh edge per click.").customize(Action::ExpandMask).clicked() { commands.push(Command::GrowMask(true)); }
                             if ui.add(design::button(ui, Glyph::Minus, "Contract mask")).on_hover_text("Tighten the mask by one mesh edge per click.").customize(Action::ContractMask).clicked() { commands.push(Command::GrowMask(false)); }

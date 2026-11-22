@@ -65,10 +65,9 @@ Undo/Redo and submodel changes, settings reset, unsupported-input atomicity, and
 existing Delete masked regressions. A real percentage-field edit from 60% to 90%
 verifies the count and Split masked availability update together.
 
-Local validation passed **28 focused checks** plus the ignored Vulkan interaction
+Local validation passed **29 focused checks** plus the ignored Vulkan interaction
 review (six cases: Split hidden, Delete hidden and Split masked at 1000×800 and
-640×480). The CPU run took 12.33 s and the rendered run 28.07 s; these are test durations, not performance
-claims. Vulkan used llvmpipe, Mesa 26.3.1 / LLVM 23.1.5, with one software-rendering
+640×480). Vulkan used llvmpipe, Mesa 26.3.1 / LLVM 23.1.5, with one software-rendering
 thread. The compact and normal confirmation images were visually inspected:
 target/count, consequences and both action buttons fit and remain readable.
 
@@ -79,13 +78,18 @@ viewport controls can still overlap portions of a restored pinned menu; this
 change does not claim to resolve the broader menu-placement system in #50.
 The reviewed confirmations and Split/Delete buttons remain reachable.
 
+Full CI exposed Invert mask falling below the initial viewport of a moved pinned
+Mask menu. Clear mask and Invert mask now share a row directly below Split/Delete,
+ahead of availability explanations and masking tools. The existing pin, move,
+invert, clear and unpin interaction regression passes locally with this ordering.
+
 Final review also covered a deletion with only UV seam marks on the removed
 faces, before unwrapping. Delete uses the same installation path as Split so
 the generic geometry commit cannot restore those deleted-only marks.
 
 The 8 GB laptop had about 1.7 GiB available at the first build. A 102-test staged
 selection hit a 1,500 MiB cgroup cap; it was not retried unchanged. The reduced
-selection (ultimately 29 cases including the optional capture) compiled with
+selection (ultimately 30 cases including the optional capture) compiled with
 one job, debug symbols/incremental compilation disabled, 256 codegen units,
 a 1,400 MiB cap and no cgroup swap. All heavy commands used the shared build
 lock. This used the existing temporary test-staging technique; the supported
