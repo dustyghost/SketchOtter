@@ -1,5 +1,5 @@
 //! Alpha library presentation and private image drafts.
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 
 use super::*;

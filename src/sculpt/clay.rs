@@ -45,7 +45,7 @@ impl Mesh {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use crate::sculpt::{Brush, Dab, Kind, Mesh, Primitive, PrimitiveKind, Vec3};
 

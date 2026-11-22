@@ -481,9 +481,9 @@ impl Mesh {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod invariant_tests;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod notes_tests;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;

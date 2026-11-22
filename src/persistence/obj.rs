@@ -483,7 +483,7 @@ fn triangulate(
         .collect()
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 
 /// Emit a quad only when both rendering triangles agree at their shared UV corners.

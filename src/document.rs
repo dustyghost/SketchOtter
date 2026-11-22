@@ -25,7 +25,7 @@ mod retopology;
 pub use projection::ProjectionSource;
 mod arrays;
 mod boolean;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod boolean_tests;
 mod cage;
 mod cameras;
@@ -37,17 +37,17 @@ pub(crate) mod regions;
 mod relax;
 mod scene;
 mod stroke;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 pub(crate) mod stroke_capture;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 mod texture_library;
 mod thickness;
 mod transform;
 mod uv;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod visibility_cache_tests;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod visibility_edit_tests;
 pub(crate) use edit::EditKind;
 use edit::EditSession;

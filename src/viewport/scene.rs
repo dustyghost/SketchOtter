@@ -1023,7 +1023,7 @@ fn pick_faces(
     hit
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{Transform, Vec3};

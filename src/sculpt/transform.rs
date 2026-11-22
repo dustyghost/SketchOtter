@@ -85,7 +85,7 @@ impl Transform {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]
@@ -104,7 +104,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod rotation_tests {
     use super::*;
     use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};

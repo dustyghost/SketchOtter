@@ -346,7 +346,7 @@ pub fn validate_assets(assets: &[Asset]) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

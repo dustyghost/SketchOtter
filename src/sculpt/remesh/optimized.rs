@@ -964,7 +964,7 @@ pub(super) fn optimize_levels(
     Ok(Some((vertices, quads)))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
 

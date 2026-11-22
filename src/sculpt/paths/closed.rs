@@ -224,7 +224,7 @@ pub(super) fn sample_curve(curve: &[PathPoint], spacing: f32) -> Result<Vec<Path
     Ok(samples)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::paths::PathMode;

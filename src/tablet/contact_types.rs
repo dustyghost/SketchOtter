@@ -82,7 +82,7 @@ impl ContactTypes {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     fn input(id: u64, phase: TouchPhase) -> RawInput {

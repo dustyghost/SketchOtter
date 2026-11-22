@@ -9,6 +9,10 @@ repository = "https://github.com/dustyghost/clay-form"
 [lib]
 name = "clay_form"
 
+[features]
+# Test compilation partition only; production code is identical.
+focused-retopology = []
+
 [dependencies]
 eframe = { version = "0.33.3", default-features = false, features = ["wgpu", "x11", "wayland", "default_fonts"] }
 serde = { version = "1", features = ["derive", "rc"] }
@@ -56,3 +60,8 @@ opt-level = 3
 opt-level = 3
 [profile.test.package.glam]
 opt-level = 3
+
+# Bound LLVM work per unit in the large application test crate, even when
+# incremental compilation is disabled for a repeatable memory measurement.
+[profile.test.package.sketchotter]
+codegen-units = 256

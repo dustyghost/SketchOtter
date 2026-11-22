@@ -76,7 +76,7 @@ impl<T> Drop for BackgroundJob<T> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     fn finish<T: Send + 'static>(job: &mut BackgroundJob<T>) -> Result<T, String> {

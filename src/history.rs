@@ -210,7 +210,7 @@ pub(crate) fn geometry_bytes(geometry: &Geometry) -> usize {
         + geometry.scene.materials.iter().map(|a|a.name.len()+std::mem::size_of::<crate::sculpt::material::layers::Asset>()).sum::<usize>()
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{Mesh, Vec3};
@@ -249,7 +249,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod retention_tests {
     use super::*;
     use crate::sculpt::{Mesh, Vec3};
@@ -282,7 +282,7 @@ mod retention_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod shared_settings_tests {
     use super::*;
     use crate::{

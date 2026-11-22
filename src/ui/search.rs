@@ -6,7 +6,7 @@ mod settings;
 pub(crate) use settings::{requested_any_section, setting_response};
 mod reveal;
 pub(crate) use reveal::{highlight_response, is_requested, mark_destination, requested_section};
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 
 #[derive(Default)]

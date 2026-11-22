@@ -155,7 +155,7 @@ impl Viewport {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{BooleanRole, Geometry, Mesh, ModelMetadata, Primitive, Submodel};

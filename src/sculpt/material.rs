@@ -659,10 +659,10 @@ impl Mesh {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod paint_regressions {
     use super::*;
     #[test]

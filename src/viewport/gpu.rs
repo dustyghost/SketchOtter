@@ -1660,31 +1660,35 @@ impl Gpu {
 }
 
 mod display;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", not(feature = "focused-retopology")))]
 mod indexed_test;
-#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+#[cfg(all(
+    test,
+    any(target_os = "linux", target_os = "macos"),
+    not(feature = "focused-retopology")
+))]
 mod profile;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod scene_cache_tests;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 mod upload;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", not(feature = "focused-retopology")))]
 mod wire_test;
 pub(crate) use display::DisplayMesh;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", not(feature = "focused-retopology")))]
 mod backfaces_test;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", not(feature = "focused-retopology")))]
 mod custom_ui_test;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", not(feature = "focused-retopology")))]
 mod lasso_test;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", not(feature = "focused-retopology")))]
 mod perspective_test;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", not(feature = "focused-retopology")))]
 mod rotation_test;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", not(feature = "focused-retopology")))]
 mod slice_test;
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 pub(super) mod ui_capture;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", not(feature = "focused-retopology")))]
 mod visibility_test;

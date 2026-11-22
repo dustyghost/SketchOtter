@@ -374,7 +374,7 @@ fn surface_visible(scene: &Scene, sample: &PathSample) -> bool {
             })
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod session_tests {
     use super::*;
     use crate::{camera::Camera, viewport::gpu::DisplayMesh};

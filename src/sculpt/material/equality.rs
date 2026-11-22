@@ -76,7 +76,7 @@ impl Material {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::material::layers::{Influence, VALUE_COUNT, limits};

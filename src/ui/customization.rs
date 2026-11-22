@@ -1244,7 +1244,7 @@ fn reset_panel_memory(ctx: &egui::Context) {
     });
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 
 impl UiState {

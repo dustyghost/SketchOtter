@@ -44,6 +44,15 @@ jobs:
       - name: Run tests
         run: cargo test --locked
 
+      - name: Run and audit the focused CPU test partition
+        # The ordinary cargo test above is mandatory: --all-features selects
+        # the focused partition and is not a substitute for the default suite.
+        run: |
+          cargo test --locked --lib -- --list > "$RUNNER_TEMP/all-tests.txt"
+          cargo test --locked --lib --features focused-retopology -- --list > "$RUNNER_TEMP/focused-tests.txt"
+          python3 scripts/check-test-partitions.py "$RUNNER_TEMP/all-tests.txt" "$RUNNER_TEMP/focused-tests.txt"
+          cargo test --locked --lib --features focused-retopology -- --test-threads=1
+
       - name: Check capacity benchmark comparisons
         run: python3 scripts/test-benchmark-capacity.py
 

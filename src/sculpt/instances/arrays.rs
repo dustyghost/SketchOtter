@@ -2,7 +2,7 @@
 //! source recipe once, then composes its leaf transforms at each repetition.
 use super::*;
 use std::collections::HashMap;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 type CachedSlots = (Arc<Vec<Option<Placement>>>, usize);
 type Sources<'a> = Box<dyn Fn(Source) -> Option<&'a Mesh> + 'a>;

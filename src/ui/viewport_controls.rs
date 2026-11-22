@@ -672,7 +672,7 @@ fn control_glyph(control: &ViewportControl) -> Glyph {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod compact_layout_tests {
     use super::*;
 

@@ -170,7 +170,7 @@ impl Document {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{Material, Vec3};
@@ -251,7 +251,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod fill_all_tests {
     use super::*;
     #[test]
@@ -306,7 +306,7 @@ mod fill_all_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod texture_target_tests {
     use super::*;
     use crate::sculpt::texture::{Channel, Precision, Texture};

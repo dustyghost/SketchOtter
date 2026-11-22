@@ -198,7 +198,7 @@ fn draw_pad(painter: &egui::Painter, rect: Rect, light: Vec3, hovered: bool) {
     );
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

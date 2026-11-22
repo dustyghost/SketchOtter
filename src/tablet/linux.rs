@@ -209,7 +209,7 @@ pub(super) fn spawn(state: SharedState, stop: Arc<AtomicBool>) -> std::thread::J
         }
     })
 }
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

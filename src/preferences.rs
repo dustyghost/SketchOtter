@@ -17,10 +17,10 @@ mod masking;
 mod materials;
 pub(crate) use masking::{MaskPreset, MaskShape};
 pub(crate) use materials::MaterialLibrary;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod brush_controls_tests;
 mod hold_binding;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod interaction_shortcuts_tests;
 pub(crate) use hold_binding::HoldBinding;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1438,7 +1438,7 @@ pub(crate) fn load(path: &std::path::Path) -> Result<Preferences, String> {
     Ok(prefs)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]
@@ -1499,7 +1499,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod search_shortcut_migration_tests {
     use super::*;
 
@@ -1616,7 +1616,7 @@ mod search_shortcut_migration_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod migration_tests {
     use super::*;
     #[test]
@@ -1639,7 +1639,7 @@ mod migration_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod zoom_migration_tests {
     use super::*;
     #[test]
@@ -1677,7 +1677,7 @@ mod zoom_migration_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod zoom_hold_tests {
     use super::*;
     #[test]
@@ -1695,7 +1695,7 @@ mod zoom_hold_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod customization_tests {
     use super::*;
     #[test]
@@ -1936,7 +1936,7 @@ mod customization_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod pinned_menu_tests {
     use super::*;
     #[test]
@@ -1979,7 +1979,7 @@ mod pinned_menu_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod sidebar_tests {
     use super::*;
 
@@ -2084,7 +2084,7 @@ mod sidebar_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod quick_menu_migration_tests {
     use super::*;
     fn legacy_defaults() -> Preferences {
@@ -2244,5 +2244,5 @@ mod quick_menu_migration_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod workspace_recovery_tests;

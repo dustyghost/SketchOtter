@@ -146,7 +146,7 @@ pub struct GuidePlane {
     pub side: Option<Vec3>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{Brush, Kind, Mesh};
@@ -269,7 +269,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod seam_tests {
     use super::*;
     use crate::sculpt::{Brush, Kind, Mesh};
@@ -376,7 +376,7 @@ mod seam_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod seam_depth_tests {
     use super::*;
     use crate::sculpt::{Alpha, Brush, Kind, Mesh};
@@ -450,7 +450,7 @@ mod seam_depth_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod soft_join_tests {
     use super::*;
     use crate::sculpt::{Brush, Kind, Mesh};

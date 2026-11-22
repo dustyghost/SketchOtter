@@ -100,13 +100,18 @@ passes Clippy with only unused helpers/imports from excluded tests allowed. Thir
 notices were regenerated and checked; the upstream port notices and BatSat's
 original copyright notice are bundled.
 
-The full application test harness exceeded a 1,400 MiB compiler cap on the 8 GB
-laptop. [`stage-app-tests.py`](../../../scripts/retopology/stage-app-tests.py)
-creates a disposable source copy that adds `cfg(any())` only to unrelated test
-cases. Production modules and selected test bodies are unchanged; ordinary CI
-still compiles the complete harness. This is a local memory workaround, not a
-replacement for full CI. All heavy commands ran sequentially under the shared
-build lock, with one Cargo job and tests on one thread.
+At the time of this validation, the full application test harness exceeded a
+1,400 MiB compiler cap on the 8 GB laptop. The then-current
+`stage-app-tests.py` created a disposable source copy and disabled unrelated test
+cases; the results above used that historical workaround. All heavy commands
+ran sequentially under the shared build lock, with one Cargo job and tests on
+one thread.
+
+The staging script was retired in #176 after equivalent working-source coverage
+was established. Use the [supported focused partition](../../testing.md) for
+current CPU app/document/adapter checks, and see its
+[memory comparison](../testing-batch-2026-11-22/README.md). The commands below
+remain the full-harness GPU/manual reproductions from this record.
 
 On a machine able to compile the normal harness:
 

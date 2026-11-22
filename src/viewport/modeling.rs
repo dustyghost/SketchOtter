@@ -6,12 +6,12 @@ mod edit;
 mod extrude_snapping;
 mod move_snapping;
 pub(crate) use move_snapping::MoveSnap;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod invariant_tests;
 mod selection;
 mod selection_growth;
 mod snapping;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod wire_tests;
 pub(crate) use snapping::SnapTarget;
 mod transform;
