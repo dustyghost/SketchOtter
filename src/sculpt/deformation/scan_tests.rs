@@ -146,7 +146,8 @@ fn compact_discovery_and_sparse_reductions_match_original_guards() {
                 let expected_changed =
                     reference_limit(&mut expected, before, folds, direction, local);
                 let mut actual = proposal.clone();
-                let actual_changed = actual.limit_deformation(before, folds, direction, local);
+                let actual_changed =
+                    actual.limit_deformation(before, folds, direction, local, &mut |_, _, _| {});
                 assert_eq!(actual_changed, expected_changed);
                 let bits = |mesh: &Mesh| {
                     mesh.vertices

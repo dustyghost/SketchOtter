@@ -4,6 +4,8 @@ use crate::sculpt::{Material, Project};
 use serde::Serialize;
 use std::{collections::BTreeMap, io::Write};
 
+mod write_history;
+
 const DABS: usize = 12;
 const SCHEMA: u32 = 2;
 
@@ -196,7 +198,10 @@ fn gpu_load_profile_capacity() -> Result<(), &'static str> {
     assert!((1..=10).contains(&repeats));
     let use_gpu = std::env::var_os("CLAY_CAPACITY_GPU").is_some();
     let workload = std::env::var("CLAY_CAPACITY_WORKLOAD").unwrap_or_else(|_| "full".into());
-    assert!(matches!(workload.as_str(), "full" | "interactive"));
+    assert!(matches!(
+        workload.as_str(),
+        "full" | "interactive" | "write-history"
+    ));
     let capacity = benchmark_capacity(
         level,
         env_limit("CLAY_CAPACITY_VERTICES", 500_000),
@@ -232,6 +237,20 @@ fn gpu_load_profile_capacity() -> Result<(), &'static str> {
     });
     metrics.progress.as_mut().unwrap().1["counts"] = counts.clone();
     metrics.progress.as_mut().unwrap().1["fixture_hash_fnv1a"] = initial_hash.clone().into();
+    if workload == "write-history" {
+        assert!(!use_gpu, "write-history measures CPU editing only");
+        let results = write_history::run(&mut doc, &before, repeats, &mut metrics);
+        let report = serde_json::json!({
+            "schema": SCHEMA, "fixture": name, "level": level, "repeats": repeats,
+            "dabs_per_stroke": DABS, "workload": workload, "mesh_capacity": capacity,
+            "counts": counts, "gpu": null, "viewport": null, "fixture_hash_fnv1a": initial_hash,
+            "output_hashes_fnv1a": {"Standard": results["output_hash"]},
+            "trials": results["trials"], "metrics": metrics.summary(), "memory_final": memory()
+        });
+        std::fs::write(output, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+        metrics.checkpoint("complete", "completed");
+        return Ok(());
+    }
     metrics.checkpoint("gpu_setup", "running");
     let headless = use_gpu.then(Headless::new);
     let mut renderer = headless.as_ref().map(|h| Renderer::new(&h.state).unwrap());

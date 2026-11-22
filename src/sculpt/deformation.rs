@@ -74,24 +74,25 @@ fn normal_agreement(a: Vector, b: Vector) -> f64 {
 }
 
 impl Mesh {
-    pub(super) fn limit_sculpt_deformation(&mut self, before: &[Vec3]) -> bool {
-        self.limit_deformation(before, false, None, false)
-    }
-
-    pub(super) fn limit_stamp_deformation(&mut self, before: &[Vec3], direction: Vec3) -> bool {
-        self.limit_deformation(before, false, Some(direction), false)
+    pub(super) fn limit_brush_deformation(
+        &mut self,
+        before: &[Vec3],
+        direction: Option<Vec3>,
+        observe: &mut impl FnMut(usize, Vec3, Vec3),
+    ) -> bool {
+        self.limit_deformation(before, false, direction, false, observe)
     }
 
     pub(super) fn limit_projection_deformation(&mut self, before: &[Vec3]) -> bool {
-        self.limit_deformation(before, true, None, false)
+        self.limit_deformation(before, true, None, false, &mut |_, _, _| {})
     }
 
     pub(super) fn limit_local_projection_deformation(&mut self, before: &[Vec3]) -> bool {
-        self.limit_deformation(before, true, None, true)
+        self.limit_deformation(before, true, None, true, &mut |_, _, _| {})
     }
 
     pub(super) fn limit_smoothing_deformation(&mut self, before: &[Vec3]) -> bool {
-        self.limit_deformation(before, false, None, true)
+        self.limit_deformation(before, false, None, true, &mut |_, _, _| {})
     }
 
     fn limit_deformation(
@@ -100,6 +101,7 @@ impl Mesh {
         prevent_folds: bool,
         direction: Option<Vec3>,
         local_rejection: bool,
+        observe: &mut impl FnMut(usize, Vec3, Vec3),
     ) -> bool {
         // Each vertex belongs to several faces. Compare its position once,
         // then discover incident faces using the compact flags.
@@ -188,7 +190,7 @@ impl Mesh {
             // Reductions depend only on this vertex's old/current positions;
             // their order cannot affect another vertex in the same pass.
             for v in pending.drain(..) {
-                self.vertices[v] = if local_rejection && pass >= 8 {
+                let reduced = if local_rejection && pass >= 8 {
                     // A few pre-existing slivers must not cancel smoothing
                     // everywhere else. Pin failed proposals, then recheck
                     // neighboring faces against the resulting mixed update.
@@ -196,6 +198,8 @@ impl Mesh {
                 } else {
                     before[v] + (self.vertices[v] - before[v]) * 0.5
                 };
+                observe(v, self.vertices[v], reduced);
+                self.vertices[v] = reduced;
                 reduce[v] = false;
             }
             #[cfg(test)]
@@ -397,7 +401,7 @@ mod tests {
     #[test]
     fn unsafe_motion_is_reduced_locally_and_cannot_cross_a_collapsed_face() {
         for scale in [0.001, 1., 1000.] {
-            let before: Vec<_> = [
+            let mut before: Vec<_> = [
                 Vec3(0., 0., 0.),
                 Vec3(1., 0., 0.),
                 Vec3(0., 1., 0.),
@@ -407,6 +411,9 @@ mod tests {
             ]
             .map(|p| (p + Vec3(100., 0., 0.)) * scale)
             .into();
+            // The reduction also visits a stationary corner. Its arithmetic
+            // can change a signed zero, which a position journal must observe.
+            before[0].2 = -0.0;
             let mut mesh = Mesh {
                 vertices: before.clone(),
                 triangles: vec![[0, 1, 2], [3, 4, 5]],
@@ -429,7 +436,15 @@ mod tests {
                 mesh.vertices[v] = original + Vec3(0., 0., scale);
             }
             let safe_patch = mesh.vertices[3..].to_vec();
-            assert!(mesh.limit_sculpt_deformation(&before));
+            let mut saw_corner_write = false;
+            assert!(
+                mesh.limit_brush_deformation(&before, None, &mut |i, old, new| {
+                    if i == 0 && old.2.to_bits() == (-0.0_f32).to_bits() && new.2.to_bits() == 0 {
+                        saw_corner_write = true;
+                    }
+                })
+            );
+            assert!(saw_corner_write);
             assert_eq!(&mesh.vertices[3..], &safe_patch);
             assert!(mesh.vertices[1].0 > before[0].0);
             assert!(mesh.vertices[2].1 > before[0].1);

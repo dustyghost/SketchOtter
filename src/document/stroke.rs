@@ -11,9 +11,13 @@ impl Document {
         }
     }
     pub fn begin_stroke(&mut self) {
+        self.begin_stroke_with_snapshot(true);
+    }
+
+    pub(super) fn begin_stroke_with_snapshot(&mut self, snapshot: bool) {
         self.end_edit();
         if !self.stroke_active {
-            self.stroke_before = Some(self.geometry.clone());
+            self.stroke_before = snapshot.then(|| self.geometry.clone());
             self.stroke_active = true;
             self.stroke_deformed = false;
             self.stroke_flatten_planes.clear();
@@ -56,6 +60,16 @@ impl Document {
         brush: &Brush,
         dab: Dab,
         stencil: Option<&crate::sculpt::alpha::Projection>,
+    ) -> bool {
+        self.apply_dab_observing(brush, dab, stencil, &mut |_, _, _| {})
+    }
+
+    pub(super) fn apply_dab_observing(
+        &mut self,
+        brush: &Brush,
+        dab: Dab,
+        stencil: Option<&crate::sculpt::alpha::Projection>,
+        observe: &mut impl FnMut(usize, crate::sculpt::Vec3, crate::sculpt::Vec3),
     ) -> bool {
         if !self.active_visible() || self.primitive().is_some() {
             return false;
@@ -100,11 +114,12 @@ impl Document {
             .mesh
             .prepare_stenciled_stamp(brush, &dabs, &stencils, settings);
         let old_mask = (brush.kind == Kind::Mask).then(|| self.geometry.mesh.mask.clone());
-        let deformed = self.geometry.mesh.stamp_many_with_flatten_planes(
+        let deformed = self.geometry.mesh.stamp_observing_positions(
             brush,
             &dabs,
             &stencils,
             &self.stroke_flatten_planes,
+            observe,
         );
         let mut after_dabs = dabs.clone();
         if brush.kind == Kind::Snake {
@@ -129,11 +144,7 @@ impl Document {
             || old_mask.is_some_and(|mask| mask != self.geometry.mesh.mask)
         {
             if let Some(before) = self.stroke_before.take() {
-                let mut captured = self.capture_edit_settings();
-                captured.active_brush = Some(brush.clone());
-                captured.first_dab = Some(serde_json::json!({
-                    "pressure": dab.pressure, "invert": dab.invert,
-                }));
+                let captured = self.stroke_edit_settings(brush, dab);
                 self.history.record_owned(
                     before,
                     if settings.enabled {
@@ -155,6 +166,18 @@ impl Document {
             self.display_changed();
         }
         deformed || before_topology || after_topology
+    }
+
+    pub(super) fn stroke_edit_settings(
+        &self,
+        brush: &Brush,
+        dab: Dab,
+    ) -> crate::diagnostics::EditSettings {
+        let mut captured = self.capture_edit_settings();
+        captured.active_brush = Some(brush.clone());
+        captured.first_dab =
+            Some(serde_json::json!({"pressure": dab.pressure, "invert": dab.invert}));
+        captured
     }
 }
 

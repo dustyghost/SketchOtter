@@ -233,8 +233,10 @@ def validate_request(args):
         raise ValueError("mesh budgets must be within the supported Settings ranges")
     if not args.levels or any(level not in range(5) for level in args.levels):
         raise ValueError("fixture levels must be 0–4")
-    if args.workload not in ("full", "interactive"):
+    if args.workload not in ("full", "interactive", "write-history"):
         raise ValueError("unknown workload")
+    if args.workload == "write-history" and args.gpu:
+        raise ValueError("write-history measures CPU editing only")
     quads = 4704 * 4 ** max(args.levels)
     if args.mesh_vertices < quads + 2 or args.mesh_triangles < quads * 2:
         raise ValueError(f"requested fixture needs {quads + 2} vertices / {quads * 2} triangles; set --mesh-vertices and --mesh-triangles explicitly")
@@ -366,8 +368,8 @@ def main():
     run_parser.add_argument("--levels", nargs="+", type=int, choices=range(5), default=[0, 1, 2, 3])
     run_parser.add_argument("--repeats", type=int, default=3)
     run_parser.add_argument("--gpu", action="store_true")
-    run_parser.add_argument("--workload", choices=("full", "interactive"), default="full",
-                            help="interactive excludes file I/O and additional subdivision")
+    run_parser.add_argument("--workload", choices=("full", "interactive", "write-history"), default="full",
+                            help="interactive excludes file I/O and additional subdivision; write-history compares CPU stroke capture")
     run_parser.add_argument("--mesh-vertices", type=int, default=500_000)
     run_parser.add_argument("--mesh-triangles", type=int, default=1_000_000)
     run_parser.add_argument("--min-available-mib", type=int, default=512)
