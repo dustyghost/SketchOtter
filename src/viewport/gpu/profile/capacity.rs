@@ -11,6 +11,7 @@ mod picking;
 mod regions;
 mod release;
 mod session;
+mod wire;
 mod write_history;
 
 const DABS: usize = 12;

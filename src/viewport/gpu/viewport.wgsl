@@ -23,6 +23,7 @@ fn project(p: vec3f) -> vec4f {
  dot(p,u.up.xyz)*u.projection.y+u.projection.w*w,(depth+w)*0.5,w);
 }
 struct Surface {
+ @location(11) @interpolate(linear) wire_bary: vec3f,
  @location(9) uv: vec3f,
  @location(10) @interpolate(flat) texture_ids:vec3u,
  @builtin(position) clip: vec4f,
@@ -49,7 +50,7 @@ struct Surface {
 }
 // Plain surfaces have no per-corner inputs. An indexed draw lets shared
 // shading vertices reuse vertex-shader results across adjacent triangles.
-@vertex fn basic_surface_vertex(@builtin(vertex_index) index: u32) -> Surface {
+fn basic_surface(index: u32) -> Surface {
  let i=index*u32(u.material_info.x);
  let p=vec3f(vertices[i],vertices[i+1u],vertices[i+2u]);
  let mask=vertices[i+9u];
@@ -59,6 +60,21 @@ struct Surface {
  out.color=vec3f(vertices[i+6u],vertices[i+7u],vertices[i+8u]);
  out.material=vec2f(vertices[i+10u],vertices[i+11u]);
  out.mask=max(mask,0.); out.is_active=step(0.,mask);
+ return out;
+}
+@vertex fn basic_surface_vertex(@builtin(vertex_index) index: u32) -> Surface {
+ return basic_surface(index);
+}
+@vertex fn wire_surface_vertex(@builtin(vertex_index) index: u32) -> Surface {
+ var out=basic_surface(indices[index]);
+ let corner=index%3u;
+ out.wire_bary=vec3f(select(0.,1.,corner==0u),select(0.,1.,corner==1u),select(0.,1.,corner==2u));
+ // Subdivision emits [a,b,c] and [a,c,d]. The shared diagonal is
+ // opposite b in the first triangle and d in the second.
+ if u.up.w>0. {
+  if index/3u%2u==0u {out.wire_bary.y=1.;} else {out.wire_bary.z=1.;}
+ }
+ out.group=groups[index/3u];
  return out;
 }
 // Bilinear R32Float sampling without requiring FLOAT32_FILTERABLE.
@@ -136,7 +152,7 @@ fn texture_sample(id:u32,uv:vec2f)->vec4f {
  let info=texture_info[id];let size=info.xy;let xy=clamp(vec2f(uv.x,1.-uv.y),vec2f(0.),vec2f(1.))*vec2f(size)-0.5;let lo=vec2u(clamp(floor(xy),vec2f(0.),vec2f(size)-1.));let hi=vec2u(clamp(floor(xy)+1.,vec2f(0.),vec2f(size)-1.));let t=fract(xy);let first=info.z;let stride=select(1u,2u,info.w==2u);
  let a=image_pixel(first+(lo.y*size.x+lo.x)*stride,info.w);let b=image_pixel(first+(lo.y*size.x+hi.x)*stride,info.w);let c=image_pixel(first+(hi.y*size.x+lo.x)*stride,info.w);let d=image_pixel(first+(hi.y*size.x+hi.x)*stride,info.w);let result=mix(mix(a,b,t.x),mix(c,d,t.x),t.y);return vec4f(result.rgb/max(result.a,0.000001),result.a);
 }
-@fragment fn surface_fragment(v: Surface) -> @location(0) vec4f {
+fn shade_surface(v: Surface) -> vec4f {
  let delta=u.light_position[0].xyz-v.position*u.light_position[0].w;
  let light=delta/max(length(delta),0.000001);
  var normal=normalize(v.normal)*select(1.,-1.,u.flags.z==1.);
@@ -185,6 +201,18 @@ fn texture_sample(id:u32,uv:vec2f)->vec4f {
   }
  }
  return vec4f(rgb,1.);
+}
+@fragment fn surface_fragment(v: Surface) -> @location(0) vec4f {
+ return shade_surface(v);
+}
+@fragment fn wire_surface_fragment(v: Surface) -> @location(0) vec4f {
+ let dx=dpdx(v.wire_bary);
+ let dy=dpdy(v.wire_bary);
+ let dist=v.wire_bary/max(sqrt(dx*dx+dy*dy),vec3f(0.000001));
+ let edge=min(dist.x,min(dist.y,dist.z));
+ let coverage=1.-smoothstep(0.1,0.9,edge);
+ let surface=shade_surface(v);
+ return vec4f(surface.rgb*(1.-0.43*coverage),surface.a);
 }
 struct Line { @builtin(position) clip: vec4f, @location(0) front: f32, @location(1) color: vec3f }
 @vertex fn line_vertex(@location(0) p: vec3f, @location(1) normal: vec3f, @location(2) other: vec3f, @location(3) color: vec3f) -> Line {

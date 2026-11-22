@@ -1,0 +1,156 @@
+{
+  "env": {
+    "platform": "macOS-15.8.2-arm64-arm-64bit-Mach-O",
+    "architecture": "arm64",
+    "mem_bytes": 7516192768,
+    "initial_available": 4753653760,
+    "budget": 1887436800,
+    "reserve": 536870912,
+    "peak_rss_bytes": 671334400,
+    "minimum_available_bytes": 3704422400
+  },
+  "data": {
+    "driver": "AdapterInfo { name: \"Apple Paravirtual device\", vendor: 0, device: 0, device_type: IntegratedGpu, driver: \"\", driver_info: \"\", backend: Metal }",
+    "rows": [
+      {
+        "arm": "solid",
+        "edge_buffer_bytes": 0,
+        "level": 3,
+        "memory": {
+          "rss_bytes": 353189888
+        },
+        "quads": 301056,
+        "source_triangles": 602112,
+        "timings": {
+          "first": {
+            "max_ms": 183.54458300000002,
+            "n": 1,
+            "p50_ms": 183.54458300000002,
+            "p95_ms": 183.54458300000002,
+            "samples_ms": [
+              183.54458300000002
+            ]
+          },
+          "orbit": {
+            "max_ms": 11.425292,
+            "n": 7,
+            "p50_ms": 9.809125,
+            "p95_ms": 11.425292,
+            "samples_ms": [
+              11.425292,
+              9.809125,
+              9.356665999999999,
+              9.576834,
+              9.868417,
+              9.420833,
+              10.502457999999999
+            ]
+          },
+          "sculpt_and_draw": {
+            "max_ms": 92.53908399999999,
+            "n": 1,
+            "p50_ms": 92.53908399999999,
+            "p95_ms": 92.53908399999999,
+            "samples_ms": [
+              92.53908399999999
+            ]
+          }
+        }
+      },
+      {
+        "arm": "visible_edges",
+        "edge_buffer_bytes": 144506880,
+        "level": 3,
+        "memory": {
+          "rss_bytes": 512311296
+        },
+        "quads": 301056,
+        "source_triangles": 602112,
+        "timings": {
+          "first": {
+            "max_ms": 1092.6950419999998,
+            "n": 1,
+            "p50_ms": 1092.6950419999998,
+            "p95_ms": 1092.6950419999998,
+            "samples_ms": [
+              1092.6950419999998
+            ]
+          },
+          "orbit": {
+            "max_ms": 26.303416,
+            "n": 7,
+            "p50_ms": 13.622625,
+            "p95_ms": 26.303416,
+            "samples_ms": [
+              26.303416,
+              9.296208,
+              11.816708,
+              9.290083,
+              13.622625,
+              17.483791,
+              18.922749999999997
+            ]
+          },
+          "sculpt_and_draw": {
+            "max_ms": 1105.3965830000002,
+            "n": 1,
+            "p50_ms": 1105.3965830000002,
+            "p95_ms": 1105.3965830000002,
+            "samples_ms": [
+              1105.3965830000002
+            ]
+          }
+        }
+      },
+      {
+        "arm": "visible_surface",
+        "edge_buffer_bytes": 0,
+        "level": 3,
+        "memory": {
+          "rss_bytes": 522108928
+        },
+        "quads": 301056,
+        "source_triangles": 602112,
+        "timings": {
+          "first": {
+            "max_ms": 186.013666,
+            "n": 1,
+            "p50_ms": 186.013666,
+            "p95_ms": 186.013666,
+            "samples_ms": [
+              186.013666
+            ]
+          },
+          "orbit": {
+            "max_ms": 18.022083000000002,
+            "n": 7,
+            "p50_ms": 13.120083,
+            "p95_ms": 18.022083000000002,
+            "samples_ms": [
+              9.474917,
+              13.120083,
+              9.4115,
+              17.637792,
+              17.989958,
+              18.022083000000002,
+              8.960792
+            ]
+          },
+          "sculpt_and_draw": {
+            "max_ms": 75.641458,
+            "n": 1,
+            "p50_ms": 75.641458,
+            "p95_ms": 75.641458,
+            "samples_ms": [
+              75.641458
+            ]
+          }
+        }
+      }
+    ],
+    "size": [
+      800,
+      600
+    ]
+  }
+}

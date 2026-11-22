@@ -1,0 +1,169 @@
+{
+  "env": {
+    "status": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 55.83158432700003,
+      "sampled_peak_rss_bytes": 2975395840,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 12299354112
+    },
+    "preflight_kib": 15061536,
+    "capacity_kib": 16367524,
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "rss_mib": 8000,
+    "reserve_mib": 1200,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "commit": "3b0b6b9fced8cd3ec12259f85240983dbe4cd69d",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "binary_sha256": "405064bd37aff55d16f9d0e1e0ba9f9e221a615bef8c126fa898a8a29bbc4905",
+    "utc": "2026-11-22T10:28:02Z"
+  },
+  "data": {
+    "driver": "AdapterInfo { name: \"llvmpipe (LLVM 20.1.2, 256 bits)\", vendor: 65541, device: 0, device_type: Cpu, driver: \"llvmpipe\", driver_info: \"Mesa 25.2.8-0ubuntu0.24.04.5 (LLVM 20.1.2)\", backend: Vulkan }",
+    "rows": [
+      {
+        "arm": "solid",
+        "edge_buffer_bytes": 0,
+        "level": 4,
+        "memory": {
+          "process_peak_rss_bytes": 1766440960,
+          "rss_bytes": 1766440960
+        },
+        "quads": 1204224,
+        "source_triangles": 2408448,
+        "timings": {
+          "first": {
+            "max_ms": 240.609501,
+            "n": 1,
+            "p50_ms": 240.609501,
+            "p95_ms": 240.609501,
+            "samples_ms": [
+              240.609501
+            ]
+          },
+          "orbit": {
+            "max_ms": 201.58040799999998,
+            "n": 7,
+            "p50_ms": 191.717119,
+            "p95_ms": 201.58040799999998,
+            "samples_ms": [
+              197.384848,
+              188.955681,
+              191.368204,
+              191.717119,
+              199.964237,
+              201.58040799999998,
+              191.062024
+            ]
+          },
+          "sculpt_and_draw": {
+            "max_ms": 329.873982,
+            "n": 1,
+            "p50_ms": 329.873982,
+            "p95_ms": 329.873982,
+            "samples_ms": [
+              329.873982
+            ]
+          }
+        }
+      },
+      {
+        "arm": "visible_edges",
+        "edge_buffer_bytes": 578027520,
+        "level": 4,
+        "memory": {
+          "process_peak_rss_bytes": 2975195136,
+          "rss_bytes": 2475741184
+        },
+        "quads": 1204224,
+        "source_triangles": 2408448,
+        "timings": {
+          "first": {
+            "max_ms": 5698.982632,
+            "n": 1,
+            "p50_ms": 5698.982632,
+            "p95_ms": 5698.982632,
+            "samples_ms": [
+              5698.982632
+            ]
+          },
+          "orbit": {
+            "max_ms": 585.3021640000001,
+            "n": 7,
+            "p50_ms": 507.288108,
+            "p95_ms": 585.3021640000001,
+            "samples_ms": [
+              507.288108,
+              496.681194,
+              505.021338,
+              510.523858,
+              585.3021640000001,
+              514.705922,
+              502.26372299999997
+            ]
+          },
+          "sculpt_and_draw": {
+            "max_ms": 5527.562147000001,
+            "n": 1,
+            "p50_ms": 5527.562147000001,
+            "p95_ms": 5527.562147000001,
+            "samples_ms": [
+              5527.562147000001
+            ]
+          }
+        }
+      },
+      {
+        "arm": "visible_surface",
+        "edge_buffer_bytes": 0,
+        "level": 4,
+        "memory": {
+          "process_peak_rss_bytes": 2975195136,
+          "rss_bytes": 1919979520
+        },
+        "quads": 1204224,
+        "source_triangles": 2408448,
+        "timings": {
+          "first": {
+            "max_ms": 320.495996,
+            "n": 1,
+            "p50_ms": 320.495996,
+            "p95_ms": 320.495996,
+            "samples_ms": [
+              320.495996
+            ]
+          },
+          "orbit": {
+            "max_ms": 303.77533800000003,
+            "n": 7,
+            "p50_ms": 297.407827,
+            "p95_ms": 303.77533800000003,
+            "samples_ms": [
+              298.755295,
+              297.407827,
+              290.50383600000004,
+              294.57361799999995,
+              295.688261,
+              300.92269999999996,
+              303.77533800000003
+            ]
+          },
+          "sculpt_and_draw": {
+            "max_ms": 429.048152,
+            "n": 1,
+            "p50_ms": 429.048152,
+            "p95_ms": 429.048152,
+            "samples_ms": [
+              429.048152
+            ]
+          }
+        }
+      }
+    ],
+    "size": [
+      800,
+      600
+    ]
+  }
+}
