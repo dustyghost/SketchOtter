@@ -1,6 +1,11 @@
 use super::*;
 use crate::preferences::{BuiltinMenu, PinnedMenu};
 
+#[cfg(target_os = "linux")]
+type Capture = crate::viewport::UiCapture;
+#[cfg(not(target_os = "linux"))]
+type Capture = ();
+
 fn fixture() -> App {
     let mut app = App::default();
     let mut p = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Plane);
@@ -23,7 +28,7 @@ fn frame(
     ctx: &egui::Context,
     size: Vec2,
     events: Vec<egui::Event>,
-    capture: &mut Option<crate::viewport::UiCapture>,
+    _capture: &mut Option<Capture>,
 ) -> egui::FullOutput {
     let output = ctx.run(
         egui::RawInput {
@@ -33,7 +38,8 @@ fn frame(
         },
         |ctx| app.workspace_ui(ctx),
     );
-    if let Some(capture) = capture {
+    #[cfg(target_os = "linux")]
+    if let Some(capture) = _capture {
         capture.render(ctx, output.clone());
     }
     output
@@ -77,7 +83,7 @@ fn click(
     ctx: &egui::Context,
     size: Vec2,
     position: Pos2,
-    capture: &mut Option<crate::viewport::UiCapture>,
+    capture: &mut Option<Capture>,
 ) {
     for pressed in [true, false] {
         frame(
@@ -94,6 +100,8 @@ fn click(
 }
 
 fn exercise_controls(gpu: bool) {
+    #[cfg(not(target_os = "linux"))]
+    assert!(!gpu, "GPU capture is only enabled on Linux");
     for dimensions in [[1000, 800], [640, 480]] {
         for split in [true, false] {
             let size = Vec2::new(dimensions[0] as f32, dimensions[1] as f32);
@@ -101,7 +109,11 @@ fn exercise_controls(gpu: bool) {
             ctx.style_mut(|s| s.animation_time = 0.);
             let mut app = fixture();
             app.ui.preferences.compact_toolbar = dimensions[0] < 800;
-            let mut capture = gpu.then(|| crate::viewport::UiCapture::new(dimensions));
+            #[cfg(target_os = "linux")]
+            let mut capture = gpu.then(|| Capture::new(dimensions));
+            #[cfg(not(target_os = "linux"))]
+            let mut capture = None;
+            #[cfg(target_os = "linux")]
             if let Some(capture) = &capture {
                 app.viewport.initialize_renderer(&capture.state).unwrap();
             }
@@ -109,6 +121,7 @@ fn exercise_controls(gpu: bool) {
                 frame(&mut app, &ctx, size, vec![], &mut capture);
             }
             let output = frame(&mut app, &ctx, size, vec![], &mut capture);
+            #[cfg(target_os = "linux")]
             if let Some(capture) = &mut capture {
                 let path = std::env::var("CLAY_GUIDE_PREVIEW")
                     .unwrap_or_else(|_| "/tmp/clay-visibility-review".into());
@@ -140,6 +153,7 @@ fn exercise_controls(gpu: bool) {
             assert_eq!(app.document.geometry_snapshot(), before);
             assert_eq!(app.document.history_counts(), history);
             let output = frame(&mut app, &ctx, size, vec![], &mut capture);
+            #[cfg(target_os = "linux")]
             if let Some(capture) = &mut capture {
                 let path = std::env::var("CLAY_GUIDE_PREVIEW")
                     .unwrap_or_else(|_| "/tmp/clay-visibility-review".into());
@@ -245,6 +259,41 @@ fn visibility_edit_controls_apply_cancel_and_undo_in_compact_windows() {
 }
 
 #[test]
+fn visibility_delete_all_hidden_warns_and_applies_through_dialog() {
+    let mut app = fixture();
+    app.document.select_face_region(|_| true, true).unwrap();
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts();
+    let ctx = egui::Context::default();
+    let size = Vec2::new(640., 480.);
+    let mut capture = None;
+    app.dispatch(Command::DeleteHidden, &ctx);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, size, vec![], &mut capture);
+    }
+    let output = frame(&mut app, &ctx, size, vec![], &mut capture);
+    point(
+        &output,
+        "Every face is hidden. Delete the entire surface and keep an empty editable model in the scene.",
+        size,
+    );
+    click(
+        &mut app,
+        &ctx,
+        size,
+        point(&output, "Delete hidden faces", size),
+        &mut capture,
+    );
+    assert!(app.ui.hidden_faces_warning.is_none());
+    assert!(app.document.mesh().vertices.is_empty());
+    assert_eq!(app.document.model_count(), 1);
+    assert_eq!(app.document.history_counts().0, history.0 + 1);
+    app.dispatch(Command::Undo, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), before);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 #[ignore = "real visibility controls and visual review; requires Vulkan"]
 fn visibility_edits_offscreen_review() {
     exercise_controls(true);
@@ -343,6 +392,7 @@ fn visibility_edit_policy_reports_actual_prerequisites() {
             .contains("Hide some")
     );
     app.document.select_face_region(|_| true, true).unwrap();
+    assert!(app.ui.action_enabled(&Action::DeleteHidden, &app.document));
     assert!(
         app.ui
             .action_unavailable(&Action::SplitHidden, &app.document)

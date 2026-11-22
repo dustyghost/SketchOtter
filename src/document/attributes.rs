@@ -289,7 +289,7 @@ impl Document {
             Some("Split hidden needs a free submodel slot (maximum 64)")
         } else if self.hidden_face_count() == 0 {
             Some("Hide some faces inside the active model first")
-        } else if self.hidden_face_count() == self.mesh().triangles.len() {
+        } else if split && self.hidden_face_count() == self.mesh().triangles.len() {
             Some("Keep some faces visible; this operation needs a remaining surface")
         } else if !self.mesh().loose_edges.is_empty() || !self.mesh().loose_vertices.is_empty() {
             Some(

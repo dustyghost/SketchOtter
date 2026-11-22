@@ -27,8 +27,9 @@ All-hidden or whole-model-hidden input leaves history and Redo intact.
 
 Delete hidden uses the same extraction, keeps the visible surface and shared
 boundary vertices, removes unused vertices from the deleted part, and leaves
-open cuts. No hidden faces is a no-op. All-hidden input is rejected so the user
-can reveal a surface to keep or deliberately delete the whole submodel.
+open cuts. No hidden faces is a no-op. All-hidden input has an explicit warning
+and leaves an empty editable model, as Delete masked already does. The model
+identity, other submodels, Undo/Redo and save/reopen are covered by regressions.
 
 Both operations are searchable/configurable actions. Menu, search and dispatcher
 use the same availability checks, including the active model, Thickness,
@@ -46,9 +47,9 @@ inputs, no-op/failed-operation Redo preservation, exact Undo/Redo and JSON proje
 reopening. UI checks exercise real menu and dialog buttons, search dispatch,
 shortcut persistence, stale confirmations and compact layouts.
 
-Local validation passed **20 focused checks** plus the ignored Vulkan interaction
+Local validation passed **22 focused checks** plus the ignored Vulkan interaction
 review (four cases: Split/Delete at 1000×800 and 640×480). The final CPU run took
-9.26 s and the rendered run 19.80 s; these are test durations, not performance
+9.71 s and the rendered run 19.58 s; these are test durations, not performance
 claims. Vulkan used llvmpipe, Mesa 26.3.1 / LLVM 23.1.5, with one software-rendering
 thread. The compact and normal confirmation images were visually inspected:
 target/count, consequences and both action buttons fit and remain readable.
@@ -66,7 +67,7 @@ the generic geometry commit cannot restore those deleted-only marks.
 
 The 8 GB laptop had about 1.7 GiB available at the first build. A 102-test staged
 selection hit a 1,500 MiB cgroup cap; it was not retried unchanged. The reduced
-selection (ultimately 21 cases including the optional capture) compiled with
+selection (ultimately 23 cases including the optional capture) compiled with
 one job, debug symbols/incremental compilation disabled, 256 codegen units,
 a 1,400 MiB cap and no cgroup swap. All heavy commands used the shared build
 lock. This used the existing temporary test-staging technique; the supported
@@ -75,6 +76,8 @@ partition requested in #176 remains separate. No staging changes are shipped.
 Ordinary CI keeps the complete application suite. The added GPU CI check clicks the actual
 Split/Delete/Cancel controls and checks document/history results; its screenshots
 are supplementary visual evidence, not an automatic visual-correctness oracle.
+The capture helper is Linux-only; ordinary UI interaction checks compile on all
+native targets. Windows CI exposed and prompted correction of this distinction.
 
 Native tablet pressure/device coverage is not claimed by the offscreen primary
 pointer checks. These operations use the ordinary mouse/pen button path and do

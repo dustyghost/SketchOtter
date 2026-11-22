@@ -7,6 +7,7 @@ pub(crate) struct HiddenFacesWarning {
     pub model: usize,
     name: String,
     faces: usize,
+    all_hidden: bool,
     levels: usize,
 }
 
@@ -22,6 +23,7 @@ impl HiddenFacesWarning {
                 .name
                 .into(),
             faces: document.hidden_face_count(),
+            all_hidden: document.hidden_face_count() == document.mesh().triangles.len(),
             levels: document.mesh_settings().levels(),
         }
     }
@@ -40,6 +42,8 @@ impl UiState {
             ui.label(format!("{} hidden triangles inside “{}”.", warning.faces, warning.name));
             ui.label(if warning.split {
                 "Move these faces into a new visible submodel. Keep the visible faces in the original model. Both pieces stay in place."
+            } else if warning.all_hidden {
+                "Every face is hidden. Delete the entire surface and keep an empty editable model in the scene."
             } else {
                 "Remove these faces from the active model. Keep its visible faces in place."
             });

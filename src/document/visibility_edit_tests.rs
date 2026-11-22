@@ -245,14 +245,13 @@ fn visibility_split_and_delete_preserve_survivors_and_exact_history() {
 
 #[test]
 fn visibility_delete_noop_and_unsupported_inputs_preserve_redo() {
-    for mode in 0..6 {
+    for mode in 0..5 {
         let mut d = plane(false);
         match mode {
             0 => d.show_all_faces().unwrap(),
-            1 => d.select_face_region(|_| true, true).unwrap(),
-            2 => d.geometry.scene.active_metadata.visible = false,
-            3 => d.geometry.scene.active_metadata.temporary_thickness = 0.1,
-            4 => {
+            1 => d.geometry.scene.active_metadata.visible = false,
+            2 => d.geometry.scene.active_metadata.temporary_thickness = 0.1,
+            3 => {
                 let v = d.geometry.mesh.vertices.len();
                 d.geometry
                     .mesh
@@ -282,6 +281,40 @@ fn visibility_delete_noop_and_unsupported_inputs_preserve_redo() {
         assert_eq!(d.is_dirty(), dirty);
         assert!(d.split_hidden().is_err());
         assert_eq!(d.geometry_snapshot(), before);
+        assert_eq!(d.history_counts(), history);
+    }
+}
+
+#[test]
+fn visibility_delete_all_hidden_keeps_empty_model_and_roundtrips() {
+    for group_hidden in [false, true] {
+        let mut d = plane(group_hidden);
+        d.duplicate_model(false).unwrap();
+        if group_hidden {
+            d.set_vertex_group_visible(0, false).unwrap();
+        } else {
+            d.select_face_region(|_| true, true).unwrap();
+        }
+        let before = d.geometry_snapshot();
+        let history = d.history_counts();
+        let active = d.active_model_index();
+        let name = d.model(active).unwrap().name.to_string();
+        assert_eq!(d.hidden_face_count(), d.mesh().triangles.len());
+        assert!(d.split_hidden().is_err());
+        assert_eq!(d.history_counts(), history);
+        assert_eq!(d.geometry_snapshot(), before);
+        d.delete_hidden().unwrap();
+        assert!(d.mesh().vertices.is_empty());
+        assert!(d.mesh().triangles.is_empty());
+        assert!(d.mesh().quads.is_empty());
+        assert_eq!(d.model_count(), 2);
+        assert_eq!(d.active_model_index(), active);
+        assert_eq!(d.model(active).unwrap().name, name);
+        assert_eq!(d.geometry_snapshot().submodels, before.submodels);
+        assert_eq!(d.history_counts().0, history.0 + 1);
+        roundtrip(&mut d, &before);
+        let history = d.history_counts();
+        d.delete_hidden().unwrap();
         assert_eq!(d.history_counts(), history);
     }
 }

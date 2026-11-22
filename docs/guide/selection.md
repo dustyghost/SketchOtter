@@ -230,7 +230,8 @@ from the deleted part are removed, and cut boundaries stay open.
 The confirmation explains the same subdivision/settings reset. **Cancel** or
 **Escape** changes nothing; one **Undo** restores the geometry, attributes and
 visibility. No hidden faces means no edit or Undo entry. If every face is hidden,
-show the part to keep first; use Delete submodel to remove a whole scene object.
+the dialog warns that deletion will leave an empty editable model in the scene.
+Undo restores its surface; use Delete submodel to remove the scene object itself.
 Split and Delete hidden can both be assigned shortcuts or placed in custom menus.
 
 ## Related guides
