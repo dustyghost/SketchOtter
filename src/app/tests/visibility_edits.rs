@@ -23,6 +23,21 @@ fn fixture() -> App {
     app
 }
 
+fn masked_fixture() -> App {
+    let mut app = fixture();
+    let mut geometry = app.document.geometry_snapshot();
+    geometry.mesh.show_all_faces();
+    for (i, p) in geometry.mesh.vertices.iter().enumerate() {
+        geometry.mesh.mask[i] = if p.0 >= 0. { 0.8 } else { 0.2 };
+    }
+    app.document.replace_geometry(geometry).unwrap();
+    app.document.blur_mask().unwrap();
+    app.document.set_mask_threshold(0.6).unwrap();
+    app.document.end_edit();
+    app.ui.preferences.pinned_menus[0].menu = BuiltinMenu::Mask;
+    app
+}
+
 fn frame(
     app: &mut App,
     ctx: &egui::Context,
@@ -103,11 +118,13 @@ fn exercise_controls(gpu: bool) {
     #[cfg(not(target_os = "linux"))]
     assert!(!gpu, "GPU capture is only enabled on Linux");
     for dimensions in [[1000, 800], [640, 480]] {
-        for split in [true, false] {
+        for operation in 0..3 {
+            let masked = operation == 2;
+            let split = operation != 1;
             let size = Vec2::new(dimensions[0] as f32, dimensions[1] as f32);
             let ctx = egui::Context::default();
             ctx.style_mut(|s| s.animation_time = 0.);
-            let mut app = fixture();
+            let mut app = if masked { masked_fixture() } else { fixture() };
             app.ui.preferences.compact_toolbar = dimensions[0] < 800;
             #[cfg(target_os = "linux")]
             let mut capture = gpu.then(|| Capture::new(dimensions));
@@ -128,17 +145,27 @@ fn exercise_controls(gpu: bool) {
                 std::fs::create_dir_all(&path).unwrap();
                 let rgba = capture.render(&ctx, output.clone());
                 capture.save(
-                    std::path::Path::new(&path).join(format!("menu-{}.png", dimensions[0])),
+                    std::path::Path::new(&path).join(format!(
+                        "{}-menu-{}.png",
+                        if masked { "masked" } else { "visibility" },
+                        dimensions[0]
+                    )),
                     &rgba,
                 );
             }
-            let label = if split {
+            let label = if masked {
+                "Split masked"
+            } else if split {
                 "Split hidden"
             } else {
                 "Delete hidden"
             };
             let before = app.document.geometry_snapshot();
             let history = app.document.history_counts();
+            if masked {
+                point(&output, "Selection threshold", size);
+                point(&output, "60%", size);
+            }
             click(
                 &mut app,
                 &ctx,
@@ -149,10 +176,21 @@ fn exercise_controls(gpu: bool) {
             for _ in 0..3 {
                 frame(&mut app, &ctx, size, vec![], &mut capture);
             }
-            assert!(app.ui.hidden_faces_warning.is_some());
+            assert!(app.ui.surface_edit_warning.is_some());
             assert_eq!(app.document.geometry_snapshot(), before);
             assert_eq!(app.document.history_counts(), history);
             let output = frame(&mut app, &ctx, size, vec![], &mut capture);
+            if masked {
+                point(
+                    &output,
+                    &format!(
+                        "{} triangles inside “{}” meet the 60% mask threshold at every corner.",
+                        app.document.masked_face_count(),
+                        before.name
+                    ),
+                    size,
+                );
+            }
             #[cfg(target_os = "linux")]
             if let Some(capture) = &mut capture {
                 let path = std::env::var("CLAY_GUIDE_PREVIEW")
@@ -162,7 +200,13 @@ fn exercise_controls(gpu: bool) {
                 capture.save(
                     std::path::Path::new(&path).join(format!(
                         "{}-{}.png",
-                        if split { "split" } else { "delete" },
+                        if masked {
+                            "masked"
+                        } else if split {
+                            "split"
+                        } else {
+                            "delete"
+                        },
                         dimensions[0]
                     )),
                     &rgba,
@@ -175,13 +219,15 @@ fn exercise_controls(gpu: bool) {
                 point(&output, "Cancel", size),
                 &mut capture,
             );
-            assert!(app.ui.hidden_faces_warning.is_none());
+            assert!(app.ui.surface_edit_warning.is_none());
             assert_eq!(app.document.geometry_snapshot(), before);
             assert_eq!(app.document.history_counts(), history);
             // Escape follows the same cancellation path without leaking a key
             // or pointer event into sculpting or history.
             app.dispatch(
-                if split {
+                if masked {
+                    Command::SplitMasked
+                } else if split {
                     Command::SplitHidden
                 } else {
                     Command::DeleteHidden
@@ -204,7 +250,7 @@ fn exercise_controls(gpu: bool) {
                     &mut capture,
                 );
             }
-            assert!(app.ui.hidden_faces_warning.is_none());
+            assert!(app.ui.surface_edit_warning.is_none());
             assert_eq!(app.document.geometry_snapshot(), before);
             assert_eq!(app.document.history_counts(), history);
             let output = frame(&mut app, &ctx, size, vec![], &mut capture);
@@ -234,7 +280,7 @@ fn exercise_controls(gpu: bool) {
                 ),
                 &mut capture,
             );
-            assert!(app.ui.hidden_faces_warning.is_none());
+            assert!(app.ui.surface_edit_warning.is_none());
             assert_eq!(app.document.history_counts().0, history.0 + 1);
             assert_eq!(
                 app.document.mesh().triangles.len(),
@@ -256,6 +302,74 @@ fn exercise_controls(gpu: bool) {
 #[test]
 fn visibility_edit_controls_apply_cancel_and_undo_in_compact_windows() {
     exercise_controls(false);
+}
+
+#[test]
+fn visibility_mask_threshold_control_updates_split_selection() {
+    let mut app = masked_fixture();
+    let ctx = egui::Context::default();
+    ctx.style_mut(|s| s.animation_time = 0.);
+    let size = Vec2::new(640., 480.);
+    let mut capture = None;
+    for _ in 0..4 {
+        frame(&mut app, &ctx, size, vec![], &mut capture);
+    }
+    let output = frame(&mut app, &ctx, size, vec![], &mut capture);
+    assert!(app.ui.action_enabled(&Action::SplitMasked, &app.document));
+    click(
+        &mut app,
+        &ctx,
+        size,
+        point(&output, "60%", size),
+        &mut capture,
+    );
+    frame(
+        &mut app,
+        &ctx,
+        size,
+        vec![
+            egui::Event::Key {
+                key: egui::Key::A,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::CTRL,
+            },
+            egui::Event::Text("90".into()),
+            egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+        &mut capture,
+    );
+    let output = frame(&mut app, &ctx, size, vec![], &mut capture);
+    assert_eq!(
+        app.document
+            .model(app.document.active_model_index())
+            .unwrap()
+            .metadata
+            .mask_threshold,
+        0.9
+    );
+    assert_eq!(app.document.masked_face_count(), 0);
+    assert!(!app.ui.action_enabled(&Action::SplitMasked, &app.document));
+    point(
+        &output,
+        "0 triangles meet the threshold at every corner.",
+        size,
+    );
+    click(
+        &mut app,
+        &ctx,
+        size,
+        point(&output, "Split masked", size),
+        &mut capture,
+    );
+    assert!(app.ui.surface_edit_warning.is_none());
 }
 
 #[test]
@@ -284,7 +398,7 @@ fn visibility_delete_all_hidden_warns_and_applies_through_dialog() {
         point(&output, "Delete hidden faces", size),
         &mut capture,
     );
-    assert!(app.ui.hidden_faces_warning.is_none());
+    assert!(app.ui.surface_edit_warning.is_none());
     assert!(app.document.mesh().vertices.is_empty());
     assert_eq!(app.document.model_count(), 1);
     assert_eq!(app.document.history_counts().0, history.0 + 1);
@@ -304,8 +418,13 @@ fn visibility_edit_search_shortcuts_and_stale_confirmation() {
     for (action, command) in [
         (Action::SplitHidden, Command::SplitHidden),
         (Action::DeleteHidden, Command::DeleteHidden),
+        (Action::SplitMasked, Command::SplitMasked),
     ] {
-        let mut app = fixture();
+        let mut app = if action == Action::SplitMasked {
+            masked_fixture()
+        } else {
+            fixture()
+        };
         let ctx = egui::Context::default();
         let size = Vec2::new(1000., 800.);
         let mut capture = None;
@@ -337,10 +456,10 @@ fn visibility_edit_search_shortcuts_and_stale_confirmation() {
             &mut capture,
         );
         assert!(
-            app.ui.hidden_faces_warning.is_some(),
+            app.ui.surface_edit_warning.is_some(),
             "search must run {action:?}"
         );
-        app.dispatch(Command::ConfirmHiddenFaces(false), &ctx);
+        app.dispatch(Command::ConfirmSurfaceEdit(false), &ctx);
         app.ui
             .preferences
             .bind(
@@ -352,7 +471,7 @@ fn visibility_edit_search_shortcuts_and_stale_confirmation() {
             serde_json::from_str(&serde_json::to_string(&app.ui.preferences).unwrap()).unwrap();
         assert_eq!(restored.shortcut(&action).unwrap().key, "F8");
         app.dispatch(command, &ctx);
-        assert!(app.ui.hidden_faces_warning.is_some());
+        assert!(app.ui.surface_edit_warning.is_some());
         let before = app.document.geometry_snapshot();
         app.dispatch(Command::InvertMask, &ctx);
         assert_eq!(
@@ -360,10 +479,15 @@ fn visibility_edit_search_shortcuts_and_stale_confirmation() {
             before,
             "modal must block unrelated edits"
         );
-        app.document.invert_mask().unwrap();
+        if action == Action::SplitMasked {
+            app.document.set_mask_threshold(0.9).unwrap();
+            app.document.end_edit();
+        } else {
+            app.document.invert_mask().unwrap();
+        }
         let changed = app.document.geometry_snapshot();
         let history = app.document.history_counts();
-        app.dispatch(Command::ConfirmHiddenFaces(true), &ctx);
+        app.dispatch(Command::ConfirmSurfaceEdit(true), &ctx);
         assert_eq!(app.document.geometry_snapshot(), changed);
         assert_eq!(app.document.history_counts(), history);
         assert!(app.ui.status.contains("model changed"));

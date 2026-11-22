@@ -17,7 +17,7 @@ enum Intent {
     Pending,
     Primitive,
     DeleteConfirmation,
-    HiddenFacesConfirmation,
+    SurfaceEditConfirmation,
     Alpha,
     Icon,
     CancelJob,
@@ -61,8 +61,8 @@ impl<'a> EditorPolicy<'a> {
         if ui.delete_warning.is_some() && intent != Intent::DeleteConfirmation {
             return Err("Confirm or cancel submodel deletion first");
         }
-        if ui.hidden_faces_warning.is_some() && intent != Intent::HiddenFacesConfirmation {
-            return Err("Apply or cancel the hidden-face operation first");
+        if ui.surface_edit_warning.is_some() && intent != Intent::SurfaceEditConfirmation {
+            return Err("Apply or cancel the surface operation first");
         }
         if ui.primitive_warning.is_some() && intent != Intent::Primitive {
             return Err("Confirm or cancel primitive replacement first");
@@ -428,6 +428,9 @@ impl<'a> EditorPolicy<'a> {
             Action::SplitHidden | Action::DeleteHidden => document
                 .hidden_faces_unavailable(*action == Action::SplitHidden)
                 .unwrap_or("Choose an editable mesh with visible and hidden faces"),
+            Action::SplitMasked => document
+                .split_masked_unavailable()
+                .unwrap_or("Choose an editable mesh with a partial mask selection"),
             Action::GroupAll => document
                 .group_all_unavailable()
                 .unwrap_or("Choose an editable mesh first"),
@@ -705,6 +708,7 @@ impl<'a> EditorPolicy<'a> {
             Action::SplitHidden | Action::DeleteHidden => document
                 .hidden_faces_unavailable(*action == Action::SplitHidden)
                 .is_none(),
+            Action::SplitMasked => document.split_masked_unavailable().is_none(),
             Action::GroupAll => sculpt && document.group_all_unavailable().is_none(),
             Action::LowerLevel | Action::DeleteLowerLevels => {
                 sculpt && document.mesh_settings().level() > 1
@@ -875,7 +879,7 @@ impl<'a> EditorPolicy<'a> {
             | Command::CancelPending
             | Command::BrowseProject(_) => Intent::Pending,
             Command::ConfirmDeleteSubmodel(_) => Intent::DeleteConfirmation,
-            Command::ConfirmHiddenFaces(_) => Intent::HiddenFacesConfirmation,
+            Command::ConfirmSurfaceEdit(_) => Intent::SurfaceEditConfirmation,
             Command::ConfirmPrimitive | Command::CancelPrimitive => Intent::Primitive,
             Command::SaveAlpha(..) | Command::ExportAlpha(..) => Intent::Alpha,
             Command::ExportIconImage(..) => Intent::Icon,
@@ -893,6 +897,7 @@ impl<'a> EditorPolicy<'a> {
             Command::MergeDown => Some(Action::MergeDown),
             Command::SplitHidden => Some(Action::SplitHidden),
             Command::DeleteHidden => Some(Action::DeleteHidden),
+            Command::SplitMasked => Some(Action::SplitMasked),
             Command::CreateVertexGroup(_, true) => Some(Action::GroupAll),
             Command::ConvertPrimitive => Some(Action::ConvertPrimitive),
             Command::OpenProjection => Some(Action::ProjectDetails),

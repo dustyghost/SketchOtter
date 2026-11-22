@@ -128,6 +128,7 @@ pub(crate) enum Action {
     ClearMask,
     InvertMask,
     DeleteMasked,
+    SplitMasked,
     ExpandMask,
     ContractMask,
     BlurMask,
@@ -317,6 +318,7 @@ impl Action {
         Self::ClearMask,
         Self::InvertMask,
         Self::DeleteMasked,
+        Self::SplitMasked,
         Self::ExpandMask,
         Self::ContractMask,
         Self::BlurMask,
@@ -581,6 +583,12 @@ impl Action {
             Self::DeleteHidden => {
                 "Delete hidden faces inside the active mesh, preserving the visible surface and its attributes. Review the subdivision/settings reset before applying. Other submodels stay intact; boundaries remain open."
             }
+            Self::SplitMasked => {
+                "Move faces whose corners all meet Mask → Selection threshold into a new submodel. Includes masked hidden faces; preserves masks and visibility. Review the threshold and subdivision/settings reset before applying."
+            }
+            Self::DeleteMasked => {
+                "Remove faces meeting the mask threshold at every vertex. Creates open boundaries and resets subdivision levels and closed-surface modes. Undo restores everything."
+            }
             Self::Search => {
                 "Find commands, tools, settings and named items. Run an action or reveal its control without changing your tool."
             }
@@ -803,6 +811,7 @@ impl Action {
             Self::ClearMask => "Clear mask",
             Self::InvertMask => "Invert mask",
             Self::DeleteMasked => "Delete masked",
+            Self::SplitMasked => "Split masked",
             Self::ExpandMask => "Expand mask",
             Self::ContractMask => "Contract mask",
             Self::BlurMask => "Blur mask",

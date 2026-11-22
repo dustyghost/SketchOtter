@@ -401,35 +401,38 @@ impl App {
                 self.viewport.cancel(&mut self.document);
                 self.document.invert_visibility()
             }
-            Command::SplitHidden | Command::DeleteHidden => {
+            Command::SplitHidden | Command::DeleteHidden | Command::SplitMasked => {
                 self.viewport.cancel(&mut self.document);
-                self.ui.hidden_faces_warning = Some(crate::ui::HiddenFacesWarning::new(
-                    &self.document,
-                    matches!(command, Command::SplitHidden),
-                ));
+                let action = match command {
+                    Command::SplitHidden => Action::SplitHidden,
+                    Command::SplitMasked => Action::SplitMasked,
+                    _ => Action::DeleteHidden,
+                };
+                self.ui.surface_edit_warning =
+                    Some(crate::ui::SurfaceEditWarning::new(&self.document, action));
                 Ok(())
             }
-            Command::ConfirmHiddenFaces(apply) => {
-                if let Some(warning) = self.ui.hidden_faces_warning.take() {
+            Command::ConfirmSurfaceEdit(apply) => {
+                if let Some(warning) = self.ui.surface_edit_warning.take() {
                     self.viewport.wait_for_release();
                     if !apply {
                         Ok(())
                     } else if warning.revision != self.document.source_revision()
                         || warning.model != self.document.active_model_index()
                     {
-                        Err("The model changed; open the hidden-face operation again".into())
+                        Err("The model changed; open the surface operation again".into())
                     } else {
-                        let result = if warning.split {
-                            self.document.split_hidden()
-                        } else {
-                            self.document.delete_hidden()
+                        let result = match warning.action {
+                            Action::SplitHidden => self.document.split_hidden(),
+                            Action::SplitMasked => self.document.split_masked(),
+                            _ => self.document.delete_hidden(),
                         };
                         result.map(|()| {
                             self.ui.selected_vertex_group = None;
-                            self.ui.status = if warning.split {
-                                "Hidden faces moved to a new visible submodel. Undo restores the original."
-                            } else {
-                                "Hidden faces deleted; cut boundaries remain open. Undo restores the original."
+                            self.ui.status = match warning.action {
+                                Action::SplitHidden => "Hidden faces moved to a new visible submodel. Undo restores the original.",
+                                Action::SplitMasked => "Masked faces moved to a new submodel; masks and visibility preserved. Undo restores the original.",
+                                _ => "Hidden faces deleted; cut boundaries remain open. Undo restores the original.",
                             }.into();
                         })
                     }

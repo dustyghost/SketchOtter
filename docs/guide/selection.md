@@ -7,6 +7,7 @@
 - [Protect a region with a lasso](#example-protect-a-region-with-a-lasso)
 - [Protect one side through the model](#protect-one-side-through-the-model)
 - [Edit a mask](#mask-operations)
+- [Split masked faces](#split-masked-geometry)
 - [Save a region as a group](#vertex-groups)
 - [Hide or isolate faces](#selection-and-visibility)
 - [Split off hidden faces](#split-hidden-faces)
@@ -80,7 +81,7 @@ Use the **Mask** menu:
 | Blur mask | Soften the boundary; repeat for a wider transition |
 | Sharpen mask | Increase contrast around 50% |
 | Mask intensity | Scale the soft mask's strength |
-| Selection threshold | Minimum mask value for grouping, deletion, and extraction; default 50% |
+| Selection threshold | Minimum mask value for grouping, splitting, deletion, and extraction; default 50% |
 
 Blur/sharpen affect every stored subdivision level, including hidden faces. They leave geometry and saved group weights unchanged. Each changed operation is undoable.
 
@@ -91,6 +92,32 @@ Setting intensity to zero clears the mask when the drag ends. Undo or recall a g
 Choose **Delete masked** to remove faces whose vertices all meet the threshold. Other submodels stay intact.
 
 **Deletion can leave open boundaries and resets the active subdivision stack and adaptive/voxel settings.** Undo restores the previous state. Deleting the entire surface leaves an empty model; undo, initialize a primitive, or create a new sphere.
+
+### Split masked geometry
+
+1. Paint a mask, and blur it if needed.
+2. Open **Mask → Selection threshold**. Lower the threshold to include more of
+   a soft mask, or raise it to select only its stronger areas. The count shows
+   qualifying triangles. Every corner must meet the threshold; zero mask values
+   are excluded even at 0%. The boundary follows existing faces.
+3. Choose **Split masked**. Check the model, threshold, face count and settings
+   reset, then choose **Apply split**.
+
+The selected faces move into **Masked 1** (or the next free name). The remaining
+faces stay in the original active model, and both pieces keep their positions,
+mask values, groups, face visibility, paint, UVs, creases and surviving seams.
+As with Delete masked and Extract masked, the threshold also selects masked
+hidden faces. Use Show all or Clear mask on either piece when needed.
+
+Cut boundaries stay open. Both pieces use the current subdivision level and
+reset subdivision, Adaptive and Dynamic Mesh settings. **Cancel** or **Escape**
+changes nothing; one **Undo** restores the original. Split requires both selected
+and remaining faces, a visible editable model and a free submodel slot. Apply or
+remove Thickness first; loose geometry and stale UV layouts must be resolved.
+
+**Extract masked** in Submodels still copies the selected faces while retaining
+the source, and clears the copy's mask. **Split masked** moves them and preserves
+their mask values. Split masked is also available in search and custom bindings.
 
 ## Vertex groups
 

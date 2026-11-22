@@ -350,6 +350,7 @@ fn action_destination(action: &Action) -> Destination {
         ClearMask
         | InvertMask
         | DeleteMasked
+        | SplitMasked
         | ExpandMask
         | ContractMask
         | BlurMask

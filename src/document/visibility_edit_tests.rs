@@ -167,7 +167,9 @@ fn visibility_group_all_hidden_or_hidden_name_collision_is_atomic() {
 
 #[test]
 fn visibility_split_and_delete_preserve_survivors_and_exact_history() {
-    for split in [false, true] {
+    for operation in 0..3 {
+        let split = operation != 0;
+        let masked = operation == 2;
         for group_hidden in [false, true] {
             let mut d = plane(group_hidden);
             // Nonuniform paint and seam-aware UVs exercise the real extraction.
@@ -194,7 +196,9 @@ fn visibility_split_and_delete_preserve_survivors_and_exact_history() {
             d.duplicate_model(false).unwrap();
             let before = d.geometry_snapshot();
             let history = d.history_counts().0;
-            if split {
+            if masked {
+                d.split_masked().unwrap();
+            } else if split {
                 d.split_hidden().unwrap();
             } else {
                 d.delete_hidden().unwrap();
@@ -206,7 +210,7 @@ fn visibility_split_and_delete_preserve_survivors_and_exact_history() {
                 let mesh = d.model(i).unwrap().mesh;
                 assert_eq!(mesh.triangles.len(), before.mesh.triangles.len() / 2);
                 assert_eq!(mesh.quads.len() * 2, mesh.triangles.len());
-                assert!(!mesh.has_hidden_faces());
+                assert_eq!(mesh.has_hidden_faces(), masked && i != active);
                 assert!(mesh.uv.current(mesh));
                 assert_eq!(mesh.creases.len(), mesh.polygon_edges().len());
                 assert_eq!(mesh.uv.seams.len(), mesh.polygon_edges().len());
@@ -228,6 +232,9 @@ fn visibility_split_and_delete_preserve_survivors_and_exact_history() {
                         .position(|t| t.map(|v| before.mesh.vertices[v]) == positions)
                         .unwrap();
                     assert_eq!(before.mesh.face_visible(old), i == active);
+                    if masked {
+                        assert_eq!(mesh.face_visible(f), before.mesh.face_visible(old));
+                    }
                     assert_eq!(mesh.uv.corners[f], before.mesh.uv.corners[old]);
                     assert_eq!(mesh.uv.masks[f], before.mesh.uv.masks[old]);
                     assert_eq!(mesh.uv.removed[f], before.mesh.uv.removed[old]);
@@ -240,6 +247,112 @@ fn visibility_split_and_delete_preserve_survivors_and_exact_history() {
             );
             roundtrip(&mut d, &before);
         }
+    }
+}
+
+#[test]
+fn visibility_split_masked_uses_blurred_threshold_and_invalidates_cached_counts() {
+    let mut d = plane(false);
+    d.show_all_faces().unwrap();
+    assert_eq!(d.masked_face_count(), 2);
+    d.blur_mask().unwrap();
+    assert!(d.mesh().mask.iter().all(|&v| v > 0. && v < 1.));
+    assert_eq!(d.masked_face_count(), 2);
+    d.set_mask_threshold(0.8).unwrap();
+    assert_eq!(d.masked_face_count(), 0);
+    assert!(d.split_masked_unavailable().unwrap().contains("threshold"));
+    d.end_edit();
+    let before = d.geometry_snapshot();
+    let history = d.history_counts();
+    assert!(d.split_masked().is_err());
+    assert_eq!(d.geometry_snapshot(), before);
+    assert_eq!(d.history_counts(), history);
+    d.undo();
+    assert_eq!(d.masked_face_count(), 2);
+    d.redo();
+    assert_eq!(d.masked_face_count(), 0);
+    d.set_mask_threshold(0.6).unwrap();
+    let mut geometry = d.geometry_snapshot();
+    geometry.subdivide().unwrap();
+    d.replace_geometry(geometry).unwrap();
+    let expected = (0..d.mesh().triangles.len())
+        .filter(|&f| d.mesh().face_mask_selected(f, 0.6))
+        .count();
+    assert_eq!(d.masked_face_count(), expected);
+    let before = d.geometry_snapshot();
+    let history = d.history_counts();
+    d.split_masked().unwrap();
+    assert_eq!(d.history_counts().0, history.0 + 1);
+    assert_eq!(d.mesh_settings().levels(), 1);
+    assert_eq!(d.model(1).unwrap().settings.levels(), 1);
+    assert_eq!(d.model(1).unwrap().name, "Masked 1");
+    assert_eq!(d.model(1).unwrap().mesh.triangles.len(), expected);
+    assert_eq!(d.masked_face_count(), 0);
+    d.select_submodel(1).unwrap();
+    assert_eq!(d.masked_face_count(), expected);
+    d.undo(); // Restore the active model before checking the split's history.
+    roundtrip(&mut d, &before);
+
+    // At 0%, clear vertices remain excluded; every corner must qualify.
+    let mut d = plane(false);
+    for (i, p) in d.geometry.mesh.vertices.iter().enumerate() {
+        d.geometry.mesh.mask[i] = if p.0 >= 0. { 0.4 } else { 0. };
+    }
+    d.set_mask_threshold(0.).unwrap();
+    assert_eq!(d.masked_face_count(), 2);
+    let before = d.geometry_snapshot();
+    d.split_masked().unwrap();
+    assert_eq!(d.mesh().triangles.len(), 2);
+    assert_eq!(d.model(1).unwrap().mesh.triangles.len(), 2);
+    roundtrip(&mut d, &before);
+}
+
+#[test]
+fn visibility_split_masked_rejects_unsupported_inputs_without_consuming_redo() {
+    for mode in 0..8 {
+        let mut d = plane(false);
+        match mode {
+            0 => d.geometry.mesh.mask.fill(0.),
+            1 => d.geometry.mesh.mask.fill(1.),
+            2 => d.geometry.scene.active_metadata.visible = false,
+            3 => d.geometry.scene.active_metadata.temporary_thickness = 0.1,
+            4 => {
+                let template = d.ordered_models()[0].clone();
+                d.geometry.submodels = vec![template; 63];
+            }
+            5 => {
+                let v = d.geometry.mesh.vertices.len();
+                d.geometry
+                    .mesh
+                    .vertices
+                    .push(crate::sculpt::Vec3(5., 5., 5.));
+                d.geometry.mesh.mask.push(0.);
+                for g in &mut d.geometry.mesh.vertex_groups {
+                    g.weights.push(0.);
+                }
+                d.geometry.mesh.loose_vertices.push(v);
+            }
+            6 => {
+                let mesh = &mut d.geometry.mesh;
+                mesh.uv.corners = vec![[[0., 0.]; 3]];
+                mesh.uv.topology = vec![mesh.triangles[0]];
+            }
+            _ => {
+                d.initialize_primitive().unwrap();
+            }
+        }
+        if mode != 7 {
+            d.invert_mask().unwrap();
+            d.undo();
+        }
+        let before = d.geometry_snapshot();
+        let history = d.history_counts();
+        let dirty = d.is_dirty();
+        assert!(d.split_masked_unavailable().is_some());
+        assert!(d.split_masked().is_err());
+        assert_eq!(d.geometry_snapshot(), before);
+        assert_eq!(d.history_counts(), history);
+        assert_eq!(d.is_dirty(), dirty);
     }
 }
 

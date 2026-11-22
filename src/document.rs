@@ -80,6 +80,7 @@ pub struct Document {
     // Effective visibility of the active source mesh. UI readers share one
     // scan until the document's existing display invalidation boundary.
     hidden_face_count: std::sync::OnceLock<usize>,
+    masked_face_count: std::sync::OnceLock<usize>,
     #[cfg(test)]
     hidden_count_scans: std::sync::atomic::AtomicUsize,
     regions: regions::Journal,
@@ -123,6 +124,7 @@ impl Default for Document {
             saved_cameras: Vec::new(),
             geometry: Geometry::new(Mesh::starting_sphere()),
             hidden_face_count: Default::default(),
+            masked_face_count: Default::default(),
             #[cfg(test)]
             hidden_count_scans: Default::default(),
             regions: regions::Journal::default(),
@@ -184,6 +186,7 @@ impl Document {
     fn display_changed_preserving_geometry(&mut self) {
         self.regions.clear();
         self.hidden_face_count.take();
+        self.masked_face_count.take();
         self.display_revision = self.display_revision.wrapping_add(1);
         self.level_content_revision = self.display_revision;
     }
@@ -193,6 +196,7 @@ impl Document {
     }
     fn invalidate_display(&mut self) {
         self.hidden_face_count.take();
+        self.masked_face_count.take();
         self.instance_cache.take();
         self.display_revision = self.display_revision.wrapping_add(1);
         self.geometry_display_revision = self.geometry_display_revision.wrapping_add(1);

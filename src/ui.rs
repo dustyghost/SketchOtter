@@ -39,7 +39,7 @@ mod path_thumbnail;
 pub(crate) mod paths;
 mod primitive;
 mod visibility;
-pub(crate) use visibility::HiddenFacesWarning;
+pub(crate) use visibility::SurfaceEditWarning;
 mod projection;
 mod retopology;
 pub(crate) use fusion::FusionKey;
@@ -62,7 +62,7 @@ pub(crate) struct UiState {
     pinned_menu_rects: Vec<egui::Rect>,
     pub library_path: String,
     pub(crate) delete_warning: Option<(u64, String)>,
-    pub(crate) hidden_faces_warning: Option<HiddenFacesWarning>,
+    pub(crate) surface_edit_warning: Option<SurfaceEditWarning>,
     pub(crate) primitive_warning: Option<(usize, String)>,
     pub(crate) primitive_controls_requested: bool,
     pub(crate) modeling_primitive: Option<(crate::sculpt::Primitive, u64)>,
@@ -163,7 +163,7 @@ impl Default for UiState {
             library_path: "brush-library.brushes.json".into(),
             primitive_warning: None,
             delete_warning: None,
-            hidden_faces_warning: None,
+            surface_edit_warning: None,
             primitive_controls_requested: false,
             modeling_primitive: None,
             transform_mode: crate::viewport::TransformMode::Sculpt,

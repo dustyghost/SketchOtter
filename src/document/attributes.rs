@@ -248,13 +248,23 @@ impl Document {
         }
         let visible_mesh = self.mesh().visibility_part(true)?;
         let hidden_mesh = self.mesh().visibility_part(false)?;
+        self.split_surface_parts(visible_mesh, hidden_mesh, "Hidden", "Split hidden");
+        Ok(())
+    }
+    pub(super) fn split_surface_parts(
+        &mut self,
+        remaining: Mesh,
+        separated: Mesh,
+        prefix: &str,
+        label: &'static str,
+    ) {
         let name = (1..)
-            .map(|i| format!("Hidden {i}"))
+            .map(|i| format!("{prefix} {i}"))
             .find(|name| !self.submodel_names().any(|n| n == name))
             .unwrap();
         let mut models = self.ordered_models();
         let active = self.active_model_index();
-        models[active].mesh = visible_mesh;
+        models[active].mesh = remaining;
         models[active].mesh_settings = MeshSettings::default();
         let mut metadata = models[active].metadata.clone();
         metadata.model_id = 0;
@@ -264,19 +274,31 @@ impl Document {
             crate::sculpt::Submodel {
                 name,
                 metadata,
-                mesh: hidden_mesh,
+                mesh: separated,
                 mesh_settings: MeshSettings::default(),
             },
         );
         self.end_edit();
         self.end_stroke();
-        self.record_edit("Split hidden");
+        self.record_edit(label);
         self.install_models(models, active);
-        Ok(())
     }
     /// Shared prerequisites for menus, search and document operations. Visibility
     /// means face/group hiding inside the active model, never camera occlusion.
     pub(crate) fn hidden_faces_unavailable(&self, split: bool) -> Option<&'static str> {
+        if let Some(reason) = self.surface_partition_unavailable() {
+            Some(reason)
+        } else if split && self.model_count() >= 64 {
+            Some("Split hidden needs a free submodel slot (maximum 64)")
+        } else if self.hidden_face_count() == 0 {
+            Some("Hide some faces inside the active model first")
+        } else if split && self.hidden_face_count() == self.mesh().triangles.len() {
+            Some("Keep some faces visible; this operation needs a remaining surface")
+        } else {
+            None
+        }
+    }
+    pub(super) fn surface_partition_unavailable(&self) -> Option<&'static str> {
         if self.primitive().is_some() {
             Some("Convert the primitive to an editable mesh first")
         } else if self.require_sculpt_mesh().is_err() {
@@ -285,12 +307,6 @@ impl Document {
             Some("Show the active model in Submodels first")
         } else if self.geometry.scene.active_metadata.temporary_thickness > 0. {
             Some("Apply or remove the Thickness modifier first")
-        } else if split && self.model_count() >= 64 {
-            Some("Split hidden needs a free submodel slot (maximum 64)")
-        } else if self.hidden_face_count() == 0 {
-            Some("Hide some faces inside the active model first")
-        } else if split && self.hidden_face_count() == self.mesh().triangles.len() {
-            Some("Keep some faces visible; this operation needs a remaining surface")
         } else if !self.mesh().loose_edges.is_empty() || !self.mesh().loose_vertices.is_empty() {
             Some(
                 "This operation cannot preserve loose edges or isolated vertices; remove them first",

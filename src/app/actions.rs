@@ -583,6 +583,7 @@ impl App {
             )),
             Action::InvertMask => Some(Command::InvertMask),
             Action::DeleteMasked => Some(Command::DeleteMasked),
+            Action::SplitMasked => Some(Command::SplitMasked),
             Action::ExpandMask => Some(Command::GrowMask(true)),
             Action::ContractMask => Some(Command::GrowMask(false)),
             Action::BlurMask => Some(Command::BlurMask),

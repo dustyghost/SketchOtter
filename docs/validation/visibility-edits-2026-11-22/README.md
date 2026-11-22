@@ -1,6 +1,6 @@
-# Visible grouping, Split hidden and Delete hidden
+# Visible grouping and hidden/masked surface edits
 
-Implements #172, #174 and #173 together on main `d8576f4`.
+Implements #172, #174, #173 and #188 together on main `d8576f4`.
 
 ## Existing behavior and changes
 
@@ -31,7 +31,21 @@ open cuts. No hidden faces is a no-op. All-hidden input has an explicit warning
 and leaves an empty editable model, as Delete masked already does. The model
 identity, other submodels, Undo/Redo and save/reopen are covered by regressions.
 
-Both operations are searchable/configurable actions. Menu, search and dispatcher
+Split masked uses the existing per-model Selection threshold (50% by default).
+Every face corner must have a positive mask value at or above that threshold;
+blurred weights remain unchanged. The Mask menu puts the percentage field,
+qualifying triangle count and Split/Delete buttons together. The confirmation
+records the threshold and count, so a changed mask/threshold invalidates it.
+Selection includes masked hidden faces, as existing mask extraction/deletion do.
+Both pieces preserve their mask values and face/group visibility; the original
+stays active. This differs from Extract masked, which keeps the source and clears
+the copy's mask. No selection or an entirely selected surface cannot split.
+
+Mask splitting uses the same attribute-preserving face subset helper and scene
+transaction as visibility splitting. The count is cached until a document edit,
+including threshold changes, so menu/search queries do not repeatedly scan faces.
+
+All three operations are searchable/configurable actions. Menu, search and dispatcher
 use the same availability checks, including the active model, Thickness,
 visible/hidden face counts, loose geometry, stale UVs and Split's 64-model limit.
 The dialog names the target and count, explains the current-level/settings
@@ -45,11 +59,15 @@ disconnected components, stored levels, density and nonuniform masks/materials,
 UV/shading seam remapping, preserved image identities, complete quads, unsupported
 inputs, no-op/failed-operation Redo preservation, exact Undo/Redo and JSON project
 reopening. UI checks exercise real menu and dialog buttons, search dispatch,
-shortcut persistence, stale confirmations and compact layouts.
+shortcut persistence, stale confirmations and compact layouts. Split masked adds
+blurred-mask and 0% threshold cases, per-corner selection, count invalidation after
+Undo/Redo and submodel changes, settings reset, unsupported-input atomicity, and
+existing Delete masked regressions. A real percentage-field edit from 60% to 90%
+verifies the count and Split masked availability update together.
 
-Local validation passed **22 focused checks** plus the ignored Vulkan interaction
-review (four cases: Split/Delete at 1000×800 and 640×480). The final CPU run took
-9.71 s and the rendered run 19.58 s; these are test durations, not performance
+Local validation passed **28 focused checks** plus the ignored Vulkan interaction
+review (six cases: Split hidden, Delete hidden and Split masked at 1000×800 and
+640×480). The CPU run took 12.33 s and the rendered run 28.07 s; these are test durations, not performance
 claims. Vulkan used llvmpipe, Mesa 26.3.1 / LLVM 23.1.5, with one software-rendering
 thread. The compact and normal confirmation images were visually inspected:
 target/count, consequences and both action buttons fit and remain readable.
@@ -67,7 +85,7 @@ the generic geometry commit cannot restore those deleted-only marks.
 
 The 8 GB laptop had about 1.7 GiB available at the first build. A 102-test staged
 selection hit a 1,500 MiB cgroup cap; it was not retried unchanged. The reduced
-selection (ultimately 23 cases including the optional capture) compiled with
+selection (ultimately 29 cases including the optional capture) compiled with
 one job, debug symbols/incremental compilation disabled, 256 codegen units,
 a 1,400 MiB cap and no cgroup swap. All heavy commands used the shared build
 lock. This used the existing temporary test-staging technique; the supported
@@ -102,3 +120,5 @@ use CI for that compilation rather than assuming the filter limits memory.
 ![Compact Split hidden confirmation](split-640.png)
 
 ![Delete hidden confirmation](delete-1000.png)
+
+![Compact Split masked confirmation with the selected threshold](masked-640.png)

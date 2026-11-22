@@ -744,13 +744,39 @@ impl UiState {
                 }
             }
             BuiltinMenu::Mask => {
-                self.temporary_mask_controls(ui, document, commands);
                 let mut threshold = document
                     .model(document.active_model_index())
                     .unwrap()
                     .metadata
                     .mask_threshold;
-                if search::setting_response(ui.add_enabled(!self.mesh_busy, egui::Slider::new(&mut threshold, 0. ..=1.).text("Selection threshold").custom_formatter(|v,_| format!("{:.0}%",v*100.)).custom_parser(|text| text.trim().trim_end_matches('%').trim().parse::<f64>().ok().map(|v|v/100.))), "Selection threshold").on_hover_text("Minimum vertex mask value for grouping, deletion and extraction. Zero-valued vertices are always excluded. Complete faces must meet the threshold at every corner.").changed() { commands.push(Command::MaskThreshold(threshold)); }
+                if search::setting_response(ui.add_enabled(!self.mesh_busy, egui::Slider::new(&mut threshold, 0. ..=1.).text("Selection threshold").custom_formatter(|v,_| format!("{:.0}%",v*100.)).custom_parser(|text| text.trim().trim_end_matches('%').trim().parse::<f64>().ok().map(|v|v/100.))), "Selection threshold").on_hover_text("Minimum vertex mask value for grouping, splitting, deletion and extraction. Zero-valued vertices are always excluded. Complete faces must meet the threshold at every corner.").changed() { commands.push(Command::MaskThreshold(threshold)); }
+                ui.weak(format!(
+                    "{} triangles meet the threshold at every corner.",
+                    document.masked_face_count()
+                ));
+                ui.horizontal_wrapped(|ui| {
+                    self.toolbar_action(
+                        ui,
+                        Glyph::Layers,
+                        "Split masked",
+                        Action::SplitMasked,
+                        document,
+                        commands,
+                    );
+                    self.toolbar_action(
+                        ui,
+                        Glyph::Delete,
+                        "Delete masked",
+                        Action::DeleteMasked,
+                        document,
+                        commands,
+                    );
+                });
+                if let Some(reason) = self.action_unavailable(&Action::SplitMasked, document) {
+                    ui.weak(reason);
+                }
+                ui.separator();
+                self.temporary_mask_controls(ui, document, commands);
                 ui.add_enabled_ui(!self.mesh_busy && document.primitive().is_none(), |ui| {
                         ui.strong("Mask through");
                         if ui.add_enabled(document.active_visible(), egui::Button::new("Line").selected(matches!(self.selection_tool, Some(crate::viewport::SelectionTool::MaskLine { .. })))).on_hover_text("Draw a dividing line from empty space. Add or erase masking on one side, front to back; never cuts geometry.").customize(Action::MaskLine).clicked() {
@@ -773,7 +799,6 @@ impl UiState {
                             if ui.add_enabled(document.active_visible(), egui::Button::new("Sharpen mask")).on_hover_text("Tighten soft mask transitions around 50% on every subdivision level, including hidden faces. Geometry and saved vertex group weights stay unchanged.").customize(Action::SharpenMask).clicked() { commands.push(Command::SharpenMask); }
                         });
                         if search::setting_response(ui.add(egui::Slider::new(&mut intensity, 0. ..=1.).text("Mask intensity").custom_formatter(|v,_| format!("{:.0}%",v*100.)).custom_parser(|text| text.trim().trim_end_matches('%').trim().parse::<f64>().ok().map(|v|v/100.))), "Mask intensity").on_hover_text("Scale the mask on every subdivision level while preserving its soft falloff. Stored group weights stay unchanged.").changed() { commands.push(Command::MaskIntensity(intensity)); }
-                        if ui.add(design::button(ui, Glyph::Delete, "Delete masked")).on_hover_text("Remove faces meeting the mask threshold at every vertex. Creates open boundaries and resets subdivision levels and closed-surface modes. Undo restores everything.").customize(Action::DeleteMasked).clicked() { commands.push(Command::DeleteMasked); }
                     });
             }
             BuiltinMenu::View => {
