@@ -417,7 +417,7 @@ impl<'a> EditorPolicy<'a> {
                 "Switch to the highest subdivision level before subdividing"
             }
             Action::Subdivide => {
-                "Reduce the current mesh to 250,000 faces or fewer before subdividing"
+                "Subdivision would exceed the active triangle limit. Increase Settings → Mesh capacity and restart"
             }
             Action::Remesh if !document.mesh_settings().dynamic => "Switch to Dynamic mode first",
             Action::Remesh => "Show all faces before remeshing",
@@ -728,7 +728,7 @@ impl<'a> EditorPolicy<'a> {
                     && !document.mesh_settings().dynamic
                     && !document.mesh_settings().adaptive.enabled
                     && document.mesh_settings().upper.is_empty()
-                    && document.mesh().triangles.len() <= 250_000
+                    && document.mesh().triangles.len() <= crate::sculpt::max_triangles() / 4
             }
             Action::Remesh => {
                 sculpt && document.mesh_settings().dynamic && document.hidden_face_count() == 0
