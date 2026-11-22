@@ -1753,7 +1753,6 @@ mod group_all_tests {
         mesh.create_vertex_group("Old".into(), 0.5, true).unwrap();
         mesh.create_vertex_group("Detail".into(), 0.5, false)
             .unwrap();
-        mesh.vertex_groups[1].visible = false;
         let mut geometry = Geometry::new(mesh);
         geometry.subdivide().unwrap();
         geometry.subdivide().unwrap();

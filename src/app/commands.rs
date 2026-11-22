@@ -401,12 +401,41 @@ impl App {
                 self.viewport.cancel(&mut self.document);
                 self.document.invert_visibility()
             }
-            Command::SplitHidden => {
+            Command::SplitHidden | Command::DeleteHidden => {
                 self.viewport.cancel(&mut self.document);
-                self.document.split_hidden().map(|()| {
-                    self.ui.status =
-                        "Hidden faces moved into a new submodel; subdivision levels reset".into()
-                })
+                self.ui.hidden_faces_warning = Some(crate::ui::HiddenFacesWarning::new(
+                    &self.document,
+                    matches!(command, Command::SplitHidden),
+                ));
+                Ok(())
+            }
+            Command::ConfirmHiddenFaces(apply) => {
+                if let Some(warning) = self.ui.hidden_faces_warning.take() {
+                    self.viewport.wait_for_release();
+                    if !apply {
+                        Ok(())
+                    } else if warning.revision != self.document.source_revision()
+                        || warning.model != self.document.active_model_index()
+                    {
+                        Err("The model changed; open the hidden-face operation again".into())
+                    } else {
+                        let result = if warning.split {
+                            self.document.split_hidden()
+                        } else {
+                            self.document.delete_hidden()
+                        };
+                        result.map(|()| {
+                            self.ui.selected_vertex_group = None;
+                            self.ui.status = if warning.split {
+                                "Hidden faces moved to a new visible submodel. Undo restores the original."
+                            } else {
+                                "Hidden faces deleted; cut boundaries remain open. Undo restores the original."
+                            }.into();
+                        })
+                    }
+                } else {
+                    Ok(())
+                }
             }
             Command::SliceTool(active) => {
                 self.ui.selection_tool = None;

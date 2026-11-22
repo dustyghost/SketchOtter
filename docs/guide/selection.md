@@ -103,13 +103,21 @@ Choose **Delete masked** to remove faces whose vertices all meet the threshold. 
 
 | Group action | Result |
 | --- | --- |
-| Group all | Replace the active model's groups with one whole-model group |
+| Group all | Replace the visible faces' selection memberships with one group; preserve hidden regions |
 | Add masked / Remove masked | Move masked membership into the chosen group / remove it from that group |
 | Rename / Delete | Manage a saved group |
 | Eye icon | Hide/show complete faces assigned to the group |
 | Flip visibility | Swap visible and hidden faces |
 
 Blank names become Group 1, Group 2, and so on. New spheres start in a **Base** group. Group changes are undoable.
+
+**Group all** uses face visibility and group eye visibility inside the active
+model. Hidden-only vertices receive no new membership; vertices shared with
+visible faces join the new group and keep their old hidden-region weights.
+Hidden face labels and visibility stay intact. This applies across stored
+subdivision levels and preserves density paint. With no visible faces, the
+action is unavailable. A name can be reused only when its previous group is
+fully replaced; use a new name if the old group still owns a hidden region.
 
 ### Colors and saved weights
 
@@ -187,9 +195,43 @@ An unfinished outline is cancelled by tool/view/model changes or loss of focus. 
 
 ### Split hidden faces
 
-Choose **Visibility → Split hidden** to move hidden faces into a new visible submodel. Both pieces stay in place with masks, groups, and quads intact.
+Choose **Visibility → Split hidden** to move hidden faces into a new visible
+submodel named **Hidden 1**, **Hidden 2**, and so on. Both pieces stay in place.
+The dialog identifies the active model and hidden triangle count. Review it,
+then choose **Apply split**, or **Cancel** / **Escape** to leave the scene intact.
 
-You need both visible and hidden faces. Apply/remove thickness modifier first. Boundaries remain open, and both pieces get fresh subdivision stacks and adaptive/voxel settings. One Undo restores the original model.
+Both pieces retain masks, group weights and labels, vertex paint/materials,
+complete quads, UV coordinates and masks, assigned texture images, crease edges,
+UV seam marks and shading seams. The new submodel is shown so it can be edited.
+Shared texture images remain shared; splitting does not duplicate their pixels.
+
+You need both visible and hidden faces inside a visible active model and a free
+submodel slot (maximum 64). Apply/remove Thickness first. Loose edges or isolated
+modeling points and stale UV layouts must be resolved first; unavailable controls
+explain the reason. Convert a parametric primitive before using either operation.
+
+Boundaries remain open. The dialog explains that the current subdivision level
+is retained, other stored levels are discarded, and subdivision/Adaptive/Dynamic
+Mesh settings reset on both pieces. One Undo restores the complete original
+model; Redo and saving/reopening preserve the split.
+
+### Delete hidden faces
+
+1. Hide unwanted faces with a Visibility tool or a vertex group's eye control.
+2. Choose **Visibility → Delete hidden**, or find **Delete hidden** in tool search.
+3. Check the active model and hidden count, then choose **Delete hidden faces**.
+
+This removes the hidden faces inside the active mesh. Other hidden submodels
+and faces merely occluded by the camera are not deletion targets. The visible
+surface stays in place with the same supported attributes as Split hidden;
+shared boundary vertices remain where surviving faces need them. Unused vertices
+from the deleted part are removed, and cut boundaries stay open.
+
+The confirmation explains the same subdivision/settings reset. **Cancel** or
+**Escape** changes nothing; one **Undo** restores the geometry, attributes and
+visibility. No hidden faces means no edit or Undo entry. If every face is hidden,
+show the part to keep first; use Delete submodel to remove a whole scene object.
+Split and Delete hidden can both be assigned shortcuts or placed in custom menus.
 
 ## Related guides
 

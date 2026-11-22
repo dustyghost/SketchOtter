@@ -41,13 +41,18 @@ fn resolution_control(ui: &mut egui::Ui, label: &str, value: &mut u32, min: u32,
 }
 impl UiState {
     pub(crate) fn submodel_confirmation_open(&self) -> bool {
-        self.primitive_warning.is_some() || self.delete_warning.is_some()
+        self.primitive_warning.is_some()
+            || self.delete_warning.is_some()
+            || self.hidden_faces_warning.is_some()
     }
     pub(crate) fn submodel_confirmation(
         &mut self,
         ctx: &egui::Context,
     ) -> (Vec<Command>, Option<egui::Rect>) {
         let mut commands = Vec::new();
+        if self.hidden_faces_warning.is_some() {
+            return self.hidden_faces_confirmation(ctx);
+        }
         if let Some((_, name)) = &self.delete_warning {
             let response = egui::Modal::new(egui::Id::new("delete_submodel")).show(ctx, |ui| {
                 ui.heading(format!("Delete “{name}”?"));

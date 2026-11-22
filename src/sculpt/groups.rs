@@ -34,6 +34,54 @@ pub fn mask_selected(value: f32, threshold: f32) -> bool {
     value > 0. && value >= threshold
 }
 impl Mesh {
+    /// Replace only the visible surface's selection membership. Shared boundary
+    /// vertices join the new group and retain every old weight needed by hidden
+    /// geometry. Face labels and group visibility of that geometry stay intact.
+    /// The document compacts and validates the shared registry across all levels,
+    /// allowing reuse of a name/slot only when its old group truly disappears.
+    pub(crate) fn group_visible_vertices(&mut self, name: String) {
+        let mut visible = vec![false; self.vertices.len()];
+        let mut hidden = vec![false; self.vertices.len()];
+        let faces: Vec<_> = (0..self.triangles.len())
+            .map(|f| self.face_visible(f))
+            .collect();
+        for (t, &show) in self.triangles.iter().zip(&faces) {
+            for &v in t {
+                if show {
+                    visible[v] = true;
+                } else {
+                    hidden[v] = true;
+                }
+            }
+        }
+        for group in &mut self.vertex_groups {
+            if group.purpose.is_selection() {
+                for (v, weight) in group.weights.iter_mut().enumerate() {
+                    if visible[v] && !hidden[v] {
+                        *weight = 0.;
+                    }
+                }
+            }
+        }
+        let id = self.vertex_groups.len() + 1;
+        self.vertex_groups.push(VertexGroup {
+            purpose: GroupPurpose::Selection,
+            visible: true,
+            name,
+            weights: visible
+                .into_iter()
+                .map(|v| if v { 1. } else { 0. })
+                .collect(),
+        });
+        if self.polygroups.is_empty() {
+            self.polygroups.resize(self.triangles.len(), 0);
+        }
+        for (label, show) in self.polygroups.iter_mut().zip(faces) {
+            if show {
+                *label = id;
+            }
+        }
+    }
     pub(crate) fn require_selection_group(&self, index: usize) -> Result<(), String> {
         let group = self
             .vertex_groups
@@ -462,7 +510,12 @@ impl Mesh {
 impl Geometry {
     /// Compact one shared registry across every stored subdivision level.
     pub(crate) fn compact_vertex_groups(&mut self) -> Vec<Option<usize>> {
-        let mut used = vec![false; self.mesh.vertex_groups.len()];
+        let mut used: Vec<_> = self
+            .mesh
+            .vertex_groups
+            .iter()
+            .map(|group| !group.purpose.is_selection())
+            .collect();
         for mesh in std::iter::once(&self.mesh)
             .chain(self.settings.lower.iter())
             .chain(self.settings.upper.iter())

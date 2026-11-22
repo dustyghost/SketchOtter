@@ -148,6 +148,7 @@ pub(crate) enum Action {
     ShowAllFaces,
     InvertVisibility,
     SplitHidden,
+    DeleteHidden,
     Slice,
     SliceGroups,
     SliceTrim,
@@ -328,6 +329,7 @@ impl Action {
         Self::ShowAllFaces,
         Self::InvertVisibility,
         Self::SplitHidden,
+        Self::DeleteHidden,
         Self::Slice,
         Self::SliceGroups,
         Self::SliceTrim,
@@ -570,6 +572,15 @@ impl Action {
     /// Help shared by the built-in controls, custom menus, and shelves.
     pub fn help(&self) -> Option<&'static str> {
         Some(match self {
+            Self::GroupAll => {
+                "Group visible faces on the active model across stored subdivision levels. Hidden memberships and face labels stay intact; shared boundary vertices also join the new group. Undo restores the previous groups."
+            }
+            Self::SplitHidden => {
+                "Move hidden faces inside the active mesh into a new visible submodel. Review the subdivision/settings reset before applying. Boundaries stay open; Undo restores both pieces."
+            }
+            Self::DeleteHidden => {
+                "Delete hidden faces inside the active mesh, preserving the visible surface and its attributes. Review the subdivision/settings reset before applying. Other submodels stay intact; boundaries remain open."
+            }
             Self::Search => {
                 "Find commands, tools, settings and named items. Run an action or reveal its control without changing your tool."
             }
@@ -812,6 +823,7 @@ impl Action {
             Self::ShowAllFaces => "Show all faces",
             Self::InvertVisibility => "Invert visibility",
             Self::SplitHidden => "Split hidden",
+            Self::DeleteHidden => "Delete hidden",
             Self::Slice => "Slice",
             Self::SliceGroups => "Slice vertex groups",
             Self::SliceTrim => "Slice trim",

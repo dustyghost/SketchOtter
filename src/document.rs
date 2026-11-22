@@ -47,6 +47,8 @@ mod transform;
 mod uv;
 #[cfg(test)]
 mod visibility_cache_tests;
+#[cfg(test)]
+mod visibility_edit_tests;
 pub(crate) use edit::EditKind;
 use edit::EditSession;
 

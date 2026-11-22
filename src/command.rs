@@ -108,6 +108,8 @@ pub(crate) enum Command {
     ShowAllFaces,
     InvertVisibility,
     SplitHidden,
+    DeleteHidden,
+    ConfirmHiddenFaces(bool),
     SetTemporaryThickness(f32),
     ApplyThickness,
     GrowMask(bool),

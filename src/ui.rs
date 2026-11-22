@@ -38,6 +38,8 @@ mod paint;
 mod path_thumbnail;
 pub(crate) mod paths;
 mod primitive;
+mod visibility;
+pub(crate) use visibility::HiddenFacesWarning;
 mod projection;
 mod retopology;
 pub(crate) use fusion::FusionKey;
@@ -60,6 +62,7 @@ pub(crate) struct UiState {
     pinned_menu_rects: Vec<egui::Rect>,
     pub library_path: String,
     pub(crate) delete_warning: Option<(u64, String)>,
+    pub(crate) hidden_faces_warning: Option<HiddenFacesWarning>,
     pub(crate) primitive_warning: Option<(usize, String)>,
     pub(crate) primitive_controls_requested: bool,
     pub(crate) modeling_primitive: Option<(crate::sculpt::Primitive, u64)>,
@@ -160,6 +163,7 @@ impl Default for UiState {
             library_path: "brush-library.brushes.json".into(),
             primitive_warning: None,
             delete_warning: None,
+            hidden_faces_warning: None,
             primitive_controls_requested: false,
             modeling_primitive: None,
             transform_mode: crate::viewport::TransformMode::Sculpt,
@@ -1509,7 +1513,8 @@ impl UiState {
                 ui.add(egui::TextEdit::singleline(&mut self.vertex_group_name).hint_text("Group name (optional)"));
                 ui.horizontal(|ui| {
                     if ui.button("Group masked").on_hover_text("Move masked membership into a new group. Keep old groups’ remaining regions and remove fully replaced groups. Supports Undo.").customize(Action::GroupMasked).clicked() { commands.push(Command::CreateVertexGroup(self.vertex_group_name.clone(), false)); }
-                    if ui.button("Group all").on_hover_text("Replace all vertex groups on the active model with one group. Includes every subdivision level; Undo restores the previous groups.").customize(Action::GroupAll).clicked() { commands.push(Command::CreateVertexGroup(self.vertex_group_name.clone(), true)); }
+                    let reason = self.action_unavailable(&Action::GroupAll, document);
+                    if ui.add_enabled(reason.is_none(), egui::Button::new("Group all")).on_hover_text(Action::GroupAll.help().unwrap()).on_disabled_hover_text(reason.unwrap_or_default()).customize(Action::GroupAll).clicked() { commands.push(Command::CreateVertexGroup(self.vertex_group_name.clone(), true)); }
                 });
                 if ui.add(design::button(ui, Glyph::Restore, "Flip visibility")).on_hover_text("Swap visible and hidden faces on the active submodel. Includes partially hidden groups; supports Undo.").customize(Action::InvertVisibility).clicked() {
                     commands.push(Command::InvertVisibility);

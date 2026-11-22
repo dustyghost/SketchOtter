@@ -669,6 +669,7 @@ impl App {
             Action::ShowAllFaces => Some(Command::ShowAllFaces),
             Action::InvertVisibility => Some(Command::InvertVisibility),
             Action::SplitHidden => Some(Command::SplitHidden),
+            Action::DeleteHidden => Some(Command::DeleteHidden),
             Action::Slice => Some(Command::SliceTool(!self.ui.slice_active)),
             Action::SliceGroups
             | Action::SliceTrim
