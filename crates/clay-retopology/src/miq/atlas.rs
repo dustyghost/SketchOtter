@@ -261,14 +261,9 @@ impl Atlas {
             let scale = (area2 * 0.5).sqrt();
             let h = t.iter().map(|&v| field.spacing[v]).sum::<f64>() / 3.;
             for axis in 0..2 {
-                for direction in 0..2 {
+                for (direction, frame) in frames[f].iter().enumerate() {
                     let row = (0..3)
-                        .map(|k| {
-                            (
-                                2 * corners[f][k] + axis,
-                                gradient[k].dot(frames[f][direction]) * scale,
-                            )
-                        })
+                        .map(|k| (2 * corners[f][k] + axis, gradient[k].dot(*frame) * scale))
                         .collect();
                     problem
                         .energy
@@ -373,9 +368,16 @@ mod tests {
             .chain((0..8).map(|k| [9, (k + 1) % 8 + 1, k + 1]))
             .collect();
         let source = crate::Surface {
-            positions: vec![Vec3::ZERO; 10],
+            positions: std::iter::once(Vec3::Z)
+                .chain((0..8).map(|k| {
+                    let a = k as f64 * std::f64::consts::FRAC_PI_4;
+                    Vec3::new(a.cos(), a.sin(), 0.)
+                }))
+                .chain(std::iter::once(-Vec3::Z))
+                .collect(),
             triangles,
         };
+        crate::topology::validate(&source).unwrap();
         let mut x = Vec::new();
         for k in 0..16 {
             let a = k as f64 * std::f64::consts::FRAC_PI_2;

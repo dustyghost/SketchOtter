@@ -150,7 +150,7 @@ pub(super) fn extract(
         for u in min.x as i32..=max.x as i32 {
             for v in min.y as i32..=max.y as i32 {
                 visits += 1;
-                if visits % 1024 == 0 {
+                if visits.is_multiple_of(1024) {
                     crate::check(cancel)?;
                 }
                 if visits > limit.saturating_mul(64) {

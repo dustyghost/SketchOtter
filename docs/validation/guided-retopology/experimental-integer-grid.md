@@ -63,7 +63,8 @@ density paint, sharp protection off. The private geometry is not bundled here.
 | Warm iterative rounding without carrying active orientation constraints | Rejected at the same budget; no output | 60.665 s | 149,980 KiB |
 | Active orientation constraints, seam/singularity integers interleaved | Infeasible rounding with eight integer coordinates remaining; no output | 47.420 s | 145,440 KiB |
 | Active orientation constraints, singularity coordinates first | 3,411 quads, passed validation | 58.203 s | 145,328 KiB |
-| Final source-singularity guard, same ordering | Identical 3,411-quad output, passed validation | 55.005 s | 145,412 KiB |
+| Source-singularity guard, same ordering | Identical 3,411-quad output, passed validation | 55.005 s | 145,412 KiB |
+| Cone-angle guard including full-turn poles | Identical 3,411-quad output, passed validation | 55.344 s | 145,280 KiB |
 
 The baseline spent 95.688 seconds on its first preparation/repair attempt; its
 existing alternative preparation then succeeded in 7.144 seconds. Repeated full
@@ -83,8 +84,9 @@ validation then took about 0.8 seconds. The unchanged 60-second budget is close
 to this measurement, so completion under different system load is not promised.
 These are single runs on the same source, not a general performance claim.
 The final guarded rerun produced a byte-identical OBJ, so the quality measurements
-below apply to both successful experimental runs. Its total process-group peak
-was 149,540 KiB; the memory guard reported no pressure or limit stop.
+below apply to all successful experimental runs. The final cone-angle guard run's
+total process-group peak was 149,400 KiB; the memory guard reported no pressure
+or limit stop.
 
 The existing independent `measure-layout.py` reports quad edge-length ratios
 (longest edge divided by shortest edge): p95 1.35949 and maximum 3.78401 for the
