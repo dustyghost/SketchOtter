@@ -1,0 +1,16 @@
+    Finished `test` profile [unoptimized] target(s) in 0.23s
+     Running unittests src/lib.rs (/home/mark/Documents/ChatGPT/Clay From/sketchotter-rebrand/target/debug/deps/clay_form-f0a438573f247b78)
+
+running 1 test
+test app::mixed_invariant_tests::mixed_sequence_campaign ... mixed seed=1000 Counts { refined: 2, simplified: 3, sculpted: 1, remeshed: 1, rejected: 2, reopened: 2 }
+mixed seed=1001 Counts { refined: 0, simplified: 0, sculpted: 2, remeshed: 0, rejected: 3, reopened: 1 }
+mixed seed=1002 Counts { refined: 2, simplified: 3, sculpted: 1, remeshed: 1, rejected: 2, reopened: 2 }
+mixed seed=1003 Counts { refined: 0, simplified: 0, sculpted: 2, remeshed: 0, rejected: 3, reopened: 1 }
+mixed seed=1004 Counts { refined: 2, simplified: 3, sculpted: 1, remeshed: 1, rejected: 2, reopened: 2 }
+mixed seed=1005 Counts { refined: 0, simplified: 0, sculpted: 2, remeshed: 0, rejected: 3, reopened: 1 }
+mixed seed=1006 Counts { refined: 2, simplified: 3, sculpted: 1, remeshed: 1, rejected: 2, reopened: 2 }
+mixed seed=1007 Counts { refined: 0, simplified: 0, sculpted: 2, remeshed: 0, rejected: 3, reopened: 1 }
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 25 filtered out; finished in 16.04s
+

@@ -65,6 +65,14 @@ jobs:
           cargo test --locked --manifest-path crates/clay-retopology/Cargo.toml --all-features --lib -- --test-threads=1
           cargo clippy --locked --manifest-path crates/clay-retopology/Cargo.toml --all-features --all-targets -- -D warnings
 
+      - name: Retain replayable invariant failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mixed-invariant-replays
+          path: target/invariant-failures/
+          if-no-files-found: ignore
+
   graphics:
     name: Headless wgpu/Vulkan regressions
     runs-on: ubuntu-latest

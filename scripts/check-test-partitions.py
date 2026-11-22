@@ -18,7 +18,8 @@ complete, focused = inventory(args.complete), inventory(args.focused)
 assert complete and focused, "Expected nonempty libtest inventories"
 assert focused <= complete, f"Focused-only tests: {sorted(focused - complete)}"
 for prefix in ("app::retopology_tests::", "document::retopology::tests::",
-               "sculpt::retopology::tests::"):
+               "sculpt::retopology::tests::", "app::mixed_invariant_tests::",
+               "sculpt::test_support::"):
     expected = {name for name in complete if name.startswith(prefix)}
     assert expected, f"Missing partition: {prefix}"
     assert expected <= focused, f"Missing focused tests: {sorted(expected - focused)}"

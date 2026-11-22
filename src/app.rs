@@ -1277,3 +1277,6 @@ mod parameter_tests;
 
 #[cfg(all(test, not(feature = "focused-retopology")))]
 mod recovery_tests;
+
+#[cfg(test)]
+mod mixed_invariant_tests;

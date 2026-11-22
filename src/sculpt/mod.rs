@@ -111,3 +111,6 @@ mod brush_loop_profile;
 
 #[cfg(test)]
 mod stamp_profile;
+
+#[cfg(test)]
+pub(crate) mod test_support;

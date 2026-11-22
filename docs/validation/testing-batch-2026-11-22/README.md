@@ -73,3 +73,48 @@ seconds and peaked at 1,453 MiB ([measurement](focused-tests.json),
 [log](focused-tests.txt)). The extra four ordinary checks and three ignored
 profiles belong to shared normal/instrumentation helpers; the fourteen ordinary
 retopology/group contracts and one manual adapter are all present.
+
+
+## Mixed sequences (#175)
+
+The final inventory contains 1,483 existing/new test bodies: the original 1,479
+plus the sequence runner, reducer test, opt-in campaign and known-invalid oracle
+test. No existing tests were removed. The #170 fan/shell fixtures and independent
+link-flood oracle were moved into shared test support; the original 36 Split/Weld
+cases and their pinched-fan checks remain in the default suite.
+
+Nine deterministic recipes passed, including five closed cases which each
+performed successful refinement, three simplification strokes, sculpting and a
+Dynamic Mesh remesh. They reopened the remeshed project and refined it again.
+Four open cases performed successful sculpt/history/save operations and explicit
+adaptive/remesh rejection checks. They do not bypass the closed-input guards.
+The closed high-valence fixture uses the existing subdivision builder once to
+provide interior samples around its pole; success assertions caught the original
+undersampled fixture's ineffective sculpt before it could become vacuous coverage.
+
+The [sequence/reducer run](mixed-refined-fixture.txt) passed in 21.84 seconds,
+with a compile/run peak of 1,485 MiB ([measurement](mixed-refined-fixture.json)).
+A combined focused run passed the other 20 ordinary checks; its oracle assertion
+initially expected the closed-fan diagnostic for an open pinched fan. The oracle
+correctly rejected both. After correcting that expected diagnostic, the
+[focused oracle check](mixed-oracle.txt) passed. This was a test expectation
+correction, not a geometry implementation change.
+
+The opt-in campaign entry point passed eight additional seeds, 1000–1007, in
+16.04 seconds ([log](mixed-campaign.txt), [measurement](mixed-campaign.json)).
+Each closed case required actual refinement, simplification and remeshing;
+each open case required successful sculpting. Replay/reduction use complete
+serialized Projects and steps, with bounded attempts and matching failure
+contracts. [Testing documentation](../../testing.md#mixed-edit-sequences) records
+the operation-specific expectations, exact commands, unsupported combinations,
+existing-test inventory and limits of the geometric claims.
+
+Full formatting/lint/default-suite/native-solver and GPU checks are delegated to
+the PR's CI and must pass on the final commit. Stories stay In progress while
+the PR is open.
+
+The manual replay/reduction entry point also passed using the deliberately
+unsupported open-adaptive request retained during harness development. It reduced
+17 steps to 3 while reproducing the same guard failure
+([log](mixed-reducer.txt), [measurement](mixed-reducer.json)); this is reducer
+validation, not a newly found geometry defect.

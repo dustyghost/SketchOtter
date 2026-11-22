@@ -1,0 +1,11 @@
+   Compiling sketchotter v0.1.0-alpha.5 (/home/mark/source/clay-form)
+    Finished `test` profile [unoptimized] target(s) in 32.73s
+     Running unittests src/lib.rs (/home/mark/Documents/ChatGPT/Clay From/sketchotter-rebrand/target/debug/deps/clay_form-f0a438573f247b78)
+
+running 3 tests
+test app::mixed_invariant_tests::mixed_adaptive_sculpt_remesh_sequences ... ok
+test app::mixed_invariant_tests::mixed_reducer_retains_only_reproducing_steps_and_respects_budget ... ok
+test app::mixed_invariant_tests::mixed_sequence_campaign ... ignored, opt-in bounded campaign/replay/reduction; see docs/testing.md
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 23 filtered out; finished in 21.84s
+
