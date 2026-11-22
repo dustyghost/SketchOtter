@@ -562,9 +562,9 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
     ),
     (
         "Selection threshold",
-        "mask percentage group delete extraction",
+        "mask percentage group delete split extraction blurred",
         Destination::Menu(BuiltinMenu::Mask),
-        "Set the mask threshold used by grouping, deletion and extraction.",
+        "Set the mask threshold used by grouping, splitting, deletion and extraction.",
     ),
     (
         "Mask intensity",

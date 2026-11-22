@@ -2,6 +2,40 @@
 use super::*;
 
 impl Document {
+    /// Shared menu/search count; invalidated by mask, threshold, level and source edits.
+    pub(crate) fn masked_face_count(&self) -> usize {
+        *self.masked_face_count.get_or_init(|| {
+            let threshold = self.geometry.scene.active_metadata.mask_threshold;
+            (0..self.mesh().triangles.len())
+                .filter(|&f| self.mesh().face_mask_selected(f, threshold))
+                .count()
+        })
+    }
+    pub(crate) fn split_masked_unavailable(&self) -> Option<&'static str> {
+        if let Some(reason) = self.surface_partition_unavailable() {
+            Some(reason)
+        } else if self.model_count() >= 64 {
+            Some("Split masked needs a free submodel slot (maximum 64)")
+        } else if self.masked_face_count() == 0 {
+            Some("No complete faces meet the mask threshold; mask more or lower the threshold")
+        } else if self.masked_face_count() == self.mesh().triangles.len() {
+            Some("Keep some faces outside the mask selection before splitting")
+        } else {
+            None
+        }
+    }
+    pub fn split_masked(&mut self) -> Result<(), String> {
+        self.require_sculpt_mesh()?;
+        if let Some(reason) = self.split_masked_unavailable() {
+            return Err(reason.into());
+        }
+        let mesh = self.mesh();
+        let threshold = self.geometry.scene.active_metadata.mask_threshold;
+        let remaining = mesh.face_subset(|f| !mesh.face_mask_selected(f, threshold))?;
+        let separated = mesh.face_subset(|f| mesh.face_mask_selected(f, threshold))?;
+        self.split_surface_parts(remaining, separated, "Masked", "Split masked");
+        Ok(())
+    }
     pub fn grow_mask(&mut self, grow: bool) -> Result<(), String> {
         self.edit_group_meshes(if grow { "Grow mask" } else { "Shrink mask" }, |mesh| {
             mesh.grow_mask(grow);

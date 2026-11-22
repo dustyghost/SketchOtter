@@ -558,30 +558,81 @@ impl UiState {
                 }
             }
             BuiltinMenu::Visibility => {
-                let hidden = document.mesh().hidden_face_count();
+                let hidden = document.hidden_face_count();
+                ui.label(format!(
+                    "Inside active model: {}",
+                    document.model(document.active_model_index()).unwrap().name
+                ));
                 ui.label(format!(
                     "{hidden} / {} triangles hidden",
                     document.mesh().triangles.len()
                 ));
-                ui.add_enabled_ui(!self.mesh_busy && document.primitive().is_none(), |ui| {
-                        for (tool, action) in [
-                            (crate::viewport::SelectionTool::Rectangle, Action::SelectRectangle),
-                            (crate::viewport::SelectionTool::Lasso, Action::SelectLasso),
-                            (crate::preferences::VisibilitySettings {shape: crate::preferences::VisibilityShape::Line, ..self.preferences.visibility_selection}.tool(), Action::SelectVisibilityLine),
-                            (crate::preferences::VisibilitySettings {shape: crate::preferences::VisibilityShape::Path, ..self.preferences.visibility_selection}.tool(), Action::SelectVisibilityPath),
-                        ] {
-                            if ui.selectable_label(self.selection_tool == Some(tool), action.label()).on_hover_text("Selects face centers through all depths, keeping quads whole. Line and closed path use the chosen Hide/Isolate operation.").customize(action.clone()).clicked() {
-                                commands.push(Command::Action(action));
-                                if popup { ui.close_kind(egui::UiKind::Menu); }
+                ui.weak("Hidden faces only; other submodels stay intact.");
+                ui.horizontal_wrapped(|ui| {
+                    self.toolbar_action(
+                        ui,
+                        Glyph::View,
+                        "Show all",
+                        Action::ShowAllFaces,
+                        document,
+                        commands,
+                    );
+                    self.toolbar_action(
+                        ui,
+                        Glyph::Restore,
+                        "Invert visibility",
+                        Action::InvertVisibility,
+                        document,
+                        commands,
+                    );
+                });
+                let mut reasons = Vec::new();
+                ui.horizontal_wrapped(|ui| {
+                    for (action, glyph) in [
+                        (Action::SplitHidden, Glyph::Layers),
+                        (Action::DeleteHidden, Glyph::Delete),
+                    ] {
+                        let reason = self.action_unavailable(&action, document);
+                        if ui
+                            .add_enabled(
+                                reason.is_none(),
+                                design::button(ui, glyph, action.label()),
+                            )
+                            .on_hover_text(action.help().unwrap_or_default())
+                            .on_disabled_hover_text(reason.unwrap_or_default())
+                            .customize(action.clone())
+                            .clicked()
+                        {
+                            commands.push(Command::Action(action));
+                            if popup {
+                                ui.close_kind(egui::UiKind::Menu);
                             }
                         }
-                        if ui.add(design::button(ui, Glyph::View, "Show all")).customize(Action::ShowAllFaces).clicked() { commands.push(Command::ShowAllFaces); }
-                        if ui.add(design::button(ui, Glyph::Restore, "Invert visibility")).customize(Action::InvertVisibility).clicked() { commands.push(Command::InvertVisibility); }
-                        if ui.add_enabled(hidden > 0 && hidden < document.mesh().triangles.len() && document.active_visible(), design::button(ui, Glyph::Layers, "Split hidden"))
-                            .on_hover_text("Move hidden faces into a new submodel. Keeps masks and groups; boundaries remain open. Resets subdivision levels. Undo restores the original.").customize(Action::SplitHidden).clicked() {
-                            commands.push(Command::SplitHidden);
+                        if let Some(reason) = reason
+                            && !reasons.contains(&reason)
+                        {
+                            reasons.push(reason);
                         }
-                    });
+                    }
+                });
+                for reason in reasons {
+                    ui.weak(reason);
+                }
+                ui.separator();
+                ui.weak("Hide or isolate faces");
+                ui.add_enabled_ui(!self.mesh_busy && document.primitive().is_none(), |ui| {
+                    for (tool, action) in [
+                        (crate::viewport::SelectionTool::Rectangle, Action::SelectRectangle),
+                        (crate::viewport::SelectionTool::Lasso, Action::SelectLasso),
+                        (crate::preferences::VisibilitySettings {shape: crate::preferences::VisibilityShape::Line, ..self.preferences.visibility_selection}.tool(), Action::SelectVisibilityLine),
+                        (crate::preferences::VisibilitySettings {shape: crate::preferences::VisibilityShape::Path, ..self.preferences.visibility_selection}.tool(), Action::SelectVisibilityPath),
+                    ] {
+                        if ui.selectable_label(self.selection_tool == Some(tool), action.label()).on_hover_text("Selects face centers through all depths, keeping quads whole. Line and closed path use the chosen Hide/Isolate operation.").customize(action.clone()).clicked() {
+                            commands.push(Command::Action(action));
+                            if popup { ui.close_kind(egui::UiKind::Menu); }
+                        }
+                    }
+                });
                 ui.separator();
                 ui.label(format!(
                     "Hold {}: mode chosen in Mask / visibility menu",
@@ -693,13 +744,45 @@ impl UiState {
                 }
             }
             BuiltinMenu::Mask => {
-                self.temporary_mask_controls(ui, document, commands);
                 let mut threshold = document
                     .model(document.active_model_index())
                     .unwrap()
                     .metadata
                     .mask_threshold;
-                if search::setting_response(ui.add_enabled(!self.mesh_busy, egui::Slider::new(&mut threshold, 0. ..=1.).text("Selection threshold").custom_formatter(|v,_| format!("{:.0}%",v*100.)).custom_parser(|text| text.trim().trim_end_matches('%').trim().parse::<f64>().ok().map(|v|v/100.))), "Selection threshold").on_hover_text("Minimum vertex mask value for grouping, deletion and extraction. Zero-valued vertices are always excluded. Complete faces must meet the threshold at every corner.").changed() { commands.push(Command::MaskThreshold(threshold)); }
+                if search::setting_response(ui.add_enabled(!self.mesh_busy, egui::Slider::new(&mut threshold, 0. ..=1.).text("Selection threshold").custom_formatter(|v,_| format!("{:.0}%",v*100.)).custom_parser(|text| text.trim().trim_end_matches('%').trim().parse::<f64>().ok().map(|v|v/100.))), "Selection threshold").on_hover_text("Minimum vertex mask value for grouping, splitting, deletion and extraction. Zero-valued vertices are always excluded. Complete faces must meet the threshold at every corner.").changed() { commands.push(Command::MaskThreshold(threshold)); }
+                ui.weak(format!(
+                    "{} triangles meet the threshold at every corner.",
+                    document.masked_face_count()
+                ));
+                ui.horizontal_wrapped(|ui| {
+                    self.toolbar_action(
+                        ui,
+                        Glyph::Layers,
+                        "Split masked",
+                        Action::SplitMasked,
+                        document,
+                        commands,
+                    );
+                    self.toolbar_action(
+                        ui,
+                        Glyph::Delete,
+                        "Delete masked",
+                        Action::DeleteMasked,
+                        document,
+                        commands,
+                    );
+                });
+                ui.add_enabled_ui(!self.mesh_busy && document.primitive().is_none(), |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.add(design::button(ui, Glyph::Mask, "Clear mask")).customize(Action::ClearMask).clicked() { commands.push(Command::ClearMask); }
+                        if ui.add(design::button(ui, Glyph::Restore, "Invert mask")).on_hover_text("Swap masked and unmasked areas, preserving soft mask values on every subdivision level.").customize(Action::InvertMask).clicked() { commands.push(Command::InvertMask); }
+                    });
+                });
+                if let Some(reason) = self.action_unavailable(&Action::SplitMasked, document) {
+                    ui.weak(reason);
+                }
+                ui.separator();
+                self.temporary_mask_controls(ui, document, commands);
                 ui.add_enabled_ui(!self.mesh_busy && document.primitive().is_none(), |ui| {
                         ui.strong("Mask through");
                         if ui.add_enabled(document.active_visible(), egui::Button::new("Line").selected(matches!(self.selection_tool, Some(crate::viewport::SelectionTool::MaskLine { .. })))).on_hover_text("Draw a dividing line from empty space. Add or erase masking on one side, front to back; never cuts geometry.").customize(Action::MaskLine).clicked() {
@@ -710,8 +793,6 @@ impl UiState {
                             commands.push(Command::Action(Action::MaskLasso));
                             if popup { ui.close_kind(egui::UiKind::Menu); }
                         }
-                        if ui.add(design::button(ui, Glyph::Mask, "Clear mask")).customize(Action::ClearMask).clicked() { commands.push(Command::ClearMask); }
-                        if ui.add(design::button(ui, Glyph::Restore, "Invert mask")).on_hover_text("Swap masked and unmasked areas, preserving soft mask values on every subdivision level.").customize(Action::InvertMask).clicked() { commands.push(Command::InvertMask); }
                         ui.horizontal(|ui| {
                             if ui.add(design::button(ui, Glyph::Plus, "Expand mask")).on_hover_text("Spread soft mask values by one mesh edge per click.").customize(Action::ExpandMask).clicked() { commands.push(Command::GrowMask(true)); }
                             if ui.add(design::button(ui, Glyph::Minus, "Contract mask")).on_hover_text("Tighten the mask by one mesh edge per click.").customize(Action::ContractMask).clicked() { commands.push(Command::GrowMask(false)); }
@@ -722,7 +803,6 @@ impl UiState {
                             if ui.add_enabled(document.active_visible(), egui::Button::new("Sharpen mask")).on_hover_text("Tighten soft mask transitions around 50% on every subdivision level, including hidden faces. Geometry and saved vertex group weights stay unchanged.").customize(Action::SharpenMask).clicked() { commands.push(Command::SharpenMask); }
                         });
                         if search::setting_response(ui.add(egui::Slider::new(&mut intensity, 0. ..=1.).text("Mask intensity").custom_formatter(|v,_| format!("{:.0}%",v*100.)).custom_parser(|text| text.trim().trim_end_matches('%').trim().parse::<f64>().ok().map(|v|v/100.))), "Mask intensity").on_hover_text("Scale the mask on every subdivision level while preserving its soft falloff. Stored group weights stay unchanged.").changed() { commands.push(Command::MaskIntensity(intensity)); }
-                        if ui.add(design::button(ui, Glyph::Delete, "Delete masked")).on_hover_text("Remove faces meeting the mask threshold at every vertex. Creates open boundaries and resets subdivision levels and closed-surface modes. Undo restores everything.").customize(Action::DeleteMasked).clicked() { commands.push(Command::DeleteMasked); }
                     });
             }
             BuiltinMenu::View => {

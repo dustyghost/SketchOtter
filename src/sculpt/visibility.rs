@@ -79,10 +79,20 @@ impl Mesh {
     /// Extract a face set without welding or capping its boundary. Both halves
     /// retain masks, weights, categories, and only complete surviving quads.
     pub fn visibility_part(&self, visible: bool) -> Result<Self, String> {
+        let mut result = self.face_subset(|i| self.face_visible(i) == visible)?;
+        result.show_all_faces();
+        Ok(result)
+    }
+    /// Compact a face subset while preserving its attributes and visibility.
+    /// Shared by visibility edits and mask splitting; cut boundaries stay open.
+    pub(crate) fn face_subset(&self, include: impl Fn(usize) -> bool) -> Result<Self, String> {
         self.require_surface_topology()?;
-        let old_faces: Vec<_> = (0..self.triangles.len())
-            .filter(|&i| self.face_visible(i) == visible)
-            .collect();
+        if !self.uv.corners.is_empty() && !self.uv.current(self) {
+            return Err(
+                "Restore or replace the stale UV layout before splitting or deleting faces".into(),
+            );
+        }
+        let old_faces: Vec<_> = (0..self.triangles.len()).filter(|&i| include(i)).collect();
         let mut result = Self {
             loose_edges: Vec::new(),
             loose_vertices: Vec::new(),
@@ -127,8 +137,97 @@ impl Mesh {
             }
         }
         self.reindex_groups(&mut result, &old_vertices, &old_faces);
-        result.show_all_faces();
+        // Corner UVs, textures, weights and creases are already reindexed above.
+        // Explicit UV cut marks and Boolean shading boundaries also follow the
+        // surviving edges, including seams that were marked before unwrapping.
+        result.uv.textures = self.uv.textures.clone();
+        if !self.uv.seams.is_empty() || !self.shading_edges().is_empty() {
+            let edges: std::collections::HashSet<_> = result
+                .triangles
+                .iter()
+                .flat_map(|&[a, b, c]| {
+                    [
+                        super::uv::edge(a, b),
+                        super::uv::edge(b, c),
+                        super::uv::edge(c, a),
+                    ]
+                })
+                .collect();
+            let remap = |source: &[[usize; 2]]| {
+                let mut mapped: Vec<_> = source
+                    .iter()
+                    .filter_map(|&[a, b]| {
+                        let (a, b) = (*indices.get(a)?, *indices.get(b)?);
+                        let edge = super::uv::edge(a, b);
+                        (a != usize::MAX && b != usize::MAX && edges.contains(&edge))
+                            .then_some(edge)
+                    })
+                    .collect();
+                mapped.sort_unstable();
+                mapped.dedup();
+                mapped
+            };
+            result.uv.seams = remap(&self.uv.seams);
+            result.set_shading_seams(remap(self.shading_edges()));
+        }
         result.validate()?;
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sculpt::{Material, Primitive, PrimitiveKind};
+
+    #[test]
+    fn visibility_extract_retains_uv_and_shading_seams_and_shared_images() {
+        let mut p = Primitive::for_kind(PrimitiveKind::Plane);
+        p.divisions = [3, 1, 1];
+        let mut mesh = p.mesh().unwrap();
+        mesh.set_shading_seams(mesh.polygon_edges());
+        mesh.uv.seams = mesh.polygon_edges();
+        mesh.uv.corners = mesh
+            .triangles
+            .iter()
+            .map(|_| [[0., 0.], [1., 0.], [0., 1.]])
+            .collect();
+        mesh.uv.topology = mesh.triangles.clone();
+        mesh.uv.textures.push(
+            crate::sculpt::texture::Texture::new(
+                crate::sculpt::texture::Channel::Color,
+                16,
+                &Material::default(),
+            )
+            .unwrap(),
+        );
+        mesh.set_face_visibility(mesh.face_region_selection(|p| p.0 < 0.));
+        mesh.mask = mesh
+            .vertices
+            .iter()
+            .map(|p| if p.0 > 0. { 0.8 } else { 0.2 })
+            .collect();
+        for visible in [false, true] {
+            for result in [
+                mesh.visibility_part(visible).unwrap(),
+                mesh.face_subset(|f| mesh.face_mask_selected(f, 0.6) == visible)
+                    .unwrap(),
+            ] {
+                assert!(result.uv.current(&result));
+                assert_eq!(result.uv.textures, mesh.uv.textures);
+                assert_eq!(result.uv.seams, result.polygon_edges());
+                assert_eq!(result.shading_edges(), result.polygon_edges());
+                assert_eq!(result.quads.len() * 2, result.triangles.len());
+                let restored: Mesh =
+                    serde_json::from_str(&serde_json::to_string(&result).unwrap()).unwrap();
+                assert_eq!(result, restored);
+            }
+        }
+        // Marked UV cuts and assigned images also survive before unwrapping.
+        mesh.uv.corners.clear();
+        mesh.uv.topology.clear();
+        let result = mesh.visibility_part(true).unwrap();
+        assert_eq!(result.uv.seams, result.polygon_edges());
+        assert_eq!(result.uv.textures, mesh.uv.textures);
     }
 }

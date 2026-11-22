@@ -583,6 +583,7 @@ impl App {
             )),
             Action::InvertMask => Some(Command::InvertMask),
             Action::DeleteMasked => Some(Command::DeleteMasked),
+            Action::SplitMasked => Some(Command::SplitMasked),
             Action::ExpandMask => Some(Command::GrowMask(true)),
             Action::ContractMask => Some(Command::GrowMask(false)),
             Action::BlurMask => Some(Command::BlurMask),
@@ -669,6 +670,7 @@ impl App {
             Action::ShowAllFaces => Some(Command::ShowAllFaces),
             Action::InvertVisibility => Some(Command::InvertVisibility),
             Action::SplitHidden => Some(Command::SplitHidden),
+            Action::DeleteHidden => Some(Command::DeleteHidden),
             Action::Slice => Some(Command::SliceTool(!self.ui.slice_active)),
             Action::SliceGroups
             | Action::SliceTrim

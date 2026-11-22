@@ -17,6 +17,7 @@ enum Intent {
     Pending,
     Primitive,
     DeleteConfirmation,
+    SurfaceEditConfirmation,
     Alpha,
     Icon,
     CancelJob,
@@ -59,6 +60,9 @@ impl<'a> EditorPolicy<'a> {
         }
         if ui.delete_warning.is_some() && intent != Intent::DeleteConfirmation {
             return Err("Confirm or cancel submodel deletion first");
+        }
+        if ui.surface_edit_warning.is_some() && intent != Intent::SurfaceEditConfirmation {
+            return Err("Apply or cancel the surface operation first");
         }
         if ui.primitive_warning.is_some() && intent != Intent::Primitive {
             return Err("Confirm or cancel primitive replacement first");
@@ -421,9 +425,15 @@ impl<'a> EditorPolicy<'a> {
             }
             Action::Remesh if !document.mesh_settings().dynamic => "Switch to Dynamic mode first",
             Action::Remesh => "Show all faces before remeshing",
-            Action::SplitHidden => {
-                "Hide some faces, leaving some visible, before splitting the model"
-            }
+            Action::SplitHidden | Action::DeleteHidden => document
+                .hidden_faces_unavailable(*action == Action::SplitHidden)
+                .unwrap_or("Choose an editable mesh with visible and hidden faces"),
+            Action::SplitMasked => document
+                .split_masked_unavailable()
+                .unwrap_or("Choose an editable mesh with a partial mask selection"),
+            Action::GroupAll => document
+                .group_all_unavailable()
+                .unwrap_or("Choose an editable mesh first"),
             Action::StrokeEntirePath => "Create a surface path on the active model first",
             Action::CreateSurfaceArray => {
                 "Capture an Object brush part, then select guide faces in Modeling"
@@ -695,11 +705,11 @@ impl<'a> EditorPolicy<'a> {
                                 .is_some_and(|group| group.purpose.is_selection())
                     })
             }
-            Action::SplitHidden => {
-                sculpt
-                    && document.hidden_face_count() > 0
-                    && document.hidden_face_count() < document.mesh().triangles.len()
-            }
+            Action::SplitHidden | Action::DeleteHidden => document
+                .hidden_faces_unavailable(*action == Action::SplitHidden)
+                .is_none(),
+            Action::SplitMasked => document.split_masked_unavailable().is_none(),
+            Action::GroupAll => sculpt && document.group_all_unavailable().is_none(),
             Action::LowerLevel | Action::DeleteLowerLevels => {
                 sculpt && document.mesh_settings().level() > 1
             }
@@ -785,7 +795,6 @@ impl<'a> EditorPolicy<'a> {
             | Action::SliceFlip
             | Action::ExtractMasked
             | Action::GroupMasked
-            | Action::GroupAll
             | Action::SubdivisionMode
             | Action::DynamicMode
             | Action::AdaptiveMode => sculpt,
@@ -870,6 +879,7 @@ impl<'a> EditorPolicy<'a> {
             | Command::CancelPending
             | Command::BrowseProject(_) => Intent::Pending,
             Command::ConfirmDeleteSubmodel(_) => Intent::DeleteConfirmation,
+            Command::ConfirmSurfaceEdit(_) => Intent::SurfaceEditConfirmation,
             Command::ConfirmPrimitive | Command::CancelPrimitive => Intent::Primitive,
             Command::SaveAlpha(..) | Command::ExportAlpha(..) => Intent::Alpha,
             Command::ExportIconImage(..) => Intent::Icon,
@@ -886,6 +896,9 @@ impl<'a> EditorPolicy<'a> {
             Command::DeleteSubmodel => Some(Action::DeleteSubmodel),
             Command::MergeDown => Some(Action::MergeDown),
             Command::SplitHidden => Some(Action::SplitHidden),
+            Command::DeleteHidden => Some(Action::DeleteHidden),
+            Command::SplitMasked => Some(Action::SplitMasked),
+            Command::CreateVertexGroup(_, true) => Some(Action::GroupAll),
             Command::ConvertPrimitive => Some(Action::ConvertPrimitive),
             Command::OpenProjection => Some(Action::ProjectDetails),
             Command::OpenRetopology => Some(Action::GuidedRetopology),

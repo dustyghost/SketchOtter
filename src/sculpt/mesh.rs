@@ -47,6 +47,11 @@ pub struct Mesh {
     pub hidden_faces: Vec<bool>,
 }
 impl Mesh {
+    pub(crate) fn face_mask_selected(&self, face: usize, threshold: f32) -> bool {
+        self.triangles[face]
+            .iter()
+            .all(|&i| super::mask_selected(self.mask[i], threshold))
+    }
     /// Copy fully masked faces and compact their vertices; the boundary stays open.
     pub fn extract_masked(&self) -> Result<Self, String> {
         self.extract_masked_threshold(0.5)
@@ -71,10 +76,7 @@ impl Mesh {
         let mut old_vertices = Vec::new();
         let mut old_faces = Vec::new();
         for (fi, face) in self.triangles.iter().enumerate() {
-            if !face
-                .iter()
-                .all(|&i| super::mask_selected(self.mask[i], threshold))
-            {
+            if !self.face_mask_selected(fi, threshold) {
                 continue;
             }
             let mut triangle = [0; 3];
@@ -114,21 +116,10 @@ impl Mesh {
             .triangles
             .iter()
             .enumerate()
-            .filter(|(_, t)| {
-                !t.iter()
-                    .all(|&i| super::mask_selected(self.mask[i], threshold))
-            })
+            .filter(|(fi, _)| !self.face_mask_selected(*fi, threshold))
             .map(|(i, _)| i)
             .collect();
-        let kept: Vec<_> = self
-            .triangles
-            .iter()
-            .copied()
-            .filter(|t| {
-                !t.iter()
-                    .all(|&i| super::mask_selected(self.mask[i], threshold))
-            })
-            .collect();
+        let kept: Vec<_> = old_faces.iter().map(|&fi| self.triangles[fi]).collect();
         if kept.len() == self.triangles.len() {
             return Ok(None);
         }

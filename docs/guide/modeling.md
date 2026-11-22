@@ -47,6 +47,10 @@ The active model is clay-colored and inactive models blue-gray unless vertex-gro
 
 Extracted boundaries stay open and use a fresh subdivision stack. The selection threshold defaults to 50%. Add an existing mesh through [OBJ import](files.md#obj-import).
 
+To move masked faces out of the source, use [Mask → Split masked](selection.md#split-masked-geometry).
+It uses the same selection threshold, including soft masks, and preserves mask
+values on both pieces. One Undo restores the original model.
+
 ### Cut and combine solids with a Boolean stack
 
 1. Put the parts in the same Submodels group. The **Ungrouped** section also works as a group.
