@@ -12,8 +12,8 @@ mod instances;
 mod path_transform;
 mod sculpt_frame;
 mod startup;
-mod workspace;
 mod visibility_edits;
+mod workspace;
 fn navigation_frame(app: &mut App, ctx: &egui::Context, events: Vec<egui::Event>) -> egui::Rect {
     navigation_frame_with_modifiers(app, ctx, events, egui::Modifiers::NONE)
 }
