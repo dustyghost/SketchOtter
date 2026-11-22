@@ -182,14 +182,14 @@ def build(jobs):
     return executable
 
 
-def bounded_run(executable, env, log, args):
+def bounded_run(executable, env, log, args, test_name=TEST):
     start = time.monotonic()
     reason = None
     peak_rss = peak_swap = 0
     minimum_available = None
     reserve = getattr(args, "min_available_mib", 512) * 1024
     with log.open("w") as stream, subprocess.Popen(
-        [executable, TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"],
+        [executable, test_name, "--exact", "--ignored", "--nocapture", "--test-threads=1"],
         cwd=ROOT, env=env, stdout=stream, stderr=subprocess.STDOUT,
     ) as proc:
         try:

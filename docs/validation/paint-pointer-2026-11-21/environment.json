@@ -1,0 +1,106 @@
+{
+  "hosted-l3": {
+    "level": 3,
+    "repeats": 4,
+    "max_rss_mib": 4096,
+    "min_available_mib": 1024,
+    "timeout_seconds": 1200,
+    "executable_sha256": "0063447fdfaf1cc6bc2c6501d26a57469922aa02fb5229b8db29e1faf8c30b80",
+    "source_commit": "84fff5dfb6a16f5b858ad475f0a1a075dbe36488",
+    "platform": "Linux-7.0.0-1014-aws-x86_64-with-glibc2.39",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "memory_kib": 16078424,
+    "cpu": "Intel(R) Xeon(R) 6975P-C",
+    "preflight_available_kib": 15040724,
+    "result": {
+      "status": "measured",
+      "log": "run.log",
+      "elapsed_seconds": 33.938451584999996,
+      "sampled_peak_rss_bytes": 500236288,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 14865108992
+    },
+    "process_memory_bytes": {
+      "process_peak_rss_bytes": 500097024,
+      "rss_bytes": 275501056
+    }
+  },
+  "hosted-l4": {
+    "level": 4,
+    "repeats": 4,
+    "max_rss_mib": 4096,
+    "min_available_mib": 1024,
+    "timeout_seconds": 1200,
+    "executable_sha256": "0063447fdfaf1cc6bc2c6501d26a57469922aa02fb5229b8db29e1faf8c30b80",
+    "source_commit": "84fff5dfb6a16f5b858ad475f0a1a075dbe36488",
+    "platform": "Linux-7.0.0-1014-aws-x86_64-with-glibc2.39",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "memory_kib": 16078424,
+    "cpu": "Intel(R) Xeon(R) 6975P-C",
+    "preflight_available_kib": 14875468,
+    "result": {
+      "status": "measured",
+      "log": "run.log",
+      "elapsed_seconds": 163.051352011,
+      "sampled_peak_rss_bytes": 1868001280,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 13241552896
+    },
+    "process_memory_bytes": {
+      "process_peak_rss_bytes": 1881853952,
+      "rss_bytes": 449368064
+    }
+  },
+  "laptop-l3": {
+    "level": 3,
+    "repeats": 4,
+    "max_rss_mib": 800,
+    "min_available_mib": 512,
+    "timeout_seconds": 900,
+    "executable_sha256": "f71011c32f2c84df43f6fa56a253165375c83566987b02c3ab49d92539617a2b",
+    "source_commit": "8c9f952f20109646aa2652036cc1e4d0a79ca409",
+    "platform": "Linux-7.3.4-arch1-2-x86_64-with-glibc2.44",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "memory_kib": 7998152,
+    "cpu": "Intel(R) Core(TM) i7-7500U CPU @ 2.70GHz",
+    "preflight_available_kib": 2535232,
+    "result": {
+      "status": "measured",
+      "log": "run.log",
+      "elapsed_seconds": 69.66659189399797,
+      "sampled_peak_rss_bytes": 502059008,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 2072719360
+    },
+    "process_memory_bytes": {
+      "process_peak_rss_bytes": 501895168,
+      "rss_bytes": 277184512
+    }
+  },
+  "laptop-l4": {
+    "level": 4,
+    "repeats": 4,
+    "max_rss_mib": 1950,
+    "min_available_mib": 512,
+    "timeout_seconds": 900,
+    "executable_sha256": "f71011c32f2c84df43f6fa56a253165375c83566987b02c3ab49d92539617a2b",
+    "source_commit": "8c9f952f20109646aa2652036cc1e4d0a79ca409",
+    "platform": "Linux-7.3.4-arch1-2-x86_64-with-glibc2.44",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "memory_kib": 7998152,
+    "cpu": "Intel(R) Core(TM) i7-7500U CPU @ 2.70GHz",
+    "preflight_available_kib": 2533896,
+    "result": {
+      "status": "measured",
+      "log": "run.log",
+      "elapsed_seconds": 328.9810853340023,
+      "sampled_peak_rss_bytes": 1892990976,
+      "sampled_peak_swap_bytes": 18714624,
+      "minimum_available_bytes": 698540032
+    },
+    "process_memory_bytes": {
+      "process_peak_rss_bytes": 1910157312,
+      "rss_bytes": 478048256
+    }
+  }
+}
