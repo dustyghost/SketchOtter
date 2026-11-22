@@ -14,6 +14,7 @@ CASES = {
     "allocation": "allocation::gpu_load_profile_allocation_refusal",
     "picking": "picking::gpu_load_profile_world_picking",
     "drawing": "drawing::gpu_load_profile_dense_materials",
+    "wire": "wire::gpu_load_profile_wire_sphere",
     "visual": "release::gpu_load_profile_release_visual",
     "release": "release::gpu_load_profile_release_fans",
     "display": "regions::gpu_load_profile_changed_regions",
