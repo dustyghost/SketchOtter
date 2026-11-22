@@ -282,6 +282,23 @@ fn native_retopology_controls_offscreen_review() {
     );
     g.save("native-preview");
     let painted = g.app.document.project();
+    click_guide_label(&mut g, "Integer grid (experimental)");
+    assert_eq!(
+        g.app.ui.projection.layout.method,
+        crate::sculpt::retopology::Method::IntegerGrid
+    );
+    assert!(g.app.projection.draft.is_none());
+    assert!(g.app.ui.projection.report.is_none());
+    assert!(g.app.document.project() == painted);
+    g.save("integer-grid-controls");
+    click_guide_label(&mut g, "Surface field");
+    assert_eq!(
+        g.app.ui.projection.layout.method,
+        crate::sculpt::retopology::Method::SurfaceField
+    );
+    click_guide_label(&mut g, "Preview layout");
+    super::projection::finish_projection(&mut g.app);
+    assert!(g.app.projection.draft.is_some(), "{}", g.app.ui.status);
     click_guide_label(&mut g, "Apply as new model");
     assert_eq!(g.app.document.model_count(), 2);
     g.app.document.mesh().validate_closed().unwrap();

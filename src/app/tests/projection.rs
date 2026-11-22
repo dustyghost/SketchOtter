@@ -522,7 +522,11 @@ fn integer_grid_retopology_preview_apply_history_and_persistence() {
     app.dispatch(Command::ApplyProjection, &ctx);
     assert!(app.document.project() == changed);
     assert_eq!(app.document.history_counts(), history);
-    assert!(app.ui.status.contains("scene changed"), "{}", app.ui.status);
+    assert!(
+        app.ui.status.to_lowercase().contains("scene changed"),
+        "{}",
+        app.ui.status
+    );
 }
 
 #[test]

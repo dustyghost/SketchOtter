@@ -21,6 +21,8 @@ separator constraints from that paper are not implemented. No global optimality 
 unconditional success guarantee is claimed. Positive orientation, seam residuals,
 integrality, extracted topology and surface fit must pass before returning a
 layout; reaching a time or size limit is a failure.
+Singularity detection also checks cone angles in the positive relaxed map, so a
+full-turn pole cannot disappear through quarter-turn arithmetic modulo four.
 
 The extractor joins fragments only across adjacent source triangles, carrying
 quarter-turn seam rotations. UV overlap elsewhere does not weld nearby sheets.
@@ -61,6 +63,7 @@ density paint, sharp protection off. The private geometry is not bundled here.
 | Warm iterative rounding without carrying active orientation constraints | Rejected at the same budget; no output | 60.665 s | 149,980 KiB |
 | Active orientation constraints, seam/singularity integers interleaved | Infeasible rounding with eight integer coordinates remaining; no output | 47.420 s | 145,440 KiB |
 | Active orientation constraints, singularity coordinates first | 3,411 quads, passed validation | 58.203 s | 145,328 KiB |
+| Final source-singularity guard, same ordering | Identical 3,411-quad output, passed validation | 55.005 s | 145,412 KiB |
 
 The baseline spent 95.688 seconds on its first preparation/repair attempt; its
 existing alternative preparation then succeeded in 7.144 seconds. Repeated full
@@ -79,13 +82,16 @@ variables. Rounding finished at 57.419 seconds; extraction, fitting and original
 validation then took about 0.8 seconds. The unchanged 60-second budget is close
 to this measurement, so completion under different system load is not promised.
 These are single runs on the same source, not a general performance claim.
+The final guarded rerun produced a byte-identical OBJ, so the quality measurements
+below apply to both successful experimental runs. Its total process-group peak
+was 149,540 KiB; the memory guard reported no pressure or limit stop.
 
 The existing independent `measure-layout.py` reports quad edge-length ratios
 (longest edge divided by shortest edge): p95 1.35949 and maximum 3.78401 for the
 integer-grid result, versus p95 1.26508 and maximum 1.67530 for Surface field.
 Neither output has a strict closed opposite-edge cycle under that tool's metric.
 These metrics show a quality trade-off, not a uniformly better replacement.
-The front wireframe comparison retains the silhouette and shows different pole
+The front and rear wireframe comparisons retain the silhouette and show different pole
 placement and edge flow. Local view artifacts are retained under
 `target/retopo-slow-review/`; they are not published with the private geometry.
 The diagnostic renderer uses OBJ fan diagonals for display, while each solver
@@ -94,6 +100,7 @@ independently chose valid render diagonals before returning its result.
 Focused checks cover constrained quadratic minimization, closed-sphere mapping,
 extraction and original-surface validation. A previously failing redistributed
 sphere passes with singularity-first rounding and is retained as a regression.
+An eight-triangle fan regression retains poles with a full-turn rotation.
 Signed nonuniform density with a direction guide, cancellation during integer
 rounding, and rejection of unsupported settings/open surfaces also pass locally.
 
@@ -102,6 +109,9 @@ preview, source/attribute preservation, Apply as one history edit, Undo/Redo,
 save/reopen and stale Apply rejection. The app library compile check passed;
 the desktop regression and broad suites run in CI to avoid the known monolithic
 test compilation memory cost on this laptop.
+The existing interactive GPU regression clicks both method controls and verifies
+that changing the method discards an existing private preview without editing the
+document, then previews and applies again.
 
 All builds/runs use the shared build lock and one compiler job. The comparison
 executable is built separately; the user's release application and saved sources

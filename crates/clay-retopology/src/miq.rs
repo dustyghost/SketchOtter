@@ -160,6 +160,9 @@ fn parameterize(
     let mut fixed = BTreeMap::new();
     let mut active = BTreeSet::new();
     let mut x = relax(&mut atlas, &fixed, &mut active, budget)?;
+    atlas.complete_singularities(&field.surface, &x, &|| {
+        budget.cancel.load(std::sync::atomic::Ordering::Relaxed)
+    })?;
     let mut remaining: BTreeSet<_> = atlas.problem.integers.iter().copied().collect();
     while !remaining.is_empty() {
         budget.check()?;

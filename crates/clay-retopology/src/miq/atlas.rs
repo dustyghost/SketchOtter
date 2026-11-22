@@ -296,6 +296,45 @@ impl Atlas {
         self.corners[f].map(|v| DVec2::new(x[2 * v], x[2 * v + 1]))
     }
 
+    /// Quarter-turn holonomy alone cannot distinguish a regular vertex from
+    /// a full-turn pole (for example, valence eight). Once every map triangle
+    /// is positive, its cone angle identifies these additional singularities.
+    pub fn complete_singularities(
+        &mut self,
+        source: &crate::Surface,
+        x: &[f64],
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<()> {
+        let mut angles = vec![0.; source.positions.len()];
+        let mut representatives = vec![(0, 0); source.positions.len()];
+        for (f, t) in source.triangles.iter().enumerate() {
+            if f % 1024 == 0 {
+                crate::check(cancel)?;
+            }
+            let p = self.coordinates(x, f);
+            for k in 0..3 {
+                let a = p[(k + 1) % 3] - p[k];
+                let b = p[(k + 2) % 3] - p[k];
+                angles[t[k]] += a.perp_dot(b).atan2(a.dot(b));
+                representatives[t[k]] = (f, k);
+            }
+        }
+        let mut marked = vec![false; angles.len()];
+        for &(f, k) in &self.singularities {
+            marked[source.triangles[f][k]] = true;
+        }
+        for (v, angle) in angles.into_iter().enumerate() {
+            if !marked[v] && (angle / std::f64::consts::FRAC_PI_2).round() != 4. {
+                let (f, k) = representatives[v];
+                self.singularities.push((f, k));
+                self.problem
+                    .integers
+                    .extend([2 * self.corners[f][k], 2 * self.corners[f][k] + 1]);
+            }
+        }
+        Ok(())
+    }
+
     pub fn orientation_constraints(&self, f: usize) -> Vec<(Row, f64)> {
         let reference = self.reference[f];
         let center = reference.iter().sum::<DVec2>() / 3.;
@@ -318,5 +357,56 @@ impl Atlas {
             }
         }
         rows
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn full_turn_poles_are_integer_constraints_even_with_trivial_holonomy() {
+        // Two eight-triangle fans form a closed bipyramid. Each map fan wraps
+        // twice: its center has cone angle 4π, although rotation modulo 2π is 0.
+        let triangles: Vec<_> = (0..8)
+            .map(|k| [0, k + 1, (k + 1) % 8 + 1])
+            .chain((0..8).map(|k| [9, (k + 1) % 8 + 1, k + 1]))
+            .collect();
+        let source = crate::Surface {
+            positions: vec![Vec3::ZERO; 10],
+            triangles,
+        };
+        let mut x = Vec::new();
+        for k in 0..16 {
+            let a = k as f64 * std::f64::consts::FRAC_PI_2;
+            let b = a + std::f64::consts::FRAC_PI_2;
+            x.extend([0., 0., a.cos(), a.sin(), b.cos(), b.sin()]);
+        }
+        let mut atlas = Atlas {
+            uv_variables: x.len(),
+            corners: (0..16).map(|f| [3 * f, 3 * f + 1, 3 * f + 2]).collect(),
+            singularities: Vec::new(),
+            edges: Vec::new(),
+            reference: Vec::new(),
+            problem: Problem::new(x.len()),
+        };
+        atlas
+            .complete_singularities(&source, &x, &|| false)
+            .unwrap();
+        let vertices: Vec<_> = atlas
+            .singularities
+            .iter()
+            .map(|&(f, k)| source.triangles[f][k])
+            .collect();
+        assert!(vertices.contains(&0) && vertices.contains(&9));
+        for &(f, k) in &atlas.singularities {
+            assert!(atlas.problem.integers.contains(&(2 * atlas.corners[f][k])));
+            assert!(
+                atlas
+                    .problem
+                    .integers
+                    .contains(&(2 * atlas.corners[f][k] + 1))
+            );
+        }
     }
 }
