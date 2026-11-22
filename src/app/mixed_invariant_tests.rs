@@ -85,7 +85,8 @@ struct Failure {
 type Check = Result<(), String>;
 macro_rules! require {
     ($condition:expr, $message:expr) => {
-        if !$condition {
+        let satisfied: bool = $condition;
+        if !satisfied {
             return Err($message.to_string());
         }
     };
@@ -393,7 +394,7 @@ fn mixed_sequence_campaign() {
         assert_eq!(replay.version, 1);
         assert!(replay.steps.len() <= 64);
         if std::env::var_os("CLAY_SEQUENCE_REDUCE").is_some() {
-            let failure = run(&replay).err().expect("input must reproduce a failure");
+            let failure = run(&replay).expect_err("input must reproduce a failure");
             let reduced = reduce(
                 replay,
                 |candidate| {
