@@ -133,6 +133,18 @@ A fresh guarded process reached **9,633,792 active triangles and 4,816,898 verti
 
 In a separate Linux allocation-failure probe, an isolated child had a 384 MiB virtual address-space ceiling, a 60-second timeout and core dumps disabled. While subdividing from 602,112 triangles the allocator refused a 64 MiB request. The child aborted with SIGABRT. The 967,602-byte checkpoint remained byte-identical and reopened to the exact project. The independent supervising document could still Undo and Redo the saved edit exactly. An actual editor process hitting this allocation failure would terminate and lose its in-memory history. The saved checkpoint is recoverable. The guard and this observed failure both weigh against raising product defaults. [Bounded refusal and project check](allocation-3.json.gz) · [Two isolated repetitions](https://github.com/dustyghost/clay-form/actions/runs/44963569082)
 
+## Native desktop input and visible edits (#114)
+
+The release application ran on a maximised 1920 × 1061 client inside a 1920 × 1080 X11 desktop on a AMD EPYC 7763 64-Core Processor, with Mesa llvmpipe Vulkan and two software rendering threads. Each trial injected a press and a short fixed drag. The timer stopped at the first X11 client read showing at least eight changed pixels that retained exactly the same values after release and pointer removal. The observer excluded pixels shared with the starting hover and the pre-hover image. The raw records include the last unchanged read, the first verified change, the brush target, the count of persistent pixels and the released-image digest.
+
+| Workload | Visible trials / attempts | Median, ms | Slowest, ms | Trials over 50 ms |
+| --- | ---: | ---: | ---: | ---: |
+| Default sphere, 9,408 source triangles | 12 / 12 | 135.4 | 151.2 | 12 |
+| Two bottles, 36,080 source triangles | 12 / 12 | 234.1 | 250.6 | 12 |
+| Two bottles, 577,280 source triangles | 12 / 12 | 716.4 | 824.5 | 12 |
+
+These are window-visible upper bounds that include event routing, brush work, rendering and X11 readback. This Xvfb and software Vulkan combination produced zero X Present completion notifications for the window. Server presentation timestamps, physical pen sampling and monitor scan-out remain unmeasured. The parent laptop target requires 100 strokes on its physical hardware. This virtual desktop supplies a separate software-rendered comparison. An earlier two-bottle run aimed near the boundary between the submodels and produced only five visible edits in the smaller fixture. The accepted runs use an exposed part of the active bottle. [sphere observations](desktop-sphere.json) · [bottle observations](desktop-bottle.json) · [dense-bottle observations](desktop-dense-bottle.json) · [Native desktop run](https://github.com/dustyghost/clay-form/actions/runs/44964402973)
+
 ## Reproduction
 
 Build the optimised library tests. Use the executable path printed by Cargo. Choose a fresh output directory for each run. Budget figures below are for the 15.33 GiB host. The guard checks available RAM before launch, then checks process RSS, system headroom and elapsed time while the workload runs.
@@ -146,7 +158,7 @@ python3 scripts/profile-capacity-followups.py "$test_binary" session target/mixe
 
 Set `CLAY_SESSION_STROKES=1024` and `--level 4` to reproduce the longer two-bottle run. The other probes are `release`, `visual`, `picking`, `drawing`, `allocation` and `boundary`. Each uses a fresh process. The boundary probe sets capacity only for that process and checkpoints each completed stage before the next allocation.
 
-For the native Linux desktop capture, build the matching executable and run the isolated X11 launcher. It uses Python 3.11 or later, python-xlib, Xvfb, xauth, Openbox, wmctrl, xdotool, x11-utils, Mesa Vulkan, libxkbcommon-x11 and the libxcb-present development headers. Each command creates its own 1920 × 1080 display and temporary settings. The guard requires 3,000 MiB for the app plus 1,200 MiB available system reserve.
+For the native Linux desktop capture, build the matching executable and run the isolated X11 launcher. It uses Python 3.11 or later, python-xlib, Xvfb, xauth, Openbox, wmctrl, xdotool, x11-utils, Mesa Vulkan, libxkbcommon-x11 and the libxcb-present development headers. Each command creates its own 1920 × 1080 display and temporary settings. For a different project, set CLAY_DESKTOP_X and CLAY_DESKTOP_Y to the client-relative fractions of an exposed editable point. The guard requires 3,000 MiB for the app plus 1,200 MiB available system reserve.
 
 ```sh
 cargo build --release --locked --bin sketchotter

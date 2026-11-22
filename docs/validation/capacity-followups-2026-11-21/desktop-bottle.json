@@ -1,0 +1,176 @@
+{
+  "server_present_events": 0,
+  "matched_content_presentations": 0,
+  "matched_presentation_median_ms": null,
+  "screen_pixels": [
+    1920,
+    1080
+  ],
+  "window_pixels": [
+    1920,
+    1061
+  ],
+  "target_fraction": [
+    0.621,
+    0.45
+  ],
+  "sample_region_pixels": 212,
+  "window_origin": [
+    0,
+    19
+  ],
+  "distinct_released_images": 12,
+  "timed_changes": 12,
+  "median_visible_change_ms": 234.0862265,
+  "display": ":99",
+  "x_server": "name of display:    :99\nversion number:    11.0\nvendor string:    The X.Org Foundation\nvendor release number:    12101011\nX.Org version: 21.1.11\nmaximum request size:  16777212 bytes\nmotion buffer size:  256\nbitmap unit, bit order, padding:    32, LSBFirst, 32\nimage byte order:    LSBFirst\nnumber of supported pixmap formats:    6\nsupported pixmap formats:\n    depth 1, bits_per_pixel 1, scanline_pad 32\n    depth 4, bits_per_pixel 8, scanline_pad 32\n    depth 8, bits_per_pixel 8, scanline_pad 32\n    depth 16, bits_per_pixel 16, scanline_pad 32\n    depth 24, bits_per_pixel 32, scanline_pad 32\n    depth 32, bits_per_pixel 32, scanline_pad 32\nkeycode range:    minimum 8, maximum 255\nfocus:  window 0x400002, revert to PointerRoot\n",
+  "measurement": "XTest press and short drag to the first X11 read containing at least eight changed pixels confirmed after release and pointer removal; excludes physical tablet and scan-out",
+  "rows": [
+    {
+      "trial": 0,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 248.522595,
+      "last_unchanged_ms": 246.080681,
+      "polls": 651,
+      "persistent_model_pixels": 16302,
+      "before_sha256": "c2698524fa14dd7494d05aa7787d54a8e502ca83a595f1069e30c8598a02794a",
+      "after_release_digest": "4d95286f6d04f4a3062a5eee87bd45ce74c46121e2e977f3ab974b2987fd984f"
+    },
+    {
+      "trial": 1,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 238.429033,
+      "last_unchanged_ms": 236.02457,
+      "polls": 660,
+      "persistent_model_pixels": 16382,
+      "before_sha256": "ed034b3e88017c5853a8a9f188cc6051e72b6b573958c4d67e518c6ccb9b973b",
+      "after_release_digest": "03f7022c567cf9d6ca61dbbb84e7f37f6c31dea1da3774fb809a3bbdd4d28cac"
+    },
+    {
+      "trial": 2,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 191.659581,
+      "last_unchanged_ms": 189.249345,
+      "polls": 658,
+      "persistent_model_pixels": 16163,
+      "before_sha256": "6a443219ddd11f304c1c3091fd44729ecc5e8836645eeb0d749544687d88adb4",
+      "after_release_digest": "2e94cb8628d7194c5f67b3508d021b9b264a19a4f8ffcf56fc932cdc01e5981d"
+    },
+    {
+      "trial": 3,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 250.560027,
+      "last_unchanged_ms": 248.170259,
+      "polls": 659,
+      "persistent_model_pixels": 15165,
+      "before_sha256": "7c2f73f426240eace937eb02a3eacadfcf143fdf3363fc05ede59cabb8161ecd",
+      "after_release_digest": "95cc298bc7165dd12fb9ca1411b114541d44e03e6e97968331f7d05c2c01f453"
+    },
+    {
+      "trial": 4,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 230.162167,
+      "last_unchanged_ms": 227.793078,
+      "polls": 656,
+      "persistent_model_pixels": 14176,
+      "before_sha256": "92df8daaf55ead79f4b2b47e68f725d9cf27c420b1ed48da30b76502b50c98a2",
+      "after_release_digest": "a3072a62ffb03efc264f6b631e64c4ad7ddda91b6f1007111a084bf1821de8bb"
+    },
+    {
+      "trial": 5,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 177.573117,
+      "last_unchanged_ms": 174.534524,
+      "polls": 662,
+      "persistent_model_pixels": 14667,
+      "before_sha256": "c580d20028d22c1c3f0cf38af471cad9331f04daf41ce64ee83cde08f8341c17",
+      "after_release_digest": "81de10b6b8f79b742405df6d73c36fa467430c4bceaa7633c46f8c338774cf97"
+    },
+    {
+      "trial": 6,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 226.200689,
+      "last_unchanged_ms": 223.823245,
+      "polls": 663,
+      "persistent_model_pixels": 14943,
+      "before_sha256": "2fb4d9246099c375d5c9d1d7a533bb9f899e5344b6c941b3419a3e3e773d101c",
+      "after_release_digest": "400cad1bd83a0dd60d74003829f06a53642e8a7a7efa184316b5d242904a1415"
+    },
+    {
+      "trial": 7,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 190.914553,
+      "last_unchanged_ms": 188.458823,
+      "polls": 657,
+      "persistent_model_pixels": 14668,
+      "before_sha256": "3058732c518a142089847eb2d19e03569f009458b6fb78493609a950b43332b1",
+      "after_release_digest": "7921e71ff199bf845d119734ed5afda04bf81fb1946bddb0d77d6426561a9e6e"
+    },
+    {
+      "trial": 8,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 248.428667,
+      "last_unchanged_ms": 245.990369,
+      "polls": 655,
+      "persistent_model_pixels": 13870,
+      "before_sha256": "02c45ff6bd66047952c49d93216c76a328376ecde77ca50ffbc7bfe25b1e4b04",
+      "after_release_digest": "fe6e9f496e7f55df1032ba1c699772fd1634a1fdc70b0e61fe9e9f2266e19696"
+    },
+    {
+      "trial": 9,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 238.010286,
+      "last_unchanged_ms": 235.602154,
+      "polls": 659,
+      "persistent_model_pixels": 13278,
+      "before_sha256": "97302b44be222fc1264ac76f0f04013c4f5f0913a0d33b8558b06049ae8a9358",
+      "after_release_digest": "467508d8bb28eaaaa5833762e86866f8dc1ddf8cff61767fd982350ef3ea6490"
+    },
+    {
+      "trial": 10,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 229.288687,
+      "last_unchanged_ms": 226.919538,
+      "polls": 660,
+      "persistent_model_pixels": 11889,
+      "before_sha256": "04910bb866a4966ff2fd898f77880acdeeb66810045b91dcfb41490460eab4d9",
+      "after_release_digest": "3ca0e45ef8eeea93fd8eb368655ea4a9fb1f70aae47097f7859678b61a037825"
+    },
+    {
+      "trial": 11,
+      "matched_present_ms": null,
+      "present_events_in_pixel_interval": 0,
+      "first_change_ms": 242.888608,
+      "last_unchanged_ms": 239.983419,
+      "polls": 658,
+      "persistent_model_pixels": 12316,
+      "before_sha256": "084f2a5bedfc02993b9c799c9b03e4e34aa62980b114138fa8117ef20b85f649",
+      "after_release_digest": "27c55bc5c56abe5a07cc12eb6039bee96cf6ed1c665a61e0af1724ec096fd17b"
+    }
+  ],
+  "environment": {
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "executable_sha256": "48a9ad5216f8a9d3dd96916a234a5214aa1796da2540333b12c662dab4bbaace",
+    "backend": "vulkan",
+    "software_threads": "2",
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "total_memory_kib": 16367524,
+    "vulkan_devices": [
+      "deviceType         = PHYSICAL_DEVICE_TYPE_CPU",
+      "deviceName         = llvmpipe (LLVM 20.1.2, 256 bits)",
+      "driverName         = llvmpipe",
+      "driverInfo         = Mesa 25.2.8-0ubuntu0.24.04.5 (LLVM 20.1.2)"
+    ]
+  }
+}
