@@ -19,7 +19,7 @@ impl UiState {
                     search::highlight_response(&vertices_label, "setting:Maximum vertices");
                     ui.add(
                         egui::DragValue::new(&mut limits.vertices)
-                            .range(MeshCapacity::DEFAULT.vertices..=MeshCapacity::MAX.vertices)
+                            .range(MeshCapacity::MIN.vertices..=MeshCapacity::MAX.vertices)
                             .speed(100_000),
                     )
                     .labelled_by(vertices_label.id);
@@ -28,7 +28,7 @@ impl UiState {
                     search::highlight_response(&triangles_label, "setting:Maximum triangles");
                     ui.add(
                         egui::DragValue::new(&mut limits.triangles)
-                            .range(MeshCapacity::DEFAULT.triangles..=MeshCapacity::MAX.triangles)
+                            .range(MeshCapacity::MIN.triangles..=MeshCapacity::MAX.triangles)
                             .speed(100_000),
                     )
                     .labelled_by(triangles_label.id);

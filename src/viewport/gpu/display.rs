@@ -43,6 +43,8 @@ pub(crate) struct DisplayMesh {
     pub(super) texture_pixels: Atlas,
     pub texture_info: Vec<[u32; 4]>,
     texture_sources: Vec<TextureSource>,
+    region_stamp: Option<crate::document::regions::Stamp>,
+    dirty_fans: Option<(std::sync::Weak<DisplayGeometry>, Arc<Vec<usize>>)>,
 }
 pub(super) struct VertexUpdate {
     pub(super) ranges: Vec<std::ops::Range<usize>>,
@@ -164,6 +166,8 @@ impl DisplayMesh {
         geometry.stroke_topology = None;
         Arc::new(Self {
             geometry: Arc::new(geometry),
+            region_stamp: None,
+            dirty_fans: None,
             ..self.clone()
         })
     }
@@ -273,11 +277,15 @@ impl DisplayMesh {
         {
             return None;
         }
+        let edits = self
+            .region_stamp
+            .and_then(|stamp| document.display_edits(stamp));
         let fans = if let Some(topology) = &self.stroke_topology {
             if !source.uv.is_empty()
-                || !topology
-                    .source
-                    .matches(source, document.model(0)?.metadata.model_id)
+                || (edits.is_none()
+                    && !topology
+                        .source
+                        .matches(source, document.model(0)?.metadata.model_id))
             {
                 return None;
             }
@@ -293,8 +301,19 @@ impl DisplayMesh {
         };
         #[cfg(test)]
         stroke_profile::mark("live.validate");
-        let positions_unchanged = self.mesh.same_positions(source);
-        let mesh = self.mesh.update(source, positions_unchanged);
+        let positions_unchanged = edits.as_ref().map_or_else(
+            || self.mesh.same_positions(source),
+            |e| {
+                e.positions.iter().all(|&i| {
+                    let a = self.mesh.vertices[i];
+                    let b = source.vertices[i];
+                    [a.0, a.1, a.2].map(f32::to_bits) == [b.0, b.1, b.2].map(f32::to_bits)
+                })
+            },
+        );
+        let mesh = self
+            .mesh
+            .update_regions(source, positions_unchanged, edits.as_ref());
         #[cfg(test)]
         stroke_profile::mark("live.mesh_copy");
         let mut geometry = DisplayGeometry {
@@ -315,9 +334,16 @@ impl DisplayMesh {
         };
         #[cfg(test)]
         stroke_profile::mark("live.display_copy");
+        let mut affected = Some(Vec::new());
         if !positions_unchanged {
             geometry.temporary_normals = true;
-            geometry.shading.vertices = Arc::new(self.update_live_normals(source, fans).vertices);
+            let normals = self.normals_in_region(
+                source,
+                fans,
+                edits.as_ref().map(|e| e.positions.as_slice()),
+            );
+            affected = normals.changed_fans;
+            geometry.shading.vertices = Arc::new(normals.vertices);
             geometry.depth_extent = source
                 .vertices
                 .iter()
@@ -327,7 +353,29 @@ impl DisplayMesh {
         }
         #[cfg(test)]
         stroke_profile::mark("live.normals_and_bounds");
+        let dirty_fans = edits.and_then(|edits| {
+            let mut affected = affected?;
+            if !edits.mask.is_empty() || !edits.materials.is_empty() {
+                let topology = self.stroke_topology.as_ref()?;
+                // A Paint or Mask stroke alone needs no normal adjacency.
+                // Until a sculpt stroke has built it, retain the full packer.
+                let corners = topology.source.normal_corners.get()?.as_ref()?;
+                for &vertex in edits.mask.iter().chain(&edits.materials) {
+                    for &corner in corners.incident(vertex) {
+                        affected.push(fans[corner as usize / 3][corner as usize % 3]);
+                        if affected.len() > source.vertices.len() / 4 {
+                            return None;
+                        }
+                    }
+                }
+            }
+            affected.sort_unstable();
+            affected.dedup();
+            Some((Arc::downgrade(&self.geometry), Arc::new(affected)))
+        });
         Some(Self {
+            region_stamp: Some(document.region_stamp()),
+            dirty_fans,
             geometry: Arc::new(geometry),
             texture_pixels: self.texture_pixels.clone(),
             texture_info: self.texture_info.clone(),
@@ -384,6 +432,8 @@ impl DisplayMesh {
         #[cfg(test)]
         stroke_profile::mark("release.fans");
         Some(Arc::new(Self {
+            region_stamp: Some(document.region_stamp()),
+            dirty_fans: None,
             geometry: Arc::new(geometry),
             texture_pixels: self.texture_pixels.clone(),
             texture_info: self.texture_info.clone(),
@@ -413,6 +463,8 @@ impl DisplayMesh {
     ) -> Self {
         if let Some(cached) = &self.stroke_topology {
             let mut next = self.clone();
+            next.region_stamp = None;
+            next.dirty_fans = None;
             let geometry = Arc::make_mut(&mut next.geometry);
             let normals = live_normals::normals_at_positions(
                 &positions,
@@ -835,6 +887,9 @@ impl DisplayMesh {
             }
         }
         Self {
+            region_stamp: (!preview && active_mesh.is_none() && boolean_result.is_none())
+                .then(|| document.region_stamp()),
+            dirty_fans: None,
             texture_pixels,
             texture_info,
             texture_sources,
@@ -1008,7 +1063,21 @@ impl DisplayMesh {
     /// Refresh only records whose effective GPU values changed. This scans
     /// inputs but avoids owned material copies, a second packed array and a
     /// separate byte-difference pass. Fan mappings may change at the same size.
+    #[cfg(test)]
     pub(super) fn update_vertices(&self, stride: usize, packed: &mut [f32]) -> VertexUpdate {
+        self.update_vertices_from(stride, packed, None)
+    }
+    #[cfg(test)]
+    pub(super) fn disable_region_input(&mut self) {
+        self.region_stamp = None;
+        self.dirty_fans = None;
+    }
+    pub(super) fn update_vertices_from(
+        &self,
+        stride: usize,
+        packed: &mut [f32],
+        previous: Option<&Arc<DisplayGeometry>>,
+    ) -> VertexUpdate {
         debug_assert!(stride == 12 || stride == crate::sculpt::material::layers::VERTEX_STRIDE);
         assert_eq!(packed.len(), self.shading.vertices.len() * stride);
         let default = crate::sculpt::Material::default();
@@ -1017,11 +1086,14 @@ impl DisplayMesh {
         let mut dirty = super::upload::DirtyRanges::new(packed.len() * 4);
         #[cfg(test)]
         let mut changed_vertices = 0;
-        for (fan, (record, &(i, n))) in packed
-            .chunks_exact_mut(stride)
-            .zip(self.shading.vertices.iter())
-            .enumerate()
-        {
+        let changed = self.dirty_fans.as_ref().and_then(|(old, ids)| {
+            previous
+                .filter(|p| std::ptr::eq(old.as_ptr(), Arc::as_ptr(p)))
+                .map(|_| ids)
+        });
+        let mut write_fan = |fan: usize| {
+            let record = &mut packed[fan * stride..(fan + 1) * stride];
+            let (i, n) = self.shading.vertices[fan];
             let p = self.mesh.vertices[i];
             let material = if self.muted_vertices[i] {
                 &muted
@@ -1055,7 +1127,7 @@ impl DisplayMesh {
                     == bytemuck::cast_slice::<_, u8>(&values[5..])
             });
             if same_compact && same_extended {
-                continue;
+                return;
             }
             record[..12].copy_from_slice(&compact);
             if let Some(values) = extended {
@@ -1065,6 +1137,15 @@ impl DisplayMesh {
             #[cfg(test)]
             {
                 changed_vertices += 1;
+            }
+        };
+        if let Some(fans) = changed {
+            for &fan in fans.iter() {
+                write_fan(fan);
+            }
+        } else {
+            for fan in 0..self.shading.vertices.len() {
+                write_fan(fan);
             }
         }
         VertexUpdate {

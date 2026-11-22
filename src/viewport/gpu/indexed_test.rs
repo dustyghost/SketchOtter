@@ -147,6 +147,90 @@ fn gpu_indexed_surfaces_match_general_pixels_and_split_buffers() {
     ] {
         assert!(!gpu.basic_surface_eligible(&preview));
     }
+    let mut extended = document.geometry_snapshot();
+    for material in &mut extended.mesh.materials {
+        material.emission_strength = 0.5;
+        material.emission = [0.25, 0.1, 0.5];
+    }
+    document.replace_geometry(extended).unwrap();
+    let extended = Arc::new(DisplayMesh::new(&document));
+    gpu.upload(&extended);
+    assert_eq!(gpu.vertex_stride, 77);
+    assert!(!gpu.basic_surface_eligible(&Preview::default()));
+    let camera = Camera {
+        perspective: true,
+        ..Default::default()
+    };
+    let scene = Scene::from_geometry(rect, &camera, extended.clone(), false);
+    let mut params = Params::new(
+        rect,
+        scene.right,
+        scene.up,
+        scene.view,
+        scene.scale,
+        scene.center,
+        extended.depth_extent,
+    );
+    params.set_perspective(scene.eye_distance, extended.depth_extent);
+    for limit in [None, Some(16384)] {
+        if let Some(limit) = limit {
+            gpu.upload_meshes(&extended, limit);
+        }
+        for inspection in [
+            InspectionMode::Color,
+            InspectionMode::Roughness,
+            InspectionMode::Metallic,
+        ] {
+            let preview = Preview {
+                inspection,
+                show_polygroups: true,
+                backface_opacity: 0.25,
+                ..Default::default()
+            };
+            gpu.force_general_surface = false;
+            assert!(gpu.basic_surface_eligible(&preview));
+            gpu.paint(
+                &params,
+                [253, 189],
+                true,
+                WireMode::Visible,
+                false,
+                &preview,
+            );
+            let actual = gpu.read();
+            let depth = |gpu: &Gpu| {
+                super::ui_capture::read_texture(
+                    &gpu.device,
+                    &gpu.queue,
+                    &gpu.target.as_ref().unwrap()._depth,
+                )
+            };
+            let candidate_depth = depth(&gpu);
+            assert!(
+                candidate_depth
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|v| f32::from_ne_bytes(*v) < 1.)
+            );
+            gpu.force_general_surface = true;
+            gpu.paint(
+                &params,
+                [253, 189],
+                true,
+                WireMode::Visible,
+                false,
+                &preview,
+            );
+            assert_eq!(actual, gpu.read(), "extended inspection and split indices");
+            assert_eq!(
+                candidate_depth,
+                depth(&gpu),
+                "extended inspection depth bits"
+            );
+        }
+    }
+    gpu.force_general_surface = false;
     // Resizing an index payload must preserve its indexed-draw usage too.
     let indices = &mut gpu.meshes[0].indices;
     for bytes in [&[0u8; 12][..], &[][..]] {

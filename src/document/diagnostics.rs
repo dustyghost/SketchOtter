@@ -5,6 +5,11 @@ use crate::diagnostics::{
 use std::path::Path;
 
 impl Document {
+    #[cfg(test)]
+    pub(crate) fn estimated_geometry_bytes(&self) -> usize {
+        crate::history::geometry_bytes(&self.geometry)
+    }
+
     pub(crate) fn set_diagnostic_context(&mut self, context: serde_json::Value) {
         self.diagnostic_context = Some(context);
     }

@@ -1,7 +1,7 @@
 //! Conservative bounds for contiguous groups in the existing face traversal.
 use super::{Pos2, Scene, egui};
 
-const GROUP: usize = 128;
+pub(super) const GROUP: usize = 128;
 const MIN_FACES: usize = 256;
 
 pub(super) struct Index {
@@ -11,6 +11,13 @@ impl Index {
     pub fn new(scene: &Scene) -> Self {
         if scene.all_faces.len() < MIN_FACES {
             return Self { bounds: Vec::new() };
+        }
+        if let Some(cache) = &scene.world_groups {
+            let world =
+                cache.get_or_init(|| super::picking_world::WorldGroups::build(&scene.geometry));
+            return Self {
+                bounds: world.project(scene),
+            };
         }
         Self::build(scene)
     }
@@ -143,6 +150,62 @@ mod tests {
             assert!(scene.pick_surface(point).is_none());
         }
     }
+    #[test]
+    fn projected_world_groups_preserve_exhaustive_hits_and_candidate_order() {
+        let mut g = Geometry::new(Mesh::starting_sphere());
+        g.subdivide().unwrap();
+        let mut doc = Document::default();
+        doc.replace_geometry(g).unwrap();
+        doc.duplicate_model(false).unwrap();
+        let mut cache = super::super::cache::Cache::default();
+        let rect = egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(240., 180.));
+        for state in 0..4 {
+            if state == 1 {
+                let mut geometry = doc.geometry_snapshot();
+                geometry.mesh.vertices[0].0 += 0.125;
+                geometry.mesh.hidden_faces = (0..geometry.mesh.triangles.len())
+                    .map(|i| i % 7 == 0)
+                    .collect();
+                doc.replace_geometry(geometry).unwrap();
+            } else if state == 2 {
+                doc.undo();
+            } else if state == 3 {
+                doc.redo();
+            }
+            let display = Arc::new(DisplayMesh::new(&doc));
+            let first = cache.get(rect, &Camera::default(), display.clone(), false);
+            for distance in [0_f32, 1., 0.13] {
+                let camera = Camera {
+                    yaw: 0.25,
+                    pitch: -0.1,
+                    roll: 0.3,
+                    perspective: distance > 0.,
+                    perspective_radius: distance.max(0.1),
+                    ..Default::default()
+                };
+                let scene = cache.get(rect, &camera, display.clone(), false);
+                assert!(scene.world_groups.is_some());
+                for point in [
+                    rect.center(),
+                    rect.left_top(),
+                    rect.center() + egui::vec2(12., 3.),
+                    scene.positions[0],
+                ] {
+                    let expected = super::super::pick_surface(&scene, &scene.all_faces, point);
+                    assert_eq!(bits(scene.pick_surface(point)), bits(expected));
+                }
+            }
+            assert_eq!(
+                bits(first.pick_surface(rect.center())),
+                bits(super::super::pick_surface(
+                    &first,
+                    &first.all_faces,
+                    rect.center()
+                ))
+            );
+        }
+    }
+
     #[test]
     fn grouped_bounds_preserve_near_crossings_and_ties_across_group_boundaries() {
         let camera = Camera {

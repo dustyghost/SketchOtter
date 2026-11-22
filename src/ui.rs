@@ -1710,7 +1710,8 @@ impl UiState {
                     if ui.add_enabled(!settings.upper.is_empty(),design::button(ui, Glyph::Delete, "Delete higher")).on_hover_text("Remove all levels above the active level; keep the active surface and lower levels. Undo restores them.").customize(Action::DeleteHigherLevels).clicked() { commands.push(Command::DeleteHigherLevels); }
                 });
                 }
-                if ui.add_enabled(settings.upper.is_empty() && document.mesh().triangles.len() <= 250_000,design::button(ui, Glyph::Plus, "Subdivide (+ level)")).customize(Action::Subdivide).clicked() { commands.push(Command::Subdivide); }
+                let unavailable = self.action_unavailable(&Action::Subdivide, document);
+                if ui.add_enabled(unavailable.is_none(),design::button(ui, Glyph::Plus, "Subdivide (+ level)")).on_disabled_hover_text(unavailable.unwrap_or_default()).customize(Action::Subdivide).clicked() { commands.push(Command::Subdivide); }
                 ui.weak("Adds an editable level without smoothing.");
                 ui.separator();
                 self.smooth_subdivision_controls(ui, document, commands);

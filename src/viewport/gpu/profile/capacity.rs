@@ -4,6 +4,14 @@ use crate::sculpt::{Material, Project};
 use serde::Serialize;
 use std::{collections::BTreeMap, io::Write};
 
+#[cfg(target_os = "linux")]
+mod allocation;
+mod drawing;
+mod picking;
+mod regions;
+mod release;
+mod session;
+mod wire;
 mod write_history;
 
 const DABS: usize = 12;
@@ -136,6 +144,19 @@ fn fingerprint(value: &impl Serialize) -> String {
     format!("{:016x}", hash.0)
 }
 
+#[cfg(target_os = "macos")]
+fn memory() -> serde_json::Value {
+    let rss = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .map(|v| v * 1024);
+    serde_json::json!({"rss_bytes":rss})
+}
+
+#[cfg(target_os = "linux")]
 fn memory() -> serde_json::Value {
     let status = std::fs::read_to_string("/proc/self/status").unwrap();
     let get = |name: &str| {
@@ -472,6 +493,8 @@ fn benchmark_capacity(
 
 #[test]
 fn capacity_large_fixture_requires_explicit_valid_budgets() {
+    let defaults = crate::sculpt::capacity::MeshCapacity::default();
+    assert!(benchmark_capacity(4, defaults.vertices, defaults.triangles).is_ok());
     assert!(benchmark_capacity(3, 500_000, 1_000_000).is_ok());
     assert!(benchmark_capacity(4, 500_000, 1_000_000).is_err());
     assert!(benchmark_capacity(4, 1_204_226, 2_408_448).is_ok());

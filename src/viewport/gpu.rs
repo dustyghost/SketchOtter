@@ -457,6 +457,10 @@ struct Gpu {
     backs: wgpu::RenderPipeline,
     basic_surface: wgpu::RenderPipeline,
     basic_offset_surface: wgpu::RenderPipeline,
+    wire_surface: wgpu::RenderPipeline,
+    ordered_wire_quads: Option<bool>,
+    #[cfg(test)]
+    force_wire_lines: bool,
     basic_backs: wgpu::RenderPipeline,
     #[cfg(test)]
     force_general_surface: bool,
@@ -574,7 +578,8 @@ impl Gpu {
             label: Some("viewport WGSL"),
             source: wgpu::ShaderSource::Wgsl(include_str!("gpu/viewport.wgsl").into()),
         });
-        let make_pipeline = |line: bool, xray: bool, back: bool, offset: bool, basic: bool| {
+        let make_pipeline = |vertex_entry: &str, xray: bool, back: bool, offset: bool| {
+            let line = vertex_entry == "line_vertex";
             let attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x3, 3 => Float32x3];
             let buffers = [wgpu::VertexBufferLayout {
                 array_stride: 48,
@@ -586,13 +591,7 @@ impl Gpu {
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: Some(if line {
-                        "line_vertex"
-                    } else if basic {
-                        "basic_surface_vertex"
-                    } else {
-                        "surface_vertex"
-                    }),
+                    entry_point: Some(vertex_entry),
                     compilation_options: Default::default(),
                     buffers: if line { &buffers } else { &[] },
                 },
@@ -639,6 +638,8 @@ impl Gpu {
                     module: &shader,
                     entry_point: Some(if line {
                         "line_fragment"
+                    } else if vertex_entry == "wire_surface_vertex" {
+                        "wire_surface_fragment"
                     } else {
                         "surface_fragment"
                     }),
@@ -657,14 +658,15 @@ impl Gpu {
                 cache: None,
             })
         };
-        let surface = make_pipeline(false, false, false, false, false);
-        let offset_surface = make_pipeline(false, false, false, true, false);
-        let backs = make_pipeline(false, false, true, false, false);
-        let basic_surface = make_pipeline(false, false, false, false, true);
-        let basic_offset_surface = make_pipeline(false, false, false, true, true);
-        let basic_backs = make_pipeline(false, false, true, false, true);
-        let lines = make_pipeline(true, false, false, false, false);
-        let xray_lines = make_pipeline(true, true, false, false, false);
+        let surface = make_pipeline("surface_vertex", false, false, false);
+        let offset_surface = make_pipeline("surface_vertex", false, false, true);
+        let backs = make_pipeline("surface_vertex", false, true, false);
+        let basic_surface = make_pipeline("basic_surface_vertex", false, false, false);
+        let basic_offset_surface = make_pipeline("basic_surface_vertex", false, false, true);
+        let basic_backs = make_pipeline("basic_surface_vertex", false, true, false);
+        let wire_surface = make_pipeline("wire_surface_vertex", false, false, false);
+        let lines = make_pipeline("line_vertex", false, false, false);
+        let xray_lines = make_pipeline("line_vertex", true, false, false);
         let composite_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("viewport composite"),
             entries: &[
@@ -753,6 +755,10 @@ impl Gpu {
             backs,
             basic_surface,
             basic_offset_surface,
+            wire_surface,
+            ordered_wire_quads: None,
+            #[cfg(test)]
+            force_wire_lines: false,
             basic_backs,
             #[cfg(test)]
             force_general_surface: false,
@@ -794,6 +800,7 @@ impl Gpu {
         }
     }
     fn clear(&mut self) {
+        self.ordered_wire_quads = None;
         self.target = None;
         self.uploaded = None;
         self.mesh_geometry = None;
@@ -895,6 +902,12 @@ impl Gpu {
             self.edges = None;
             self.triangle_edges = None;
         }
+        if !self.uploaded.as_ref().is_some_and(|old| {
+            Arc::ptr_eq(&old.mesh.triangles, &data.mesh.triangles)
+                && Arc::ptr_eq(&old.mesh.quads, &data.mesh.quads)
+        }) {
+            self.ordered_wire_quads = None;
+        }
         self.uploaded = Some(data.clone());
         #[cfg(test)]
         self.upload_trace.mark("display_replace");
@@ -960,7 +973,8 @@ impl Gpu {
             && self.packed_vertices.len() == vertex_len
         {
             let mut vertices = std::mem::take(&mut self.packed_vertices);
-            let update = data.update_vertices(stride, &mut vertices);
+            let update =
+                data.update_vertices_from(stride, &mut vertices, self.mesh_geometry.as_ref());
             #[cfg(test)]
             {
                 self.vertex_pack_count = update.changed_vertices;
@@ -1148,16 +1162,20 @@ impl Gpu {
                 .push(Self::mesh_buffers(&self.device, &[], &[], &[], &[]));
         }
     }
-    fn upload_edges(&mut self) {
-        if self.edges.is_some() {
+    fn upload_edges(&mut self, triangles: bool) {
+        let cache = if triangles {
+            &mut self.triangle_edges
+        } else {
+            &mut self.edges
+        };
+        if cache.is_some() {
             return;
         }
-        let data = self.uploaded.as_ref().unwrap();
-        for triangles in [false, true] {
-            let edges = data.edges(triangles);
-            // Split only on whole line segments, including triangle diagonals.
-            let per_batch = (self.device.limits().max_buffer_size as usize / 96).max(1) * 24;
-            let buffers = edges
+        let edges = self.uploaded.as_ref().unwrap().edges(triangles);
+        // Split on whole line segments. Build only the requested topology.
+        let per_batch = (self.device.limits().max_buffer_size as usize / 96).max(1) * 24;
+        *cache = Some(
+            edges
                 .chunks(per_batch)
                 .map(|edge| {
                     (
@@ -1170,14 +1188,42 @@ impl Gpu {
                         (edge.len() / 12) as u32,
                     )
                 })
-                .collect();
-            if triangles {
-                self.triangle_edges = Some(buffers);
-            } else {
-                self.edges = Some(buffers);
-            }
-        }
+                .collect(),
+        );
     }
+
+    fn use_wire_surface(&mut self, triangles: bool, preview: &Preview) -> bool {
+        #[cfg(test)]
+        if self.force_wire_lines {
+            return false;
+        }
+        let Some(display) = self.uploaded.as_ref() else {
+            return false;
+        };
+        if display.mesh.triangles.len() < 32_768
+            || !self.single_mesh_upload
+            || self.vertex_stride != 12
+            || !display.edge_colors.is_empty()
+            || display.texture_info.len() != 1
+            || preview.uv_checker
+            || preview.inspection == InspectionMode::UvChecker
+            || preview.backface_opacity > 0.
+        {
+            return false;
+        }
+        triangles
+            || display.mesh.quads.is_empty()
+            || *self.ordered_wire_quads.get_or_insert_with(|| {
+                let (pairs, remainder) = display.mesh.triangles.as_chunks::<2>();
+                remainder.is_empty()
+                    && pairs.len() == display.mesh.quads.len()
+                    && pairs
+                        .iter()
+                        .zip(display.mesh.quads.iter())
+                        .all(|(pair, &[a, b, c, d])| *pair == [[a, b, c], [a, c, d]])
+            })
+    }
+
     fn uniforms(&mut self, p: &Params, preview: &Preview, mode: WireMode) -> Uniforms {
         let vector = |v: Vec3, w| [v.0, v.1, v.2, w];
         let mut u: Uniforms = bytemuck::Zeroable::zeroed();
@@ -1416,12 +1462,10 @@ impl Gpu {
                 | wgpu::TextureUsages::TEXTURE_BINDING
                 | wgpu::TextureUsages::COPY_SRC,
         );
-        let depth = Self::texture(
-            &self.device,
-            size,
-            DEPTH,
-            wgpu::TextureUsages::RENDER_ATTACHMENT,
-        );
+        let depth_usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
+        #[cfg(test)]
+        let depth_usage = depth_usage | wgpu::TextureUsages::COPY_SRC;
+        let depth = Self::texture(&self.device, size, DEPTH, depth_usage);
         let color_view = color.create_view(&Default::default());
         let depth_view = depth.create_view(&Default::default());
         let composite = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1452,9 +1496,14 @@ impl Gpu {
         if self.force_general_surface {
             return false;
         }
-        // UVs, face groups and extended channels require the per-corner path.
-        self.vertex_stride == 12
-            && !preview.show_polygroups
+        // These inspection modes read interpolated base channels and suppress
+        // the face-group overlay. Lighting still needs the extended corner IDs.
+        let base_channel = matches!(
+            preview.inspection,
+            InspectionMode::Color | InspectionMode::Roughness | InspectionMode::Metallic
+        );
+        (self.vertex_stride == 12 || base_channel)
+            && (!preview.show_polygroups || base_channel)
             && !preview.uv_checker
             && preview.inspection != InspectionMode::UvChecker
             && self
@@ -1477,10 +1526,17 @@ impl Gpu {
             return;
         }
         self.target(size);
-        if wire {
-            self.upload_edges();
+        let surface_wire =
+            wire && mode == WireMode::Visible && self.use_wire_surface(triangles, preview);
+        let line_wire = wire && !surface_wire;
+        if line_wire {
+            self.upload_edges(triangles);
         }
-        let u = self.uniforms(p, preview, mode);
+        let mut u = self.uniforms(p, preview, mode);
+        // The wire vertex shader uses the spare up.w slot to hide quad diagonals.
+        u.up[3] = f32::from(
+            surface_wire && !triangles && !self.uploaded.as_ref().unwrap().mesh.quads.is_empty(),
+        );
         let basic = self.basic_surface_eligible(preview);
         self.queue
             .write_buffer(&self.uniform, 0, bytemuck::bytes_of(&u));
@@ -1532,15 +1588,19 @@ impl Gpu {
         });
         pass.set_bind_group(0, &bindings[0], &[]);
         if !wire || mode != WireMode::Transparent {
-            pass.set_pipeline(match (basic, wire && mode == WireMode::Visible) {
-                (true, true) => &self.basic_offset_surface,
-                (true, false) => &self.basic_surface,
-                (false, true) => &self.offset_surface,
-                (false, false) => &self.surface,
+            pass.set_pipeline(if surface_wire {
+                &self.wire_surface
+            } else {
+                match (basic, wire && mode == WireMode::Visible) {
+                    (true, true) => &self.basic_offset_surface,
+                    (true, false) => &self.basic_surface,
+                    (false, true) => &self.offset_surface,
+                    (false, false) => &self.surface,
+                }
             });
             for (mesh, bind) in self.meshes.iter().zip(&bindings) {
                 pass.set_bind_group(0, bind, &[]);
-                if basic {
+                if basic && !surface_wire {
                     pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
                     pass.draw_indexed(0..mesh.count, 0, 0..1);
                 } else {
@@ -1565,7 +1625,7 @@ impl Gpu {
                 pass.set_bind_group(0, &bindings[0], &[]);
             }
         }
-        if wire {
+        if line_wire {
             pass.set_pipeline(if mode == WireMode::Visible {
                 &self.lines
             } else {
@@ -1602,13 +1662,15 @@ impl Gpu {
 mod display;
 #[cfg(all(test, target_os = "linux"))]
 mod indexed_test;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod profile;
 #[cfg(test)]
 mod scene_cache_tests;
 #[cfg(test)]
 mod tests;
 mod upload;
+#[cfg(all(test, target_os = "linux"))]
+mod wire_test;
 pub(crate) use display::DisplayMesh;
 #[cfg(all(test, target_os = "linux"))]
 mod backfaces_test;
@@ -1622,7 +1684,7 @@ mod perspective_test;
 mod rotation_test;
 #[cfg(all(test, target_os = "linux"))]
 mod slice_test;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 pub(super) mod ui_capture;
 #[cfg(all(test, target_os = "linux"))]
 mod visibility_test;

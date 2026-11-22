@@ -111,6 +111,12 @@ impl Document {
             self.dirty = true;
             if self.texture_paint.is_some() {
                 self.display_changed_preserving_geometry();
+            } else if self.track_display_regions() {
+                let mut edits = regions::Edits::default();
+                for &i in &self.paint_scratch.touched {
+                    regions::Edits::push(&mut edits.materials, i);
+                }
+                self.display_changed_in(edits);
             } else {
                 self.display_changed();
             }

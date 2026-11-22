@@ -110,8 +110,10 @@ Raise the mesh budget before importing or building a model that exceeds the defa
 
 | Limit per mesh | Default | Largest allowed setting |
 | --- | ---: | ---: |
-| Vertices | 500,000 | 16,000,000 |
-| Triangles | 1,000,000 | 32,000,000 |
+| Vertices | 1,500,000 | 16,000,000 |
+| Triangles | 3,000,000 | 32,000,000 |
+
+Existing saved limits are preserved when upgrading. Choose **Reset mesh limits** and restart to adopt the new defaults. Lower budgets remain available down to 500,000 vertices and 1,000,000 triangles.
 
 Quads count as two triangles. Both limits apply independently, so raise both when increasing mesh density. **Reset mesh limits** restores the defaults for the next restart. Lowering a limit does not simplify a model; raise it again if an existing project exceeds the active budget.
 

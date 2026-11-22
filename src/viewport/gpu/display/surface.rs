@@ -52,7 +52,16 @@ impl DisplaySurface {
 
     /// Called only after topology/visibility validation. Compare actual payloads
     /// rather than brush kind: edits can be combined or skip display frames.
+    #[cfg(test)]
     pub(super) fn update(&self, source: &Mesh, positions_unchanged: bool) -> Self {
+        self.update_regions(source, positions_unchanged, None)
+    }
+    pub(super) fn update_regions(
+        &self,
+        source: &Mesh,
+        positions_unchanged: bool,
+        edits: Option<&crate::document::regions::Edits>,
+    ) -> Self {
         Self {
             vertices: if positions_unchanged {
                 self.vertices.clone()
@@ -63,12 +72,15 @@ impl DisplaySurface {
             quads: self.quads.clone(),
             loose_edges: self.loose_edges.clone(),
             loose_vertices: self.loose_vertices.clone(),
-            mask: if self.same_mask(source) {
+            mask: if edits.map_or_else(|| self.same_mask(source), |e| e.mask.is_empty()) {
                 self.mask.clone()
             } else {
                 Arc::new(source.mask.clone())
             },
-            materials: if Material::slices_bitwise_equal(&self.materials, &source.materials) {
+            materials: if edits.map_or_else(
+                || Material::slices_bitwise_equal(&self.materials, &source.materials),
+                |e| e.materials.is_empty(),
+            ) {
                 self.materials.clone()
             } else {
                 Arc::new(source.materials.clone())

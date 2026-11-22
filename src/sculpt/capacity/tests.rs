@@ -20,17 +20,21 @@ fn mesh_capacity_preferences_migrate_roundtrip_and_validate() {
     legacy.as_object_mut().unwrap().remove("mesh_capacity");
     let legacy: preferences::Preferences = serde_json::from_value(legacy).unwrap();
     assert_eq!(legacy.mesh_capacity, MeshCapacity::DEFAULT);
-    prefs.mesh_capacity = MeshCapacity {
-        vertices: 6_000_000,
-        triangles: 12_000_000,
-    };
     let path =
         std::env::temp_dir().join(format!("clay-capacity-prefs-{}.json", std::process::id()));
-    preferences::save(&path, &prefs).unwrap();
-    assert_eq!(
-        preferences::load(&path).unwrap().mesh_capacity,
-        prefs.mesh_capacity
-    );
+    // Existing low budgets and custom larger budgets survive the new defaults.
+    for limits in [
+        MeshCapacity::MIN,
+        MeshCapacity::DEFAULT,
+        MeshCapacity {
+            vertices: 6_000_000,
+            triangles: 12_000_000,
+        },
+    ] {
+        prefs.mesh_capacity = limits;
+        preferences::save(&path, &prefs).unwrap();
+        assert_eq!(preferences::load(&path).unwrap().mesh_capacity, limits);
+    }
     std::fs::remove_file(path).unwrap();
     for limits in [
         MeshCapacity {
@@ -125,16 +129,14 @@ fn mesh_capacity_limits_cover_validation_subdivision_merge_and_import() {
 fn mesh_capacity_accepts_counts_above_old_cap_and_preserves_project_io() {
     let mut mesh = Mesh::default();
     mesh.vertices
-        .resize(MeshCapacity::DEFAULT.vertices + 1, Vec3::default());
+        .resize(MeshCapacity::MIN.vertices + 1, Vec3::default());
     mesh.mask.resize(mesh.vertices.len(), 0.);
-    assert!(mesh.validate().unwrap_err().contains("configured limits"));
-    let limits = MeshCapacity {
-        vertices: 1_000_000,
-        triangles: 2_000_000,
-    };
+    with_test_capacity(MeshCapacity::MIN, || {
+        assert!(mesh.validate().unwrap_err().contains("configured limits"));
+    });
     let path =
         std::env::temp_dir().join(format!("clay-capacity-project-{}.clay", std::process::id()));
-    with_test_capacity(limits, || {
+    with_test_capacity(MeshCapacity::DEFAULT, || {
         mesh.validate().unwrap();
         let mut project = crate::document::Document::default().project();
         project.mesh = mesh;
@@ -143,12 +145,14 @@ fn mesh_capacity_accepts_counts_above_old_cap_and_preserves_project_io() {
         let restored = crate::persistence::load_project(path.to_str().unwrap()).unwrap();
         assert_eq!(restored.mesh.vertices.len(), 500_001);
     });
-    assert!(
-        crate::persistence::load_project(path.to_str().unwrap())
-            .err()
-            .unwrap()
-            .contains("configured limits")
-    );
+    with_test_capacity(MeshCapacity::MIN, || {
+        assert!(
+            crate::persistence::load_project(path.to_str().unwrap())
+                .err()
+                .unwrap()
+                .contains("configured limits")
+        );
+    });
     std::fs::remove_file(path).unwrap();
 }
 
@@ -201,13 +205,7 @@ fn mesh_capacity_startup_budget_is_shared_with_workers_and_immutable() {
 fn mesh_capacity_triangle_budget_can_exceed_the_old_limit() {
     let mut mesh = triangle();
     mesh.triangles
-        .resize(MeshCapacity::DEFAULT.triangles + 1, [0, 1, 2]);
-    assert!(mesh.validate().is_err());
-    with_test_capacity(
-        MeshCapacity {
-            vertices: 500_000,
-            triangles: 2_000_000,
-        },
-        || mesh.validate().unwrap(),
-    );
+        .resize(MeshCapacity::MIN.triangles + 1, [0, 1, 2]);
+    with_test_capacity(MeshCapacity::MIN, || assert!(mesh.validate().is_err()));
+    with_test_capacity(MeshCapacity::DEFAULT, || mesh.validate().unwrap());
 }

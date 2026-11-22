@@ -9,17 +9,22 @@ pub(crate) struct MeshCapacity {
     pub triangles: usize,
 }
 impl MeshCapacity {
-    pub const DEFAULT: Self = Self {
+    // Keep lower saved budgets valid when the recommended defaults increase.
+    pub const MIN: Self = Self {
         vertices: 500_000,
         triangles: 1_000_000,
+    };
+    pub const DEFAULT: Self = Self {
+        vertices: 1_500_000,
+        triangles: 3_000_000,
     };
     pub const MAX: Self = Self {
         vertices: 16_000_000,
         triangles: 32_000_000,
     };
     pub fn validate(self) -> Result<(), String> {
-        if !(Self::DEFAULT.vertices..=Self::MAX.vertices).contains(&self.vertices)
-            || !(Self::DEFAULT.triangles..=Self::MAX.triangles).contains(&self.triangles)
+        if !(Self::MIN.vertices..=Self::MAX.vertices).contains(&self.vertices)
+            || !(Self::MIN.triangles..=Self::MAX.triangles).contains(&self.triangles)
         {
             return Err("Mesh capacity must be 500,000–16,000,000 vertices and 1,000,000–32,000,000 triangles".into());
         }

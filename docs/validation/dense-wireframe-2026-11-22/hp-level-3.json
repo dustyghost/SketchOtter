@@ -1,0 +1,170 @@
+{
+  "env": {
+    "workload": "wire",
+    "level": 3,
+    "max_rss_mib": 1800,
+    "min_available_mib": 640,
+    "preflight_available_kib": 3133116,
+    "total_kib": 7998152,
+    "platform": "Linux-7.3.4-arch1-2-x86_64-with-glibc2.44",
+    "test_binary_sha256": "5cbdabdc02cb45b4ea19594a152f707460e2246737ccd638c26df7e8e144153d",
+    "commit": "9aa115e1d5b5c9b3bf4f8482bcf03741ce4f0c5f",
+    "result": {
+      "status": "measured",
+      "log": "case.log",
+      "elapsed_seconds": 16.673873685009312,
+      "sampled_peak_rss_bytes": 1059303424,
+      "sampled_peak_swap_bytes": 0,
+      "minimum_available_bytes": 2185682944
+    },
+    "cpu": "Intel Core i7-7500U",
+    "working_tree": "Wireframe candidate built locally on top of the recorded commit before the test-only cold classification reset."
+  },
+  "data": {
+    "driver": "AdapterInfo { name: \"llvmpipe (LLVM 23.1.5, 256 bits)\", vendor: 65541, device: 0, device_type: Cpu, driver: \"llvmpipe\", driver_info: \"Mesa 26.3.1-arch1.2 (LLVM 23.1.5)\", backend: Vulkan }",
+    "rows": [
+      {
+        "arm": "solid",
+        "edge_buffer_bytes": 0,
+        "level": 3,
+        "memory": {
+          "process_peak_rss_bytes": 739028992,
+          "rss_bytes": 739028992
+        },
+        "quads": 301056,
+        "source_triangles": 602112,
+        "timings": {
+          "first": {
+            "max_ms": 637.703542,
+            "n": 1,
+            "p50_ms": 637.703542,
+            "p95_ms": 637.703542,
+            "samples_ms": [
+              637.703542
+            ]
+          },
+          "orbit": {
+            "max_ms": 117.558172,
+            "n": 7,
+            "p50_ms": 115.126244,
+            "p95_ms": 117.558172,
+            "samples_ms": [
+              114.640987,
+              113.41425500000001,
+              117.558172,
+              114.998986,
+              115.658467,
+              115.126244,
+              115.23823399999999
+            ]
+          },
+          "sculpt_and_draw": {
+            "max_ms": 174.502136,
+            "n": 1,
+            "p50_ms": 174.502136,
+            "p95_ms": 174.502136,
+            "samples_ms": [
+              174.502136
+            ]
+          }
+        }
+      },
+      {
+        "arm": "visible_edges",
+        "edge_buffer_bytes": 144506880,
+        "level": 3,
+        "memory": {
+          "process_peak_rss_bytes": 1059299328,
+          "rss_bytes": 1059299328
+        },
+        "quads": 301056,
+        "source_triangles": 602112,
+        "timings": {
+          "first": {
+            "max_ms": 1734.746646,
+            "n": 1,
+            "p50_ms": 1734.746646,
+            "p95_ms": 1734.746646,
+            "samples_ms": [
+              1734.746646
+            ]
+          },
+          "orbit": {
+            "max_ms": 261.01300100000003,
+            "n": 7,
+            "p50_ms": 251.53558199999998,
+            "p95_ms": 261.01300100000003,
+            "samples_ms": [
+              251.53558199999998,
+              249.378619,
+              250.01032,
+              261.01300100000003,
+              252.168634,
+              250.75536999999997,
+              253.076712
+            ]
+          },
+          "sculpt_and_draw": {
+            "max_ms": 1289.827325,
+            "n": 1,
+            "p50_ms": 1289.827325,
+            "p95_ms": 1289.827325,
+            "samples_ms": [
+              1289.827325
+            ]
+          }
+        }
+      },
+      {
+        "arm": "visible_surface",
+        "edge_buffer_bytes": 0,
+        "level": 3,
+        "memory": {
+          "process_peak_rss_bytes": 1058729984,
+          "rss_bytes": 862142464
+        },
+        "quads": 301056,
+        "source_triangles": 602112,
+        "timings": {
+          "first": {
+            "max_ms": 623.7638079999999,
+            "n": 1,
+            "p50_ms": 623.7638079999999,
+            "p95_ms": 623.7638079999999,
+            "samples_ms": [
+              623.7638079999999
+            ]
+          },
+          "orbit": {
+            "max_ms": 195.086326,
+            "n": 7,
+            "p50_ms": 170.038832,
+            "p95_ms": 195.086326,
+            "samples_ms": [
+              172.609604,
+              170.038832,
+              169.721763,
+              168.771134,
+              168.775,
+              170.728239,
+              195.086326
+            ]
+          },
+          "sculpt_and_draw": {
+            "max_ms": 198.134382,
+            "n": 1,
+            "p50_ms": 198.134382,
+            "p95_ms": 198.134382,
+            "samples_ms": [
+              198.134382
+            ]
+          }
+        }
+      }
+    ],
+    "size": [
+      800,
+      600
+    ]
+  }
+}

@@ -52,6 +52,7 @@ impl VertexCorners {
             vertices[fan].1 = sum.norm();
         }
         Some(NormalUpdate {
+            changed_fans: Some(selected),
             vertices,
             #[cfg(test)]
             local: true,
@@ -62,6 +63,7 @@ impl VertexCorners {
 }
 
 pub(super) struct NormalUpdate {
+    pub(super) changed_fans: Option<Vec<usize>>,
     pub(super) vertices: Vec<(usize, Vec3)>,
     #[cfg(test)]
     pub(super) local: bool,
@@ -87,13 +89,24 @@ fn changed_vertices(before: &[Vec3], after: &[Vec3]) -> Option<Vec<usize>> {
 }
 
 impl DisplayMesh {
+    #[cfg(test)]
     pub(super) fn update_live_normals(&self, mesh: &Mesh, fans: &[[usize; 3]]) -> NormalUpdate {
+        self.normals_in_region(mesh, fans, None)
+    }
+    pub(super) fn normals_in_region(
+        &self,
+        mesh: &Mesh,
+        fans: &[[usize; 3]],
+        known: Option<&[usize]>,
+    ) -> NormalUpdate {
         // The first deformation converts every canonical angle-weighted normal
         // to the existing area-weighted preview. Later frames can retain fans
         // whose incident face positions have not changed.
         if self.temporary_normals
             && let Some(topology) = &self.stroke_topology
-            && let Some(changed) = changed_vertices(&self.mesh.vertices, &mesh.vertices)
+            && let Some(changed) = known.map(std::borrow::Cow::Borrowed).or_else(|| {
+                changed_vertices(&self.mesh.vertices, &mesh.vertices).map(std::borrow::Cow::Owned)
+            })
             && let Some(corners) = topology
                 .source
                 .normal_corners
@@ -129,6 +142,7 @@ pub(super) fn normals_at_positions(
         }
     }
     NormalUpdate {
+        changed_fans: None,
         vertices: previous
             .iter()
             .zip(normals)

@@ -6,6 +6,8 @@ struct Harness {
     ctx: egui::Context,
     size: Vec2,
     output: Option<egui::FullOutput>,
+    show_mesh: bool,
+    commands: Vec<Command>,
     #[cfg(target_os = "linux")]
     capture: Option<crate::viewport::UiCapture>,
 }
@@ -19,6 +21,8 @@ impl Harness {
             ctx,
             size: Vec2::new(900., 600.),
             output: None,
+            show_mesh: false,
+            commands: Vec::new(),
             #[cfg(target_os = "linux")]
             capture: None,
         }
@@ -33,7 +37,10 @@ impl Harness {
             },
             |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    if !self.state.mesh_capacity_open {
+                    if self.show_mesh {
+                        self.state
+                            .mesh_settings_controls(ui, &self.document, &mut self.commands);
+                    } else if !self.state.mesh_capacity_open {
                         self.state.builtin_menu_contents(
                             crate::preferences::BuiltinMenu::Settings,
                             ui,
@@ -103,7 +110,7 @@ fn mesh_capacity_settings_open_edit_and_reset_without_changing_active_limits() {
     h.frame(vec![]);
     h.click("Mesh capacity…");
     assert!(h.state.mesh_capacity_open);
-    h.click("500000");
+    h.click(&MeshCapacity::DEFAULT.vertices.to_string());
     let key = |key, modifiers| Event::Key {
         key,
         physical_key: None,
@@ -120,6 +127,14 @@ fn mesh_capacity_settings_open_edit_and_reset_without_changing_active_limits() {
     assert_eq!(h.state.preferences.mesh_capacity.vertices, 2_000_000);
     h.point("Restart required to apply these limits.");
     assert_eq!(capacity::current(), MeshCapacity::DEFAULT);
+    h.click("Reset mesh limits");
+    assert_eq!(h.state.preferences.mesh_capacity, MeshCapacity::DEFAULT);
+    h.state.preferences.mesh_capacity = MeshCapacity::MIN;
+    h.frame(vec![]);
+    h.frame(vec![]);
+    assert_eq!(h.state.preferences.mesh_capacity, MeshCapacity::MIN);
+    h.point("500000");
+    h.point("1000000");
     h.click("Reset mesh limits");
     assert_eq!(h.state.preferences.mesh_capacity, MeshCapacity::DEFAULT);
 }
@@ -141,4 +156,68 @@ fn gpu_mesh_capacity_settings_capture() {
     h.frame(vec![]);
     h.point("Restart required to apply these limits.");
     h.point("Reset mesh limits");
+}
+
+#[test]
+fn subdivision_controls_use_active_capacity_above_the_old_ui_cap() {
+    use crate::app::policy::EditorPolicy;
+    use crate::sculpt::{Geometry, Mesh, Vec3};
+    let mut h = Harness::new();
+    h.show_mesh = true;
+    // Exercise the level-four sphere's count without allocating its dense positions.
+    h.document
+        .replace_geometry(Geometry::new(Mesh {
+            vertices: vec![Vec3(0., 0., 0.), Vec3(1., 0., 0.), Vec3(0., 1., 0.)],
+            mask: vec![0.; 3],
+            triangles: vec![[0, 1, 2]; 602_112],
+            ..Default::default()
+        }))
+        .unwrap();
+    for (limits, enabled) in [
+        (MeshCapacity::DEFAULT, true),
+        (MeshCapacity::MIN, false),
+        (
+            MeshCapacity {
+                vertices: 1_500_000,
+                triangles: 2_408_448,
+            },
+            true,
+        ),
+        (
+            MeshCapacity {
+                vertices: 1_500_000,
+                triangles: 2_408_447,
+            },
+            false,
+        ),
+    ] {
+        capacity::with_test_capacity(limits, || {
+            // Edited preferences take effect only after restart.
+            h.state.preferences.mesh_capacity = if enabled {
+                MeshCapacity::MIN
+            } else {
+                MeshCapacity::MAX
+            };
+            h.commands.clear();
+            h.frame(vec![]);
+            h.frame(vec![]);
+            h.click("Subdivide (+ level)");
+            assert_eq!(
+                h.commands.iter().any(|c| matches!(c, Command::Subdivide)),
+                enabled,
+                "actual mesh-panel button with active limits {limits:?}"
+            );
+            let policy = EditorPolicy::new(&h.state, &h.document);
+            assert_eq!(policy.action(&Action::Subdivide).is_ok(), enabled);
+            assert_eq!(policy.command(&Command::Subdivide).is_ok(), enabled);
+            if !enabled {
+                assert!(
+                    policy
+                        .action(&Action::Subdivide)
+                        .unwrap_err()
+                        .contains("Mesh capacity")
+                );
+            }
+        });
+    }
 }

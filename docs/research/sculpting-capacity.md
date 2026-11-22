@@ -1,10 +1,10 @@
 # Sculpting capacity and regional detail
 
-[Issue #103](https://github.com/dustyghost/clay-form/issues/103) asks how much detail an artist can work with interactively. The largest archived workload completed fixed-topology edits on **1,204,224 quad polygons**. Those quads produce **2,408,448 triangles** for rendering and picking. Two position-history experiments below measure how much geometry a stroke changes and how quickly its first dab completes.
+[Issue #103](https://github.com/dustyghost/clay-form/issues/103) asks how much detail an artist can work with interactively. The original laptop workload completed fixed-topology edits on **1,204,224 quad polygons**. Those quads produce **2,408,448 triangles** for rendering and picking. The desktop, long-session and 9.6-million-triangle results below extend that baseline. Two position-history experiments measure how much geometry a stroke changes and how quickly its first dab completes.
 
 ## What fits
 
-These limits apply to the source tree at `e122065`. Vertices, authored polygons, triangulated faces and bytes answer different questions.
+The table records the limits at `e122065`. On 22 November 2026 the application defaults increased to **1,500,000 vertices / 3,000,000 triangles**, permitting the measured four-subdivision sphere (1,204,226 vertices / 2,408,448 triangles). Existing saved budgets remain unchanged; Reset mesh limits adopts the new defaults after restart. The lower settings and upper bounds remain available. This is a geometry budget, not a guarantee of available memory or interactive performance. Vertices, authored polygons, triangulated faces and bytes answer different questions.
 
 | Resource | Limit and consequence |
 | --- | --- |
@@ -33,7 +33,7 @@ The archived runs also give baselines for memory before the first edit and for o
 | Subdivision | One CPU subdivision of the attributed organic mesh took 806 ms to grow from 150,528 to 602,112 source triangles. The larger interactive matrix builds its starting stack up front and skips further subdivision. [Timed subdivision](../validation/capacity-2026-10-30/cpu/organic-l2.json) |
 | Explicit whole-mesh remesh | At voxel resolution 48, Optimized quads took a median of 7.32 s on the head and 7.86 s on the branched sculpt across three release runs each. The before/after optimisation produced byte-identical output projects. These smaller-asset results cover voxel reconstruction, optimisation, attribute transfer and validation. Adaptive topology under a moving brush at 2.4 million triangles is still unmeasured. [Remesh timings and hashes](../validation/dynamic-quads-2026-10-26/optimized-quads-performance.json) |
 
-The earlier editor work addressed shared settings accounting and worker validation in [#53](https://github.com/dustyghost/clay-form/issues/53). [#60](https://github.com/dustyghost/clay-form/issues/60) addressed live stroke feedback. The timings above identify costs that persisted after those changes. Whole-frame desktop latency, long-session residency and dense adaptive remeshing still need separate measurements.
+The earlier editor work addressed shared settings accounting and worker validation in [#53](https://github.com/dustyghost/clay-form/issues/53). [#60](https://github.com/dustyghost/clay-form/issues/60) addressed live stroke feedback. The timings above identify costs that persisted after those changes. The follow-up workloads below cover desktop input and long-session residency. Dense adaptive remeshing remains unmeasured.
 
 ## A bounded history experiment
 
@@ -49,7 +49,7 @@ Measured on 21 November 2026 with an AC-powered i7-7500U, 7.63 GiB RAM, Linux 7.
 
 At 602,112 triangles the three patches retained 384 KiB, versus 10.34 MiB for three full position arrays. The application's estimated retained history for these three complete edits was 201.9 MiB. The prototype's median position-only replay cost was 0.016 ms for Undo and 0.018 ms for Redo. Document stroke start includes cloning the geometry. Capturing positions and diffing them on release are two separate costs. That start cost motivated a second experiment capturing positions as the brush writes them.
 
-The release example stops at three subdivisions under the default mesh budget. A fourth would need 1,204,226 active vertices, and the archived 3,072 MiB RSS budget plus 768 MiB reserve exceeded the memory available for this session. Larger, topology-changing, painted and textured history cases are unmeasured by this experiment.
+The recorded release example stopped at three subdivisions under the default mesh budget at that time. A fourth would need 1,204,226 active vertices, and the archived 3,072 MiB RSS budget plus 768 MiB reserve exceeded the memory available for this session. Larger, topology-changing, painted and textured history cases are unmeasured by this experiment.
 
 A full position before-image still exists during capture and finding changes still scans every vertex on release. The patch handles positions only. Its retained allocation excludes the vector header, allocator overhead, edit settings and all other channels. The application history estimate covers the whole document and settings. Process RSS includes both histories, fixture construction and a reference mesh. These quantities must be budgeted separately.
 
@@ -98,9 +98,30 @@ The measurements suggest different approaches for different costs.
 
 **Proposed interactive target.** On the i7-7500U / HD 620, evaluate the 2.4-million-triangle fixture at a recorded desktop resolution. Aim for p95 pointer-to-visible-dab within 50 ms and pen-up within 100 ms, across at least 100 strokes including cold starts. Report orbit separately against a 33 ms frame budget. Begin with the historical 3,072 MiB process RSS guard and a 768 MiB system reserve. Count missed targets and guard stops. A sustained 6–12 million triangle run needs a machine with headroom and the same integrity checks.
 
+## Outcomes from the follow-up experiments
+
+| Issue | Result and remaining cost |
+| --- | --- |
+| [#109 Release shading](../validation/capacity-followups-2026-11-21/README.md#canonical-shading-on-release-109) | Compact fan reconstruction preserved canonical normals and reduced release time on all four large surface controls. A full edge pass still runs at release. |
+| [#110 Paint startup](https://github.com/dustyghost/clay-form/pull/185) | A single before-image reduced warm first-dab latency. After visibility edits the first Paint stroke must rebuild its occlusion data. |
+| [#111 Picking](../validation/capacity-followups-2026-11-21/README.md#camera-picking-111) | Reusable spatial bounds reduced total orbit-and-pick time. A separate refit index would cost another 8.41 MiB at 2.4m. |
+| [#112 Live display](../validation/capacity-followups-2026-11-21/README.md#live-display-and-gpu-uploads-112) | Exact edit regions cut the four local brush-to-upload medians. Broad strokes still traverse the full mesh. |
+| [#113 Material drawing](../validation/capacity-followups-2026-11-21/README.md#dense-material-drawing-113) | Indexed extended-material inspection sped up large draws on software Vulkan and integrated Metal. [Shading dense wireframes on the surface](../validation/dense-wireframe-2026-11-22/README.md) removed 138 MiB of edge buffers on the HP after three subdivisions. Textured surfaces retain face-corner inputs. |
+| [#114 Long sessions](../validation/capacity-followups-2026-11-21/README.md#mixed-sessions-and-the-upper-boundary-114) | The textured session exercised history eviction, cancellations and recovery. A separate synthetic stroke and draw completed at 9.6m source triangles. |
+
+At 2,408,448 source triangles on the hosted EPYC 7763, a local Standard live display and completed upload fell from 56.29 to 16.85 ms. A broad Standard update still took 75.22 ms. On the hosted Xeon 6975P-C, the first hidden-surface canonical release fell from 180.3 to 130.1 ms, and the ten-view perspective orbit and pointer workload from 394 to 207 ms. These phases have different boundaries. A separate Xeon comparison timed brush input through completed upload. Local Standard went from 99.85 to 48.17 ms. Broad Clay went from 172.90 to 190.19 ms, the largest broad regression at that density. The partial display work helps small strokes most. These stage measurements alone cannot predict an artist's frame rate. [Method, controls and raw measurements for #109 and #111 to #114](../validation/capacity-followups-2026-11-21/README.md)
+
+On the i7-7500U laptop, removing the second Paint undo snapshot brought a warm first dab from 445 to 239 ms. The first dab after hiding faces still took 944 ms. Large hierarchies, whole-array ownership and exact history continue to set the startup and memory budgets even when a small upload meets the frame target. [Paint implementation and measurements for #110](https://github.com/dustyghost/clay-form/pull/185)
+
+A separate process with an 8,000 MiB RSS guard sculpted and exactly undid/redid one stroke on 9,633,792 synthetic triangles, then uploaded and drew at 800 × 600. It peaked at 5.57 GiB, and individual build stages took seconds. In the two-model textured session with 515,446 rendered triangles, the two-dab edit plus live/release uploads had a 489 ms median. The 1 GiB history budget retained at most 15 entries. Over 1,024 mixed strokes on a Xeon, with both textured models edited, 980 entries were evicted. CPU display preparation took 154 ms per dab at the median and process RSS peaked at 2.07 GiB. The complete project survived both save/reopen checks. Allocate future work against the bottlenecks in the mixed session as well as the simpler geometry boundary. [Workload and resource evidence](../validation/capacity-followups-2026-11-21/README.md)
+
+The native X11 test timed pointer input to a persistent visible change on a 1920 × 1080 software-rendered desktop. The sphere median was 135 ms and the denser textured scene median was 716 ms. Physical pen and monitor timing remains open. [Desktop protocol, hardware and samples](../validation/capacity-followups-2026-11-21/README.md#native-desktop-input-and-visible-edits-114)
+
+For further interactive gains on the textured asset, prioritise the two-model display rebuild and the geometry snapshots that exhaust the history budget. For the laptop, prioritise cold and post-visibility Paint startup. Retest each change against the interactive target above. The measured full-update fallback matters for broad strokes and for changes to connectivity. A regional HD design would also need an exact boundary halo, a persistent high-resolution detail representation and coordinated history/export across regions. The regional display optimisation handles none of those storage commitments. The current workload evidence supports incremental development within the existing settings.
+
 ## Reproduce the position experiment
 
-Build once from the repository root. On Linux, run one fresh process per level and repeat the loop three times. The example uses the default application capacity. The Linux preflight below requires 1,280 MiB available before each case, allowing a 512 MiB margin above the child’s 768 MiB address-space ceiling. The recorded run also stopped on a fall below 512 MiB available.
+Build once from the repository root. On Linux, run one fresh process per level and repeat the loop three times. The example uses the current default application capacity; the recorded runs used the earlier defaults. The Linux preflight below requires 1,280 MiB available before each case, allowing a 512 MiB margin above the child’s 768 MiB address-space ceiling. The recorded run also stopped on a fall below 512 MiB available.
 
 ```sh
 cargo test --locked --release -j 1 --example stroke_history_profile

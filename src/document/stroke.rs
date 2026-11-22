@@ -96,6 +96,7 @@ impl Document {
             // symmetry copy gets the initial surface patch on its own side.
             self.stroke_flatten_planes = self.geometry.mesh.surface_planes(&dabs);
         }
+        let track_dense = self.track_display_regions();
         let settings = &self.geometry.settings.adaptive;
         let stencils = stencil.map_or_else(Vec::new, |s| s.copies(&self.symmetry));
         let region = crate::sculpt::AdaptiveRegion {
@@ -113,13 +114,29 @@ impl Document {
             .geometry
             .mesh
             .prepare_stenciled_stamp(brush, &dabs, &stencils, settings);
-        let old_mask = (brush.kind == Kind::Mask).then(|| self.geometry.mesh.mask.clone());
-        let deformed = self.geometry.mesh.stamp_observing_positions(
+        let track = track_dense
+            && !settings.enabled
+            && !before_topology
+            && matches!(brush.kind, Kind::Standard | Kind::Clay | Kind::Mask);
+        let old_mask =
+            (brush.kind == Kind::Mask && !track).then(|| self.geometry.mesh.mask.clone());
+        let mut edits = regions::Edits::default();
+        let deformed = self.geometry.mesh.stamp_observing_changes(
             brush,
             &dabs,
             &stencils,
             &self.stroke_flatten_planes,
-            observe,
+            &mut |i, old, new| {
+                if track {
+                    regions::Edits::push(&mut edits.positions, i);
+                }
+                observe(i, old, new);
+            },
+            &mut |i| {
+                if track {
+                    regions::Edits::push(&mut edits.mask, i);
+                }
+            },
         );
         let mut after_dabs = dabs.clone();
         if brush.kind == Kind::Snake {
@@ -138,11 +155,9 @@ impl Document {
             false,
         );
         self.stroke_deformed |= deformed || before_topology || after_topology;
-        if deformed
-            || before_topology
-            || after_topology
-            || old_mask.is_some_and(|mask| mask != self.geometry.mesh.mask)
-        {
+        let mask_changed = !edits.mask.is_empty()
+            || old_mask.is_some_and(|before| before != self.geometry.mesh.mask);
+        if deformed || before_topology || after_topology || mask_changed {
             if let Some(before) = self.stroke_before.take() {
                 let captured = self.stroke_edit_settings(brush, dab);
                 self.history.record_owned(
@@ -163,7 +178,11 @@ impl Document {
                 );
             }
             self.dirty = true;
-            self.display_changed();
+            if track && !after_topology {
+                self.display_changed_in(edits);
+            } else {
+                self.display_changed();
+            }
         }
         deformed || before_topology || after_topology
     }
