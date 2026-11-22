@@ -493,6 +493,8 @@ fn benchmark_capacity(
 
 #[test]
 fn capacity_large_fixture_requires_explicit_valid_budgets() {
+    let defaults = crate::sculpt::capacity::MeshCapacity::default();
+    assert!(benchmark_capacity(4, defaults.vertices, defaults.triangles).is_ok());
     assert!(benchmark_capacity(3, 500_000, 1_000_000).is_ok());
     assert!(benchmark_capacity(4, 500_000, 1_000_000).is_err());
     assert!(benchmark_capacity(4, 1_204_226, 2_408_448).is_ok());

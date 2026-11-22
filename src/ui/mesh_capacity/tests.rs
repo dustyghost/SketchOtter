@@ -103,7 +103,7 @@ fn mesh_capacity_settings_open_edit_and_reset_without_changing_active_limits() {
     h.frame(vec![]);
     h.click("Mesh capacity…");
     assert!(h.state.mesh_capacity_open);
-    h.click("500000");
+    h.click(&MeshCapacity::DEFAULT.vertices.to_string());
     let key = |key, modifiers| Event::Key {
         key,
         physical_key: None,
@@ -120,6 +120,14 @@ fn mesh_capacity_settings_open_edit_and_reset_without_changing_active_limits() {
     assert_eq!(h.state.preferences.mesh_capacity.vertices, 2_000_000);
     h.point("Restart required to apply these limits.");
     assert_eq!(capacity::current(), MeshCapacity::DEFAULT);
+    h.click("Reset mesh limits");
+    assert_eq!(h.state.preferences.mesh_capacity, MeshCapacity::DEFAULT);
+    h.state.preferences.mesh_capacity = MeshCapacity::MIN;
+    h.frame(vec![]);
+    h.frame(vec![]);
+    assert_eq!(h.state.preferences.mesh_capacity, MeshCapacity::MIN);
+    h.point("500000");
+    h.point("1000000");
     h.click("Reset mesh limits");
     assert_eq!(h.state.preferences.mesh_capacity, MeshCapacity::DEFAULT);
 }

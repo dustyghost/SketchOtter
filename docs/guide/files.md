@@ -87,7 +87,7 @@ Positive/negative indices, UV/normal index forms, comments, line continuations, 
 
 ### Import limits
 
-Maximum **128 MB**, **64 groups**, and **64 scene submodels**. Vertex and triangle counts use the active [Mesh capacity settings](workspace.md#change-mesh-capacity), defaulting to **500,000 vertices** and **1,000,000 triangles** after triangulation. Save higher limits and restart before importing a larger mesh. Errors and cancellation leave the original scene intact.
+Maximum **128 MB**, **64 groups**, and **64 scene submodels**. Vertex and triangle counts use the active [Mesh capacity settings](workspace.md#change-mesh-capacity), defaulting to **1,500,000 vertices** and **3,000,000 triangles** after triangulation. Save higher limits and restart before importing a larger mesh. Errors and cancellation leave the original scene intact.
 
 ## Export an OBJ
 

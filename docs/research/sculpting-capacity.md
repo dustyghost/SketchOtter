@@ -4,7 +4,7 @@
 
 ## What fits
 
-These limits apply to the source tree at `e122065`. Vertices, authored polygons, triangulated faces and bytes answer different questions.
+The table records the limits at `e122065`. On 22 November 2026 the application defaults increased to **1,500,000 vertices / 3,000,000 triangles**, permitting the measured four-subdivision sphere (1,204,226 vertices / 2,408,448 triangles). Existing saved budgets remain unchanged; Reset mesh limits adopts the new defaults after restart. The lower settings and upper bounds remain available. This is a geometry budget, not a guarantee of available memory or interactive performance. Vertices, authored polygons, triangulated faces and bytes answer different questions.
 
 | Resource | Limit and consequence |
 | --- | --- |
@@ -49,7 +49,7 @@ Measured on 21 November 2026 with an AC-powered i7-7500U, 7.63 GiB RAM, Linux 7.
 
 At 602,112 triangles the three patches retained 384 KiB, versus 10.34 MiB for three full position arrays. The application's estimated retained history for these three complete edits was 201.9 MiB. The prototype's median position-only replay cost was 0.016 ms for Undo and 0.018 ms for Redo. Document stroke start includes cloning the geometry. Capturing positions and diffing them on release are two separate costs. That start cost motivated a second experiment capturing positions as the brush writes them.
 
-The release example stops at three subdivisions under the default mesh budget. A fourth would need 1,204,226 active vertices, and the archived 3,072 MiB RSS budget plus 768 MiB reserve exceeded the memory available for this session. Larger, topology-changing, painted and textured history cases are unmeasured by this experiment.
+The recorded release example stopped at three subdivisions under the default mesh budget at that time. A fourth would need 1,204,226 active vertices, and the archived 3,072 MiB RSS budget plus 768 MiB reserve exceeded the memory available for this session. Larger, topology-changing, painted and textured history cases are unmeasured by this experiment.
 
 A full position before-image still exists during capture and finding changes still scans every vertex on release. The patch handles positions only. Its retained allocation excludes the vector header, allocator overhead, edit settings and all other channels. The application history estimate covers the whole document and settings. Process RSS includes both histories, fixture construction and a reference mesh. These quantities must be budgeted separately.
 
@@ -121,7 +121,7 @@ For further interactive gains on the textured asset, prioritise the two-model di
 
 ## Reproduce the position experiment
 
-Build once from the repository root. On Linux, run one fresh process per level and repeat the loop three times. The example uses the default application capacity. The Linux preflight below requires 1,280 MiB available before each case, allowing a 512 MiB margin above the child’s 768 MiB address-space ceiling. The recorded run also stopped on a fall below 512 MiB available.
+Build once from the repository root. On Linux, run one fresh process per level and repeat the loop three times. The example uses the current default application capacity; the recorded runs used the earlier defaults. The Linux preflight below requires 1,280 MiB available before each case, allowing a 512 MiB margin above the child’s 768 MiB address-space ceiling. The recorded run also stopped on a fall below 512 MiB available.
 
 ```sh
 cargo test --locked --release -j 1 --example stroke_history_profile
