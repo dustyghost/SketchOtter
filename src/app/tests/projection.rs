@@ -453,13 +453,13 @@ fn integer_grid_retopology_preview_apply_history_and_persistence() {
     assert_eq!(app.ui.projection.layout.method, Method::SurfaceField);
     app.ui.projection.layout.method = Method::IntegerGrid;
     app.ui.projection.layout.target = 80;
-    app.ui.projection.layout.symmetry_axis = None;
+    app.ui.projection.layout.symmetry_axis = Some(crate::sculpt::Axis::X);
     app.ui.projection.layout.preserve_sharp = true;
     app.dispatch(Command::PreviewProjection, &ctx);
     assert!(!app.ui.projection.busy && app.projection.draft.is_none());
     assert!(app.document.project() == before && !app.document.is_dirty());
     assert_eq!(app.document.history_counts(), history);
-    app.ui.projection.layout.preserve_sharp = false;
+    app.ui.projection.layout.symmetry_axis = None;
     app.dispatch(Command::PreviewProjection, &ctx);
     app.dispatch(Command::CancelProjection, &ctx);
     app.poll_projection();
