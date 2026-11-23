@@ -32,6 +32,8 @@ version = tomllib.loads(Path(sys.argv[1]).read_text())['package']['version']
 prefs = Path(sys.argv[2])
 prefs.parent.mkdir(parents=True, exist_ok=True)
 prefs.write_text(json.dumps({'dismissed_startup_version': version}))
+# Older release binaries share this isolated profile through the legacy name.
+prefs.parent.with_name('clay-form').symlink_to(prefs.parent.name, target_is_directory=True)
 PYCONF
 unset WAYLAND_DISPLAY
 openbox >"$output/window-manager.log" 2>&1 &
