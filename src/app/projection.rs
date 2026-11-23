@@ -204,19 +204,8 @@ impl App {
         state.open = true;
         // Start large sculpts at a bounded, reviewable budget. The explicit
         // control still permits up to 50,000 quads.
-        let symmetry = self.document.symmetry();
-        let mut enabled_axes = crate::sculpt::Axis::ALL
-            .into_iter()
-            .zip(symmetry.mirror)
-            .filter_map(|(axis, enabled)| enabled.then_some(axis));
-        state.layout.symmetry_axis = enabled_axes
-            .next()
-            .filter(|_| symmetry.enabled && enabled_axes.next().is_none());
-        state.layout.symmetry_center = symmetry.center;
-        state.layout.symmetry_source = crate::sculpt::retopology::SymmetrySource::Original;
-        if state.layout.method == crate::sculpt::retopology::Method::IntegerGrid {
-            state.layout.symmetry_axis = None;
-        }
+        state.layout.method = crate::sculpt::retopology::Method::IntegerGrid;
+        state.layout.symmetry_axis = None;
         state.layout.target = (self.document.mesh().triangles.len() / 10).clamp(4, 10_000);
         state.flow_paths.retain(|&id| {
             self.document.path(id).is_some_and(|p| {

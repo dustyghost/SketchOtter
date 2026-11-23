@@ -104,9 +104,10 @@ mod tests {
         app.ui.projection.layout.target = 3583;
         app.ui.projection.flow_paths = vec![2, 1];
         app.ui.projection.layout.preserve_sharp = true;
+        app.ui.projection.layout.symmetry_axis = Some(crate::sculpt::Axis::X);
         let history = app.document.history_counts();
         app.dispatch(Command::PreviewProjection, &ctx);
-        assert!(app.ui.status.contains("Protect sharp bends"));
+        assert!(app.ui.status.contains("Layout symmetry"));
         assert!(app.projection.draft.is_none());
         assert_eq!(app.document.history_counts(), history);
         app.ui.projection.flow_paths = vec![1];

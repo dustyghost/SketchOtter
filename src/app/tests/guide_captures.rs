@@ -78,6 +78,9 @@ fn native_retopology_whole_sculpt_offscreen_review() {
     g.app.ui.projection.layout.symmetry_centreline = centreline;
     g.app.ui.projection.layout.symmetry_axis = None;
     if let Some(side) = symmetry.as_deref() {
+        // Retain the historical symmetry comparison tool, outside the product UI.
+        g.app.ui.projection.layout.method = crate::sculpt::retopology::Method::SurfaceField;
+        g.app.ui.projection.layout.preserve_sharp = false;
         g.app.ui.projection.layout.symmetry_axis = Some(crate::sculpt::Axis::X);
         g.app.ui.projection.layout.symmetry_source = match side {
             "original" => crate::sculpt::retopology::SymmetrySource::Original,
@@ -282,24 +285,18 @@ fn native_retopology_controls_offscreen_review() {
     );
     g.save("native-preview");
     let painted = g.app.document.project();
-    click_guide_label(&mut g, "Integer grid (experimental)");
     assert_eq!(
         g.app.ui.projection.layout.method,
         crate::sculpt::retopology::Method::IntegerGrid
     );
-    assert!(g.app.projection.draft.is_none());
-    assert!(g.app.ui.projection.report.is_none());
-    assert!(g.app.document.project() == painted);
     assert!(g.app.ui.projection.layout.preserve_sharp);
     assert_eq!(g.app.ui.projection.layout.symmetry_axis, None);
     g.save("integer-grid-controls");
     click_guide_label(&mut g, "Protect sharp bends");
     assert!(!g.app.ui.projection.layout.preserve_sharp);
-    click_guide_label(&mut g, "Surface field");
-    assert_eq!(
-        g.app.ui.projection.layout.method,
-        crate::sculpt::retopology::Method::SurfaceField
-    );
+    assert!(g.app.projection.draft.is_none());
+    assert!(g.app.ui.projection.report.is_none());
+    assert!(g.app.document.project() == painted);
     click_guide_label(&mut g, "Preview layout");
     super::projection::finish_projection(&mut g.app);
     assert!(g.app.projection.draft.is_some(), "{}", g.app.ui.status);

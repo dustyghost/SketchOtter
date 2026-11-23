@@ -1,8 +1,10 @@
 # Experimental integer-grid parameterization
 
-Experimental alternative for [#191](https://github.com/dustyghost/clay-form/issues/191).
-The existing Surface field method remains the default. This is a separate native
-Rust parameterization path, not another name for its lattice repair.
+Native Integer grid reconstruction for [#191](https://github.com/dustyghost/clay-form/issues/191).
+At the user's request, Integer grid is now the default and sole method offered
+by Guided retopology. Surface field is retired from the app; its core remains
+available for offline reference comparisons and regression coverage. Historical
+measurements below describe the earlier alternative-method stage of this PR.
 
 ## Research and implementation boundary
 
@@ -67,13 +69,13 @@ comparison of numerical methods, not algorithm parity for this parameterization.
 
 ## Current limits
 
-The alternative handles closed surfaces. The app clears and disables Layout
-symmetry for this method; programmatic symmetry requests are explicitly rejected.
+The method handles closed surfaces. The app omits Layout symmetry controls;
+programmatic symmetry requests are explicitly rejected.
 Protect sharp bends detects source creases and constrains their quad-edge flow,
-as described below. Selecting Integer grid enables it; the checkbox and angle
+as described below. It starts enabled; the checkbox and angle
 remain editable, and reopening preserves that choice. Signed density and direction guides use
 the shared sizing/field inputs. Nonuniform masks and materials use the existing
-attribute transfer. No fallback to Surface field is hidden behind the selector.
+attribute transfer. There is no fallback to the retired Surface field method.
 The same private preview, explicit Apply and source-preserving attribute transfer
 are used by the desktop adapter.
 
@@ -420,10 +422,10 @@ measurements and review artifacts are retained under
 
 ## Automatic sharp-feature flow, 23 November 2026
 
-Protect sharp bends now works with Integer grid. Selecting the method enables
-it at the existing angle (45 degrees by default); the user can change the angle
+Protect sharp bends now works with Integer grid. It starts enabled at 45 degrees;
+the user can change the angle
 or turn protection off. Reopening retains that choice. Layout symmetry remains
-disabled. This follows MIQ §5.2: constrain directions on both sides of each
+unavailable. This follows MIQ §5.2: constrain directions on both sides of each
 feature and require a constant integer coordinate perpendicular to that edge.
 It does not insert subdivision support loops or turn every selected path into
 a hard feature.
@@ -498,8 +500,24 @@ eight corners, including a narrow first face beside a crease; two closed curved
 rims; sliver rejection without a spurious feature route; density interpolation;
 bounded preparation/cancellation; and exact seam canonicalization that preserves
 unrelated fractions. Desktop real-click coverage now checks the enabled sharp
-control, remembered on/off choices, disabled symmetry and unchanged history.
+control, remembered on/off choices, absent symmetry controls and unchanged history.
 Broad app, native, GPU, formatting and lint checks remain in PR CI.
+
+## Default method and retired controls
+
+Guided retopology opens directly with Integer grid and sharp protection enabled
+on a fresh session. Reopening preserves the user's sharp on/off choice. The
+method selector, obsolete layout-symmetry controls and symmetry search entry
+are removed. Sculpt mirror settings do not implicitly enable unsupported layout
+symmetry. Failure messages no longer recommend the retired method. Saved result
+geometry, history and diagnostic backend identifiers are unchanged.
+
+The input-limit Apply regression now uses a closed sphere, and a separate open
+surface regression requires rejection with unchanged document/history. Existing
+attribute, guide, density, cancellation, preview, Apply and persistence tests
+exercise the new default. Real-click coverage checks the retired controls are
+absent and that sharp choices survive reopening. The manual legacy symmetry
+comparison remains explicitly selected only in its test tool.
 
 ## Focused coverage
 
@@ -515,9 +533,9 @@ preview, source/attribute preservation, Apply as one history edit, Undo/Redo,
 save/reopen and stale Apply rejection. The app library compile check passed;
 the desktop regression and broad suites run in CI to avoid the known monolithic
 test compilation memory cost on this laptop.
-The existing interactive GPU regression clicks both method controls and verifies
-that changing the method discards an existing private preview without editing the
-document, then previews and applies again.
+The interactive GPU regression changes sharp protection and verifies that it
+discards an existing private preview without editing the document, then previews
+and applies again using the default method.
 
 All builds/runs use the shared build lock and one compiler job. The comparison
 executable is built separately; the user's release application and saved sources

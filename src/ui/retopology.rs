@@ -1,6 +1,6 @@
 //! Session-only controls for the guided layout preview.
 use super::{projection::ProjectionControls, *};
-use crate::sculpt::{Axis, paths::PathMode, retopology::SymmetrySource};
+use crate::sculpt::paths::PathMode;
 
 fn setting_label(ui: &mut egui::Ui, glyph: Glyph, label: &str) {
     ui.horizontal(|ui| {
@@ -14,30 +14,6 @@ fn setting_label(ui: &mut egui::Ui, glyph: Glyph, label: &str) {
 
 impl ProjectionControls {
     fn layout_options(&mut self, ui: &mut egui::Ui, document: &Document, camera: &Camera) {
-        use crate::sculpt::retopology::Method;
-        ui.label("Layout method");
-        ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(
-                &mut self.layout.method,
-                Method::SurfaceField,
-                "Surface field",
-            );
-            if ui
-                .selectable_value(
-                    &mut self.layout.method,
-                    Method::IntegerGrid,
-                    "Integer grid (experimental)",
-                )
-                .changed()
-            {
-                self.layout.preserve_sharp = true;
-            }
-        });
-        let integer_grid = self.layout.method == Method::IntegerGrid;
-        if integer_grid {
-            self.layout.symmetry_axis = None;
-            ui.weak("A different quad layout for closed surfaces. Layout symmetry is not yet supported.");
-        }
         ui.horizontal(|ui| {
             setting_label(ui, Glyph::Mesh, "Target quads");
             let range = 4..=50_000;
@@ -62,7 +38,7 @@ impl ProjectionControls {
                 "Protect sharp bends",
             );
         });
-        if integer_grid && self.layout.preserve_sharp {
+        if self.layout.preserve_sharp {
             ui.weak("Detects creases at this angle and makes quad edges follow their connected curves. Sharp corners stay fixed. Does not add subdivision support loops.");
         }
         ui.horizontal(|ui| {
@@ -77,42 +53,6 @@ impl ProjectionControls {
             );
         });
 
-        ui.separator();
-        search::mark_destination(ui, "setting:Layout symmetry");
-        ui.add_enabled_ui(!integer_grid, |ui| {
-            setting_label(ui, Glyph::Symmetry, "Layout symmetry (experimental)");
-            ui.horizontal_wrapped(|ui| {
-                ui.selectable_value(&mut self.layout.symmetry_axis, None, "Off");
-                for (axis, label) in [(Axis::X, "X"), (Axis::Y, "Y"), (Axis::Z, "Z")] {
-                    ui.selectable_value(&mut self.layout.symmetry_axis, Some(axis), label);
-                }
-            });
-        });
-        if let Some(axis) = self.layout.symmetry_axis {
-            ui.label(format!(
-                "Mirror plane: {axis:?} = {:.3}",
-                self.layout.symmetry_center.dot(axis.vector())
-            ));
-            ui.horizontal_wrapped(|ui| {
-                ui.selectable_value(
-                    &mut self.layout.symmetry_source,
-                    SymmetrySource::Original,
-                    "Keep sculpt shape",
-                );
-                ui.selectable_value(
-                    &mut self.layout.symmetry_source,
-                    SymmetrySource::Positive,
-                    "Keep + and mirror",
-                );
-                ui.selectable_value(
-                    &mut self.layout.symmetry_source,
-                    SymmetrySource::Negative,
-                    "Keep − and mirror",
-                );
-            });
-            ui.checkbox(&mut self.layout.symmetry_centreline, "Add centreline");
-            ui.weak("Joins the two halves with quads at the sculpt symmetry plane. Keep sculpt shape requires a nearly symmetric surface. The original sculpt is kept when you apply.");
-        }
         ui.separator();
         setting_label(ui, Glyph::Path, "Edge direction");
         let paths: Vec<_> = document
@@ -158,12 +98,11 @@ impl ProjectionControls {
         }
         ui.weak("Select any number of paths. Guides steer nearby edges; closed paths do not guarantee complete edge loops.");
         ui.add_enabled_ui(!self.flow_paths.is_empty(), |ui| {
-            search::setting_response(ui.add(egui::Slider::new(&mut self.layout.flow, 0. ..=1.).text("Path strength")), "Retopology path strength");
-            if self.layout.symmetry_axis.is_some() {
-                ui.weak("Layout symmetry reflects guides. When mirroring the sculpt, guides on the retained side drive the layout.");
-            } else {
-                ui.checkbox(&mut self.layout.mirror_path_x, "Mirror paths across X = 0");
-            }
+            search::setting_response(
+                ui.add(egui::Slider::new(&mut self.layout.flow, 0. ..=1.).text("Path strength")),
+                "Retopology path strength",
+            );
+            ui.checkbox(&mut self.layout.mirror_path_x, "Mirror paths across X = 0");
         });
 
         ui.separator();
@@ -234,7 +173,7 @@ impl UiState {
             let source = document.model(document.active_model_index()).unwrap();
             ui.label(format!("Source · {}", source.name));
             ui.label(format!("{} source triangles", document.mesh().triangles.len()));
-            ui.weak("Experimental automatic quad reconstruction. Apply adds an editable model and keeps the source below it for detail projection.");
+            ui.weak("Experimental quad reconstruction for closed surfaces. Apply adds an editable model and keeps the source below it for detail projection.");
             let budget = state.layout.require_input_budget(document.mesh()).and_then(|()| state.layout.require_method_settings());
             if let Err(error) = &budget {
                 ui.label(error);
@@ -243,13 +182,6 @@ impl UiState {
                 ui.colored_label(ui.visuals().error_fg_color, error);
                 if error.contains("inverted grid cells within its repair budget") {
                     ui.weak("Try a different Target quads value or lower Density strength to reduce the influence of your paint. Then choose Preview layout again.");
-                }
-                if state.layout.symmetry_axis.is_some()
-                    && error.starts_with("The source differs across this plane.")
-                    && ui.button("Preview with symmetry off").clicked()
-                {
-                    state.layout.symmetry_axis = None;
-                    commands.push(Command::PreviewProjection);
                 }
             }
             if state.busy {

@@ -1,4 +1,4 @@
-//! Native surface-field reconstruction; attributes are sampled after validation.
+//! Native integer-grid reconstruction; attributes are sampled after validation.
 use super::{
     Axis, Mesh, Vec3,
     paths::{PathSample, SurfacePath},
@@ -15,8 +15,10 @@ pub(crate) struct Layout {
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Method {
-    #[default]
+    /// Retired from the app; retained for offline reference comparisons.
+    #[allow(dead_code)]
     SurfaceField,
+    #[default]
     IntegerGrid,
 }
 impl Method {
@@ -46,14 +48,14 @@ pub(crate) struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            method: Method::SurfaceField,
+            method: Method::IntegerGrid,
             input_triangle_limit: 200_000,
             target: 500,
             flow: 1.,
             density: 1.,
             adaptive: 0.,
             mirror_path_x: false,
-            preserve_sharp: false,
+            preserve_sharp: true,
             sharp_angle_degrees: 45.,
             symmetry_axis: None,
             symmetry_center: Vec3::default(),
@@ -65,9 +67,7 @@ impl Default for Options {
 impl Options {
     pub(crate) fn require_method_settings(&self) -> Result<(), String> {
         if self.method == Method::IntegerGrid && self.symmetry_axis.is_some() {
-            return Err(
-                "Integer grid (experimental) currently requires Layout symmetry Off".into(),
-            );
+            return Err("Layout symmetry is not supported by Guided retopology".into());
         }
         Ok(())
     }

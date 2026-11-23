@@ -49,13 +49,18 @@ pub fn reconstruct(
     });
     crate::check(cancel)?;
     result.map_err(|error| {
-        #[cfg(feature="audit")]
+        #[cfg(feature = "audit")]
         eprintln!("Integer-grid diagnostic: {error}");
-        if error.contains("relaxation did not converge") || error.contains("relaxation failed independent") {
-            "Integer grid could not find a valid layout with these settings. Try a different target or Surface field.".into()
+        if error.contains("relaxation did not converge")
+            || error.contains("relaxation failed independent")
+        {
+            "Retopology could not find a valid layout with these settings. Try a different target."
+                .into()
         } else if error.contains("exceeded its solve budget") {
-            "Integer grid reached its solve limit. Try a different target or Surface field.".into()
-        } else {error}
+            "Retopology reached its solve limit. Try a different target.".into()
+        } else {
+            error
+        }
     })
 }
 

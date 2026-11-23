@@ -66,8 +66,13 @@ fn click(app: &mut App, ctx: &egui::Context, position: Pos2) {
 }
 
 #[test]
-fn integer_grid_enables_sharp_features_and_disables_unsupported_symmetry() {
-    use crate::sculpt::{Axis, Symmetry, retopology::Method};
+fn guided_retopology_defaults_to_integer_grid_and_retires_old_controls() {
+    use crate::sculpt::{
+        Axis, Symmetry,
+        retopology::{Method, Options},
+    };
+    assert_eq!(Options::default().method, Method::IntegerGrid);
+    assert!(Options::default().preserve_sharp);
     let mut app = App::default();
     app.document
         .set_symmetry(Symmetry {
@@ -76,63 +81,43 @@ fn integer_grid_enables_sharp_features_and_disables_unsupported_symmetry() {
             ..Default::default()
         })
         .unwrap();
+    // An old in-memory choice must not reopen the retired product path.
+    app.ui.projection.layout.method = Method::SurfaceField;
+    app.ui.projection.layout.symmetry_axis = Some(Axis::Y);
     let ctx = egui::Context::default();
     ctx.style_mut(|style| style.animation_time = 0.);
     app.dispatch(Command::OpenRetopology, &ctx);
     let before = app.document.project();
     let history = app.document.history_counts();
-    let button = |app: &mut App, label: &str| {
-        let output = settle(app, &ctx);
-        click(app, &ctx, text_center(&output, label));
-        settle(app, &ctx);
-    };
-    let axis = |app: &mut App| {
-        let output = settle(app, &ctx);
-        let anchor = text_center(&output, "Layout symmetry (experimental)");
-        let position = output
-            .shapes
-            .iter()
-            .find_map(|shape| match &shape.shape {
-                egui::Shape::Text(text) if text.galley.text() == "Y" => {
-                    let center = text.pos + text.galley.size() * 0.5;
-                    (center.y > anchor.y && center.y < anchor.y + 60.).then_some(center)
-                }
-                _ => None,
-            })
-            .expect("Layout symmetry Y control is visible");
-        click(app, &ctx, position);
-        settle(app, &ctx);
-    };
-    button(&mut app, "Protect sharp bends");
-    axis(&mut app);
-    assert!(app.ui.projection.layout.preserve_sharp);
-    assert_eq!(app.ui.projection.layout.symmetry_axis, Some(Axis::Y));
-    button(&mut app, "Integer grid (experimental)");
+    let output = settle(&mut app, &ctx);
+    for label in [
+        "Surface field",
+        "Layout method",
+        "Layout symmetry (experimental)",
+    ] {
+        assert!(
+            !output
+                .shapes
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text()==label)),
+            "retired control {label}"
+        );
+    }
     assert_eq!(app.ui.projection.layout.method, Method::IntegerGrid);
     assert!(app.ui.projection.layout.preserve_sharp);
     assert_eq!(app.ui.projection.layout.symmetry_axis, None);
-    button(&mut app, "Protect sharp bends");
-    axis(&mut app);
-    assert!(!app.ui.projection.layout.preserve_sharp);
-    assert_eq!(app.ui.projection.layout.symmetry_axis, None);
-    app.ui.projection.layout.require_method_settings().unwrap();
-    button(&mut app, "Surface field");
-    assert!(!app.ui.projection.layout.preserve_sharp);
-    assert_eq!(app.ui.projection.layout.symmetry_axis, None);
-    button(&mut app, "Protect sharp bends");
-    axis(&mut app);
-    assert!(app.ui.projection.layout.preserve_sharp);
-    assert_eq!(app.ui.projection.layout.symmetry_axis, Some(Axis::Y));
-    button(&mut app, "Integer grid (experimental)");
-    app.dispatch(Command::CancelProjection, &ctx);
-    app.dispatch(Command::OpenRetopology, &ctx);
-    assert_eq!(app.ui.projection.layout.method, Method::IntegerGrid);
-    assert!(app.ui.projection.layout.preserve_sharp);
-    assert_eq!(app.ui.projection.layout.symmetry_axis, None);
-    button(&mut app, "Protect sharp bends");
-    app.dispatch(Command::CancelProjection, &ctx);
-    app.dispatch(Command::OpenRetopology, &ctx);
-    assert!(!app.ui.projection.layout.preserve_sharp);
+    for expected in [false, true] {
+        let output = settle(&mut app, &ctx);
+        click(&mut app, &ctx, text_center(&output, "Protect sharp bends"));
+        settle(&mut app, &ctx);
+        assert_eq!(app.ui.projection.layout.preserve_sharp, expected);
+        app.dispatch(Command::CancelProjection, &ctx);
+        app.dispatch(Command::OpenRetopology, &ctx);
+        assert_eq!(app.ui.projection.layout.method, Method::IntegerGrid);
+        assert_eq!(app.ui.projection.layout.preserve_sharp, expected);
+        assert_eq!(app.ui.projection.layout.symmetry_axis, None);
+        app.ui.projection.layout.require_method_settings().unwrap();
+    }
     assert!(app.document.project() == before);
     assert_eq!(app.document.history_counts(), history);
 }

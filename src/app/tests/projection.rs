@@ -450,8 +450,8 @@ fn integer_grid_retopology_preview_apply_history_and_persistence() {
     let history = app.document.history_counts();
     let ctx = egui::Context::default();
     app.dispatch(Command::OpenRetopology, &ctx);
-    assert_eq!(app.ui.projection.layout.method, Method::SurfaceField);
-    app.ui.projection.layout.method = Method::IntegerGrid;
+    assert_eq!(app.ui.projection.layout.method, Method::IntegerGrid);
+    assert!(app.ui.projection.layout.preserve_sharp);
     app.ui.projection.layout.target = 80;
     app.ui.projection.layout.symmetry_axis = Some(crate::sculpt::Axis::X);
     app.ui.projection.layout.preserve_sharp = true;
@@ -532,8 +532,8 @@ fn integer_grid_retopology_preview_apply_history_and_persistence() {
 #[test]
 fn guided_retopology_input_limit_allows_larger_preview_and_apply() {
     use crate::sculpt::{Primitive, PrimitiveKind};
-    let mut primitive = Primitive::for_kind(PrimitiveKind::Plane);
-    primitive.divisions = [16, 16, 1];
+    let mut primitive = Primitive::for_kind(PrimitiveKind::Icosphere);
+    primitive.subdivisions = 2;
     let mesh = primitive.mesh().unwrap();
     let triangles = mesh.triangles.len();
     let mut app = App::default();
@@ -560,7 +560,7 @@ fn guided_retopology_input_limit_allows_larger_preview_and_apply() {
     assert_eq!(app.document.history_counts(), history);
 
     app.ui.projection.layout.input_triangle_limit = triangles;
-    app.ui.projection.layout.target = 64;
+    app.ui.projection.layout.target = 80;
     app.dispatch(Command::PreviewProjection, &ctx);
     finish_projection(&mut app);
     let draft = app
@@ -585,6 +585,25 @@ fn guided_retopology_input_limit_allows_larger_preview_and_apply() {
     assert!(app.document.project() == before);
     app.dispatch(Command::OpenRetopology, &ctx);
     assert_eq!(app.ui.projection.layout.input_triangle_limit, triangles);
+}
+
+#[test]
+fn guided_retopology_rejects_open_surfaces_without_changing_the_document() {
+    use crate::sculpt::{Primitive, PrimitiveKind};
+    let mesh = Primitive::for_kind(PrimitiveKind::Plane).mesh().unwrap();
+    let mut app = App::default();
+    app.document.replace_geometry(Geometry::new(mesh)).unwrap();
+    app.document.mark_saved("open-retopology-source.clay");
+    let before = app.document.project();
+    let history = app.document.history_counts();
+    let ctx = egui::Context::default();
+    app.dispatch(Command::OpenRetopology, &ctx);
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish_projection(&mut app);
+    assert!(app.projection.draft.is_none());
+    assert!(app.ui.status.contains("closed"), "{}", app.ui.status);
+    assert!(app.document.project() == before && !app.document.is_dirty());
+    assert_eq!(app.document.history_counts(), history);
 }
 
 #[test]
@@ -621,8 +640,8 @@ fn guided_retopology_rejects_failed_and_stale_previews_without_adding_models() {
 }
 
 #[test]
-fn guided_retopology_inherits_a_single_active_mirror_plane() {
-    use crate::sculpt::{Axis, Mesh, Symmetry, Vec3, retopology::SymmetrySource};
+fn guided_retopology_does_not_inherit_unsupported_layout_symmetry() {
+    use crate::sculpt::{Mesh, Symmetry, Vec3, retopology::Method};
     let mut app = App::default();
     app.document
         .replace_geometry(Geometry::new(Mesh::starting_sphere()))
@@ -638,12 +657,9 @@ fn guided_retopology_inherits_a_single_active_mirror_plane() {
         })
         .unwrap();
     app.dispatch(Command::OpenRetopology, &ctx);
-    assert_eq!(app.ui.projection.layout.symmetry_axis, Some(Axis::Z));
-    assert_eq!(app.ui.projection.layout.symmetry_center, center);
-    assert_eq!(
-        app.ui.projection.layout.symmetry_source,
-        SymmetrySource::Original
-    );
+    assert_eq!(app.ui.projection.layout.symmetry_axis, None);
+    assert_eq!(app.ui.projection.layout.method, Method::IntegerGrid);
+    assert_eq!(app.document.symmetry().center, center);
     app.dispatch(Command::CancelProjection, &ctx);
     let mut symmetry = app.document.symmetry().clone();
     symmetry.mirror[0] = true;

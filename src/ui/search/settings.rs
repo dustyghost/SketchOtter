@@ -903,12 +903,6 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
         "Find input triangle limit in Guided retopology. Open its preview editor from Mesh management to adjust the setting.",
     ),
     (
-        "Layout symmetry",
-        "experimental Add centreline Keep sculpt shape Keep + and mirror",
-        Destination::Panel(Tool::Mesh),
-        "Find layout symmetry in Guided retopology. Open its preview editor from Mesh management to adjust the setting.",
-    ),
-    (
         "Retopology path strength",
         "Path strength Edge direction Mirror paths across X",
         Destination::Panel(Tool::Mesh),
@@ -1008,7 +1002,6 @@ pub(super) fn setting_section(name: &str) -> Option<&'static str> {
         "Target quads" => Some("retopology_options"),
         "Protect sharp bends" => Some("retopology_options"),
         "Input triangle limit" => Some("retopology_options"),
-        "Layout symmetry" => Some("retopology_options"),
         "Retopology path strength" => Some("retopology_options"),
         "Shape adaptation" => Some("retopology_options"),
         "Density strength" => Some("retopology_options"),
