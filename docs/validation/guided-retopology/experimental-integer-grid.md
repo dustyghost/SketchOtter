@@ -162,6 +162,67 @@ by symbolic work counting before dense factor allocation. Nonpositive/nonfinite
 factors and cancellation are also checked. Audit logs now separate elimination,
 assembly, solve iterations and factor fill/work.
 
+## Saved path failures, 23 November 2026
+
+The local `retopo-with-paths` export contains the same source mesh plus two
+closed surface rings. The current stage SHA-256 is
+`dbf5e16a31474fb93f5ee5db3e4d35c41d850a03124fa6767f92c9db4e845d17`.
+The app's actual surface-path sampler produces 51 and 53 guide samples, radius
+0.0941548, strength 1. The user confirmed target 3,583 and otherwise unchanged
+defaults. The original export stores path geometry but omits selected guide IDs
+and current retopology controls; diagnostics now retain both current controls and
+the latest attempted settings, including failed attempts without a history edit.
+
+Two separate defects were isolated with the unchanged mesh and sampled guides:
+
+- With both rings, a single-CPU run reproduced the reported generic layout error
+  in 23.464 seconds. Clarabel stopped a relaxation with `AlmostSolved`; its primal
+  and dual residuals were 2.32e-14 and 1.13e-13. The previous status check rejected
+  the candidate without examining whether the existing warm update could finish
+  it. Such a candidate now first passes the unchanged independent feasibility
+  checks, then must converge through the bounded linear update and pass those
+  checks again. It is never returned directly. Infeasible/numerical-error states
+  remain failures, and an actual `MaxTime` reports the solve limit. The overall
+  deadline, per-relaxation time limit and geometry acceptance gates are unchanged.
+  This uses Clarabel's documented
+  [reduced-accuracy solution status](https://github.com/oxfordcontrol/Clarabel.rs/blob/v0.11.1/src/solver/core/solver.rs)
+  only as a starting point, not as proof of a valid map.
+- Each ring alone reached a positive integral map, then failed with an incomplete
+  cell. A dropped corner fragment had area about 1.4e-11; the remaining fragments
+  covered 0.9999999999859 of the cell. The old 1e-10 area cutoff discarded the only
+  owner of that corner. Clipping now measures a cell-local triangle fan and
+  retains every positive fragment. Adjacency, corner agreement, singularity,
+  manifold and surface-fit checks still apply. A five-vertex planar regression
+  produces four complete unit quads, including after translating its chart.
+
+| Guide selection | Previous result | Revised result | Revised solve time |
+| --- | --- | --- | ---: |
+| First ring only | Incomplete cell, 16.573 s | 3,447 validated quads | 15.696 s |
+| Second ring only | Incomplete cell, 32.682 s | 3,433 validated quads | 30.345 s |
+| Both rings | Load-dependent status rejection above; successful comparison without CPU affinity at 41.375 s | 3,404 validated quads | 36.433 s, one CPU |
+| Both rings, forced near-converged stop | Original status gate rejects `AlmostSolved` | 3,419 validated quads after polishing | 43.360 s, one CPU |
+
+The last row uses the audit-only `CLAY_MIQ_RELAXATION_ITERATIONS=11` reduction,
+which reproduces the same status and residuals without depending on CPU load.
+It does not raise any limit. This exercised actual polishing, integer rounding,
+extraction and final immutable-source checks on the saved case. Peak process RSS
+was 223,868 KiB, with maximum sampled source error 0.03495676. Polishing can take
+a different valid greedy rounding route; it does not promise identical quads to
+a fully converged relaxation. The focused numerical regression additionally
+requires the analytical optimum after polishing and rejects violated seams,
+bounds, fixed integers, nonfinite values, malformed vectors and cancellation.
+
+The successful two-ring output is byte-identical before/after the clipping change
+(`97589bfd6bd92cad001a733c24ac78a9c58aff8e127adba0de4b23a4e8b1546d`).
+Maximum sampled source errors are 0.03113493, 0.02818252 and 0.03380500,
+respectively. The corresponding edge-ratio p95 values are 1.37033, 1.43244 and
+1.38734; maxima are 4.13147, 3.77838 and 4.26157. These are measurements of this
+input, not a guarantee of regular loops or uniform quad quality. Private input,
+sample arrays, build/run logs, output hashes and review artifacts are retained
+under `target/retopo-paths-review/` rather than included in source control.
+The unguided control still produces the identical 3,411-quad OBJ hash reported
+above, completing in 15.049 seconds in this run.
+
 ## Focused coverage
 
 Focused checks cover constrained quadratic minimization, closed-sphere mapping,

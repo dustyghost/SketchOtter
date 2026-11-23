@@ -88,8 +88,10 @@ impl Problem {
         }
     }
 
-    pub fn solve(&self, fixed: &BTreeMap<usize, f64>, budget: &mut Budget) -> Result<Vec<f64>> {
+    pub fn solve(&mut self, fixed: &BTreeMap<usize, f64>, budget: &mut Budget) -> Result<Vec<f64>> {
         budget.check()?;
+        #[cfg(feature = "audit")]
+        let started = Instant::now();
         budget.solves += 1;
         if self.variables > 100_000
             || self.energy.len() + self.equalities.len() + self.inequalities.len() > 500_000
@@ -138,9 +140,21 @@ impl Problem {
             ZeroConeT(equalities),
             NonnegativeConeT(self.inequalities.len()),
         ];
+        let max_iter = 100;
+        // Audit-only reduction makes near-converged stops replayable without
+        // relying on machine load. It cannot raise the production work limit.
+        #[cfg(feature = "audit")]
+        let max_iter = match std::env::var("CLAY_MIQ_RELAXATION_ITERATIONS") {
+            Ok(value) => value
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (1..=max_iter).contains(n))
+                .ok_or("Audit relaxation iterations must be between 1 and 100")?,
+            Err(_) => max_iter,
+        };
         let settings = DefaultSettings {
             verbose: false,
-            max_iter: 100,
+            max_iter,
             time_limit: (60. - budget.start.elapsed().as_secs_f64()).min(10.),
             tol_feas: 1e-9,
             tol_gap_abs: 1e-9,
@@ -153,28 +167,66 @@ impl Problem {
         let cancel = budget.cancel.clone();
         solver.set_termination_callback(move |_: &DefaultInfo<f64>| cancel.load(Ordering::Relaxed));
         solver.solve();
+        #[cfg(feature = "audit")]
+        eprintln!(
+            "MIQ relaxation {:.3}s; {} fixed, {} orientation bounds; {:?}, {} iterations, primal residual {:.3e}, dual residual {:.3e}",
+            started.elapsed().as_secs_f64(),
+            fixed.len(),
+            self.inequalities.len(),
+            solver.solution.status,
+            solver.solution.iterations,
+            solver.solution.r_prim,
+            solver.solution.r_dual
+        );
         budget.check()?;
-        if solver.solution.status != SolverStatus::Solved {
+        self.finish_relaxation(solver.solution.status, solver.solution.x, fixed, budget)
+    }
+
+    fn finish_relaxation(
+        &mut self,
+        status: SolverStatus,
+        mut x: Vec<f64>,
+        fixed: &BTreeMap<usize, f64>,
+        budget: &mut Budget,
+    ) -> Result<Vec<f64>> {
+        budget.check()?;
+        if status == SolverStatus::MaxTime {
+            return Err("Experimental integer-grid mapping exceeded its solve budget".into());
+        }
+        if !matches!(status, SolverStatus::Solved | SolverStatus::AlmostSolved) {
             return Err(format!(
-                "Integer-grid relaxation did not converge: {:?}",
-                solver.solution.status
+                "Integer-grid relaxation did not converge: {status:?}"
             ));
         }
-        let x = solver.solution.x;
-        if x.iter().any(|x| !x.is_finite())
+        self.validate_solution(&x, fixed)?;
+        if status == SolverStatus::AlmostSolved {
+            // A per-relaxation time/iteration stop can leave an accurate,
+            // feasible candidate. Treat it only as a warm start: the existing
+            // bounded linear update must converge and all original residual
+            // limits must still pass. Never publish an approximate QP result.
+            x = self.update(fixed, &x, budget)?;
+            self.validate_solution(&x, fixed)?;
+        }
+        budget.check()?;
+        Ok(x)
+    }
+
+    fn validate_solution(&self, x: &[f64], fixed: &BTreeMap<usize, f64>) -> Result<()> {
+        if x.len() != self.variables
+            || x.iter().any(|x| !x.is_finite())
             || self
                 .equalities
                 .iter()
-                .any(|(row, target)| (evaluate(row, &x) - target).abs() > 1e-6)
+                .any(|(row, target)| (evaluate(row, x) - target).abs() > 1e-6)
             || self
                 .inequalities
                 .iter()
-                .any(|(row, target)| evaluate(row, &x) < target - 1e-7)
+                .any(|(row, target)| evaluate(row, x) < target - 1e-7)
             || fixed.iter().any(|(&i, &v)| (x[i] - v).abs() > 1e-6)
         {
             return Err("Integer-grid relaxation failed independent residual validation".into());
         }
-        Ok(x)
+        Ok(())
     }
 
     /// MIQ's warm iterative update after rounding. Eliminate seam and fixed
@@ -657,6 +709,60 @@ pub(super) fn evaluate(row: &Row, x: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn almost_solved_candidate_requires_polishing_and_unchanged_residual_limits() {
+        let mut p = Problem::new(3);
+        p.energy = vec![
+            (vec![(0, 1.)], 0.2),
+            (vec![(1, 1.)], 0.7),
+            (vec![(2, 1.)], 2.),
+        ];
+        p.equalities.push((vec![(0, 1.), (1, -1.)], 0.));
+        p.inequalities.push((vec![(0, 1.)], 0.4));
+        let fixed = BTreeMap::from([(2, 1.)]);
+        let mut budget = Budget::new(Arc::new(AtomicBool::new(false)));
+        // Feasible but not the minimizer: the coupled optimum is (0.45, 0.45, 1).
+        let x = p
+            .finish_relaxation(
+                SolverStatus::AlmostSolved,
+                vec![0.6, 0.6, 1.],
+                &fixed,
+                &mut budget,
+            )
+            .unwrap();
+        for (actual, expected) in x.iter().zip([0.45, 0.45, 1.]) {
+            assert!((actual - expected).abs() < 1e-8);
+        }
+        for invalid in [
+            vec![0.6, 0.7, 1.],
+            vec![0.3, 0.3, 1.],
+            vec![0.6, 0.6, 2.],
+            vec![f64::NAN, 0.6, 1.],
+            vec![0.6],
+        ] {
+            assert!(
+                p.finish_relaxation(SolverStatus::AlmostSolved, invalid, &fixed, &mut budget)
+                    .is_err()
+            );
+        }
+        for status in [
+            SolverStatus::PrimalInfeasible,
+            SolverStatus::MaxTime,
+            SolverStatus::NumericalError,
+        ] {
+            assert!(
+                p.finish_relaxation(status, x.clone(), &fixed, &mut budget)
+                    .is_err()
+            );
+        }
+        budget.cancel.store(true, Ordering::Relaxed);
+        assert_eq!(
+            p.finish_relaxation(SolverStatus::AlmostSolved, x, &fixed, &mut budget)
+                .unwrap_err(),
+            "Retopology cancelled"
+        );
+    }
 
     #[test]
     fn sparse_rounding_update_matches_constrained_oracle() {

@@ -22,6 +22,7 @@ pub(super) struct ProjectionState {
     pub draft: Option<ProjectionDraft>,
     pub reference: Option<(u64, Arc<Mesh>)>,
     pub density_display: Option<(u64, Arc<Mesh>)>,
+    pub last_retopology_settings: Option<serde_json::Value>,
 }
 impl App {
     pub(super) fn open_projection(&mut self) -> Result<(), String> {
@@ -228,6 +229,10 @@ impl App {
         Ok(())
     }
     fn start_retopology(&mut self) -> Result<(), String> {
+        let mut diagnostic_settings = self.retopology_diagnostic_settings();
+        diagnostic_settings["source_surface_signature"] =
+            crate::sculpt::paths::mesh_signature(self.document.mesh()).into();
+        self.projection.last_retopology_settings = Some(diagnostic_settings.clone());
         self.document.require_retopology_target()?;
         self.clear_projection_preview();
         self.viewport.cancel(&mut self.document);
@@ -270,7 +275,7 @@ impl App {
         let view = settings
             .view_input
             .get_or_insert_with(|| serde_json::json!({}));
-        view["guided_retopology"] = serde_json::json!({"backend":options.method.diagnostic_name(),"input_triangle_limit":options.input_triangle_limit,"target":options.target,"paths":self.ui.projection.flow_paths,"path_strength":options.flow,"density_strength":options.density,"shape_adaptation":options.adaptive,"mirror_path_x":options.mirror_path_x,"preserve_sharp":options.preserve_sharp,"sharp_angle_degrees":options.sharp_angle_degrees,"symmetry_axis":options.symmetry_axis,"symmetry_center":options.symmetry_center,"symmetry_centreline":options.symmetry_centreline,"symmetry_source":options.symmetry_source});
+        view["guided_retopology"] = diagnostic_settings;
         self.projection.worker = Some(Worker {
             job,
             progress: Some(progress),

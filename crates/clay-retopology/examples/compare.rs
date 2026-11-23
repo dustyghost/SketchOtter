@@ -5,12 +5,28 @@ use clay_retopology::{
 use std::{io::Write, time::Instant};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<_> = std::env::args().collect();
+    let mut args: Vec<_> = std::env::args().collect();
+    let mut guides = Vec::new();
+    if let Some(i) = args.iter().position(|s| s == "--guides") {
+        let path = args.get(i + 1).ok_or("missing guide JSON file")?;
+        let values: Vec<serde_json::Value> =
+            serde_json::from_reader(std::io::BufReader::new(std::fs::File::open(path)?))?;
+        for g in values {
+            guides.push(clay_retopology::Guide {
+                position: Vec3::from_array(serde_json::from_value(g["position"].clone())?),
+                normal: Vec3::from_array(serde_json::from_value(g["normal"].clone())?),
+                tangent: Vec3::from_array(serde_json::from_value(g["tangent"].clone())?),
+                radius: serde_json::from_value(g["radius"].clone())?,
+                strength: serde_json::from_value(g["strength"].clone())?,
+            });
+        }
+        args.drain(i..i + 2);
+    }
     if !(args.len() == 4
         || (args.len() == 5 && ["--regularize", "--integer-grid"].contains(&args[4].as_str())))
     {
         return Err(
-            "usage: compare source.clay output.obj target-quads [--regularize|--integer-grid]"
+            "usage: compare source.clay output.obj target-quads [--regularize|--integer-grid] [--guides samples.json]"
                 .into(),
         );
     }
@@ -29,6 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     drop(doc);
     let options = Options {
+        guides,
         target_quads: args[3].parse()?,
         preserve_sharp: false,
         max_vertices: 150_000,

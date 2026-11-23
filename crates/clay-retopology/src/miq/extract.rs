@@ -12,16 +12,15 @@ fn barycentric(p: DVec2, t: [DVec2; 3]) -> [f64; 3] {
 }
 
 fn clipped_area(t: [DVec2; 3], cell: DVec2) -> f64 {
-    let mut polygon = t.to_vec();
+    // Work in cell-local coordinates and sum a triangle fan. The global
+    // shoelace sum loses tiny corner fragments through cancellation when a
+    // chart is translated far from the origin.
+    let mut polygon: Vec<_> = t.into_iter().map(|p| p - cell).collect();
     for axis in 0..2 {
         for side in 0..2 {
             let mut next = Vec::new();
             let distance = |p: DVec2| {
-                if side == 0 {
-                    p[axis] - cell[axis]
-                } else {
-                    cell[axis] + 1. - p[axis]
-                }
+                if side == 0 { p[axis] } else { 1. - p[axis] }
             };
             for i in 0..polygon.len() {
                 let a = polygon[i];
@@ -38,8 +37,8 @@ fn clipped_area(t: [DVec2; 3], cell: DVec2) -> f64 {
             polygon = next;
         }
     }
-    (0..polygon.len())
-        .map(|i| polygon[i].perp_dot(polygon[(i + 1) % polygon.len()]))
+    (1..polygon.len().saturating_sub(1))
+        .map(|i| (polygon[i] - polygon[0]).perp_dot(polygon[i + 1] - polygon[0]))
         .sum::<f64>()
         .abs()
         * 0.5
@@ -156,7 +155,9 @@ pub(super) fn extract(
                 if visits > limit.saturating_mul(64) {
                     return Err("Integer-grid extraction exceeded its cell budget".into());
                 }
-                if clipped_area(t, DVec2::new(u as f64, v as f64)) < 1e-10 {
+                // A positive fragment can own a grid corner regardless of its
+                // area. Dropping it leaves an otherwise complete cell open.
+                if clipped_area(t, DVec2::new(u as f64, v as f64)) <= 0. {
                     continue;
                 }
                 let mut corners = Vec::new();
@@ -297,4 +298,71 @@ pub(super) fn extract(
         output_quads.push(q);
     }
     Ok((output, output_quads))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::miq::{atlas::Edge, quadratic::Problem};
+
+    #[test]
+    fn tiny_positive_corner_fragments_complete_translated_cells() {
+        // A diagonal just misses the interior grid vertex (0, 0). One large
+        // source triangle contributes only ~1e-11 of a cell, but owns its corner.
+        // The old area cutoff discarded it and rejected this exact planar map.
+        for shift in [DVec2::ZERO, DVec2::new(-35., 12.)] {
+            let uv = [
+                DVec2::new(-1., -1.),
+                DVec2::new(1., -1.),
+                DVec2::new(1., -1. + 1e-5),
+                DVec2::ONE,
+                DVec2::new(-1., 1.),
+            ]
+            .map(|p| p + shift);
+            let triangles = vec![[0, 1, 2], [0, 2, 4], [2, 3, 4]];
+            let source = Surface {
+                positions: uv.iter().map(|p| p.extend(0.)).collect(),
+                triangles: triangles.clone(),
+            };
+            let atlas = Atlas {
+                uv_variables: 10,
+                corners: triangles,
+                singularities: Vec::new(),
+                edges: vec![
+                    Edge {
+                        ends: [0, 2],
+                        sides: [(0, 2), (1, 0)],
+                        rotation: 0,
+                        translation: None,
+                    },
+                    Edge {
+                        ends: [2, 4],
+                        sides: [(1, 1), (2, 2)],
+                        rotation: 0,
+                        translation: None,
+                    },
+                ],
+                reference: Vec::new(),
+                problem: Problem::new(10),
+            };
+            let x: Vec<_> = uv.iter().flat_map(|p| p.to_array()).collect();
+            let (positions, quads) = extract(&source, &atlas, &x, 100, &|| false).unwrap();
+            assert_eq!(positions.len(), 9);
+            assert_eq!(quads.len(), 4);
+            for q in &quads {
+                let p = q.map(|i| positions[i]);
+                let area = (p[1] - p[0]).cross(p[2] - p[0]).length() / 2.
+                    + (p[2] - p[0]).cross(p[3] - p[0]).length() / 2.;
+                assert!((area - 1.).abs() < 1e-10);
+            }
+            let mesh = Surface {
+                positions,
+                triangles: crate::surface::triangulate(&quads, &|| false).unwrap(),
+            };
+            assert_eq!(
+                crate::topology::validate(&mesh).unwrap(),
+                crate::topology::validate(&source).unwrap()
+            );
+        }
+    }
 }

@@ -111,6 +111,13 @@ cargo run --manifest-path crates/clay-retopology/Cargo.toml -j 1 --example compa
 The comparison executable refuses to overwrite an existing output. It reports
 stage timings and Linux resident memory when available; OBJ output is for visual
 review, not an app-save or attribute-transfer implementation.
+`--guides samples.json` supplies the same sample-array format as the audit
+commands: `position`, `normal`, `tangent` (three-component arrays), `radius` and
+`strength`. Capture samples with the app's surface-path sampler; merely reading
+the control points does not reproduce its guide input. An audit-feature build
+also accepts `CLAY_MIQ_RELAXATION_ITERATIONS=1..100` to reduce the per-relaxation
+iteration limit for controlled stop/recovery comparisons. It cannot increase
+the production limits and is not read by normal app builds.
 
 `symmetry.rs` adapts the extrinsic tangent-lattice helpers from
 [quadrs](https://github.com/vidstige/quadrs), under the included
