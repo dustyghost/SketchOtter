@@ -47,7 +47,8 @@ SPD preconditioner, restricted to the remaining free coordinates. The current
 system's independently recomputed residual, seam/fixed equations, inequalities
 and map orientation still determine acceptance. A change that frees a coordinate
 the cached factor cannot represent invalidates it. New orientation conditions
-first update this warm system before falling back to the full quadratic solver.
+use the warm system or a reusable bounded dual before falling back to the full
+quadratic solver, as detailed in the exact trimmed-export investigation below.
 
 Before factor allocation, an exact elimination-tree traversal limits strict-lower
 entries to four million and numeric multiply-subtract work to 500 million. The
@@ -230,8 +231,10 @@ above, completing in 15.049 seconds in this run.
 ## Trimmed sources and unsupported controls, 23 November 2026
 
 The reported `retopo-with-paths-flat` export was never written. The user kept the
-detailed side after Trim and reprojected both rings; the exact unsaved cut and
-post-trim target are unavailable. Reproject does not change the target, but
+detailed side after Trim and reprojected both rings; the exact cut and
+post-trim target were unavailable during this first investigation. The later
+`cant-retopo-flat-detail` export supplies an exact replay, documented below.
+Reproject does not change the target, but
 reopening Guided retopology resets it to one tenth of the source triangle count.
 Controlled copies of the original saved stage therefore exercise both 3,583 and
 the reopened defaults. They use the production capped `Mesh::slice` and
@@ -293,9 +296,9 @@ guarantee of a faster solve because it can change field singularities.
 | Keep `z <= 0.15`, both rings | 3,583 | Rejected: independent stationarity check; no output | 40.664 s | 224,584 KiB |
 | Same cut, reopened default | 2,416 | Rejected at the unchanged solve limit; no output | 61.044 s | 223,092 KiB |
 
-These are single-CPU runs using the same saved cuts and actual sampled guides.
-The second cut remains an unresolved case; this change does not claim that all
-capped cuts, or the user's unavailable cut, now work. At 3,583 its near-converged
+These are single-CPU runs at `6004475` using the same saved cuts and actual sampled guides.
+The second cut remained unresolved; these measurements do not establish that all
+capped cuts work. At 3,583 its near-converged
 stationarity residual was 4.162e-9, above the unchanged 1e-9 check. At 2,416 it
 exhausted the deadline while repairing orientation. The UI now suggests a
 *different* target rather than implying that a smaller target must solve faster.
@@ -320,9 +323,9 @@ geometry, density, guide and cancellation tests pass on the final source.
 
 Private sources, guide samples, numerical snapshots, helper source, exact
 settings, build/run logs, hashes and review renders are retained under
-`target/retopo-trim-review/`. These controlled cuts cannot certify the user's
-unsaved cut; the updated diagnostic export retains the actual target and guide
-selection for a future exact replay.
+`target/retopo-trim-review/`. The controlled cuts did not certify the user's
+unsaved cut; the updated diagnostic export subsequently supplied its actual target
+and guide selection for the exact replay below.
 
 Selecting Integer grid now clears and disables Protect sharp bends (including
 its angle control) and Layout symmetry. Reopening also keeps those unsupported
@@ -330,6 +333,87 @@ settings off. Switching back to Surface field re-enables their controls without
 silently restoring them. Headless real-click coverage checks the state changes,
 disabled clicks, reopening and unchanged document/history; the existing GPU
 control capture retains the disabled appearance for review.
+
+## Exact flat-detail export, 23 November 2026
+
+The new `cant-retopo-flat-detail` export records the failed attempt from release
+`6004475500f6`: stage 3 has 15,667 vertices / 31,330 triangles, target **3,133**,
+and selected path IDs **1 and 2**. Its history contains Trim followed by
+reprojection of each ring. This resolves the earlier uncertainty about the
+target. Sharp protection and layout symmetry are off, shape adaptation is zero,
+and there is no retopology density paint. The actual path sampler supplies
+58 + 60 guide samples at radius 0.08344068378210068 and strength 1.
+
+The immutable stage SHA-256 is
+`1f6eb7077dead942c79d6d336fe095ec85f72455ecb26def1f6b8e1bcd17a1e0`;
+the combined sampled-guide SHA-256 is
+`49ef87226ef8fd6b2730ec6087cb8af3501a283ce351b2b9af4e55a10245773d`.
+The standalone baseline completed in 43.467 seconds, whereas the application
+reported the 60-second solve limit. This is consistent with sensitivity to
+system load, but the standalone run did not reproduce the timeout. It spent
+23.576 seconds repairing the initial orientation, repeatedly factoring the same
+eliminated Hessian and solving the same constraint columns.
+
+The bounded dual now retains that factor and its small Schur products between
+updates. Reuse requires an exactly identical eliminated Hessian and unchanged
+transformed constraint-row prefix. Changed linear terms and bound constants are
+always recomputed. New rows use symmetry to extend the Schur system without
+retaining mesh-sized inverse columns; retained products stay within 512 columns
+by 1,024 bounds (4 MiB of numeric data). Shared ownership retains one numerical
+factor for the exact-system cache and warm preconditioner. A cache miss releases
+the old system before allocating its replacement, under the existing fill/work
+limits.
+
+When bounds are added without changing fixed integer coordinates, the reusable
+dual is tried before another tentative active-set search. Rounding with changed
+fixed coordinates keeps the warm-first strategy. Every result still passes the
+same residual, seam, orientation, integrality, topology and surface-fit checks;
+no time, target, sample, fill/work or acceptance limit was increased.
+
+| Exact source/settings | Solver time | Peak process RSS | Result |
+| --- | ---: | ---: | --- |
+| Baseline numerical implementation | 43.467 s | 202,084 KiB | 2,971 validated quads |
+| Cache alone | 34.077 s | 258,884 KiB | Byte-identical baseline OBJ |
+| Cached dual first even after changed fixed coordinates (discarded) | 31.994 s | 204,576 KiB | 2,971 validated quads |
+| Reuse scheduled only with unchanged fixed coordinates | 23.581 s | 258,608 KiB | 2,971 validated quads |
+| Baseline repeat in the same comparison batch | 38.054 s | 201,156 KiB | Identical baseline output |
+| Final repeat | 25.763 s | 258,512 KiB | Identical final output |
+
+The final scheduling reduces initial repair to about seven seconds. Maximum
+sampled source error is 0.02921290, compared with 0.02920960 for the baseline.
+Edge-ratio p95 is 1.49050 (baseline 1.49084), maximum 3.96715 (3.96745); both have
+zero strict closed opposite-edge cycles. The greedy numerical route can change,
+so identical vertices are not promised. Reducing warm attempts and adding a
+neighbour ring of orientation constraints were also measured and discarded:
+both were slower than the baseline. These are saved-case measurements, not a
+general performance guarantee.
+
+The repeated baseline consumed 37.56 seconds of user CPU time; the final repeats
+consumed 23.31 and 25.46 seconds. Each run used one CPU under the shared lock.
+Final process-group peaks were about 271 MiB, with no memory-guard stop. Retaining
+the factor increases peak memory on this case; the improvement is reduced work,
+not a larger memory or time budget.
+
+Both final runs produce OBJ SHA-256
+`2532af6614e1dd3b3fc4278af16ba187356c146e1c9dd1bfead39e5fa1e809b8`.
+The earlier guided controls also pass on this source revision: the untrimmed
+3,583-target case produces the identical 3,404-quad OBJ in 17.672 seconds;
+the controlled `x >= -0.15` trim produces 3,497 quads at target 3,583 in
+29.143 seconds and 2,594 quads at target 2,761 in 23.226 seconds. These controls
+do not resolve the separate `z <= 0.15` limitations recorded above.
+Detail-side and cap wireframes were inspected beside the exact source and
+baseline. They retain the silhouette, groove and flat cap, with similar local
+stretching near poles. These diagnostic images use fixed OBJ fan diagonals;
+the native solver independently validates its own render diagonals.
+
+Twelve focused numerical/extraction tests and five end-to-end Integer grid tests
+pass. Analytical checks cover changed Hessians, changed constraint prefixes,
+appended bounds, changed linear terms and bound constants, cancellation with a
+populated cache, and actual reuse without another factorization. Existing tests
+retain independent constrained-solver, geometry, density and guide comparisons.
+The private stage, sampled guides, settings, executables, run logs, resource
+measurements and review artifacts are retained under
+`target/cant-retopo-flat-detail-review/`; private geometry is not committed.
 
 ## Focused coverage
 

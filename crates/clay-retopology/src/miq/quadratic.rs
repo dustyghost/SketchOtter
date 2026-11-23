@@ -25,6 +25,7 @@ pub(super) struct Problem {
     pub integers: Vec<usize>,
     factor: Option<DirectFactor>,
     binding: Vec<usize>,
+    dual: Option<DualCache>,
 }
 
 pub(super) struct Budget {
@@ -87,6 +88,7 @@ impl Problem {
             integers: Vec::new(),
             factor: None,
             binding: Vec::new(),
+            dual: None,
         }
     }
 
@@ -326,6 +328,20 @@ impl Problem {
         initial: &[f64],
         budget: &mut Budget,
     ) -> Result<Vec<f64>> {
+        if self.dual.as_ref().is_some_and(|cached| {
+            cached.fixed == *fixed
+                && cached.rows.len() < self.inequalities.len()
+                && self.inequalities.len() <= MAX_DUAL_BOUNDS
+        }) {
+            // New orientation bounds invalidate the previous active-set guess.
+            // Try the bounded dual directly; its exact-system checks decide
+            // whether cached factors/products remain reusable after elimination.
+            if let Ok(x) = self.update_active(fixed, initial, &Default::default(), true, budget) {
+                self.validate_solution(&x, fixed)?;
+                return Ok(x);
+            }
+            budget.check()?;
+        }
         match self.update_bounds(fixed, initial, budget) {
             Ok(x) => Ok(x),
             Err(error) => {
@@ -466,6 +482,13 @@ impl Problem {
         let dot = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(a, b)| a * b).sum::<f64>();
         let mut x = initial.to_vec();
         let mut residual: Vec<_> = rhs.iter().zip(multiply(&x)).map(|(b, a)| b - a).collect();
+        if let Some(cached) = &self.dual
+            && cached.matrix == matrix
+        {
+            // This is the exact reduced system, not just a preconditioner.
+            // Keep the same residual/refinement checks below.
+            self.factor = Some(cached.factor.clone());
+        }
         // A previous factor stays an SPD preconditioner when restricted to the
         // remaining free coordinates. Changed constraints need only a few CG
         // corrections; the independently checked residual still decides success.
@@ -568,9 +591,17 @@ impl Problem {
         }
         if constrained {
             self.factor = None;
-            let (next, factor, binding) =
-                dual_update(&matrix, &rhs, &basis, &x, &self.inequalities, budget)?;
+            let (next, factor, binding) = dual_update(
+                &matrix,
+                &rhs,
+                &basis,
+                &x,
+                &self.inequalities,
+                &mut self.dual,
+                budget,
+            )?;
             x = next;
+            self.dual.as_mut().unwrap().fixed = fixed.clone();
             self.factor = Some(factor);
             self.binding = binding;
         }
@@ -595,6 +626,15 @@ impl Problem {
 const MAX_DUAL_BOUNDS: usize = 1024;
 const MAX_DUAL_ACTIVE: usize = 512;
 
+struct DualCache {
+    // Scheduling hint only; numerical reuse checks H and every transformed row.
+    fixed: BTreeMap<usize, f64>,
+    matrix: Vec<Row>,
+    rows: Vec<Row>,
+    factor: DirectFactor,
+    schur: Vec<Option<Vec<f64>>>,
+}
+
 /// For Hx=g, Cx>=b, eliminate x to solve the nonnegative dual:
 /// min 1/2 λᵀ(C H⁻¹ Cᵀ)λ + (Cx₀-b)ᵀλ, then x=x₀+H⁻¹Cᵀλ.
 /// At most 1024 bounds are considered, with <=512 in each small QP and
@@ -607,6 +647,7 @@ fn dual_update(
     basis: &Elimination,
     initial: &[f64],
     inequalities: &[(Row, f64)],
+    cache: &mut Option<DualCache>,
     budget: &mut Budget,
 ) -> Result<(Vec<f64>, DirectFactor, Vec<usize>)> {
     budget.check()?;
@@ -614,7 +655,6 @@ fn dual_update(
         return Err("Integer-grid dual exceeds its bound budget".into());
     }
     let started = Instant::now();
-    let mut factor = direct_factor(matrix, budget)?;
     let multiply = |x: &[f64]| {
         matrix
             .iter()
@@ -648,6 +688,37 @@ fn dual_update(
             Ok((row.into_iter().collect::<Row>(), b - constant))
         })
         .collect::<Result<_>>()?;
+    // Reuse only an exactly matching eliminated Hessian and unchanged
+    // constraint-row prefix. RHS/bound constants are recomputed every time.
+    let reusable = cache.as_ref().is_some_and(|cached| {
+        cached.matrix.as_slice() == matrix
+            && cached.rows.len() <= constraints.len()
+            && cached
+                .rows
+                .iter()
+                .zip(&constraints)
+                .all(|(a, (b, _))| a == b)
+    });
+    if !reusable {
+        *cache = None; // release the previous system before allocating another
+        let factor = direct_factor(matrix, budget)?; // validate limits before copying
+        *cache = Some(DualCache {
+            fixed: BTreeMap::new(),
+            matrix: matrix.to_vec(),
+            rows: Vec::new(),
+            factor,
+            schur: Vec::new(),
+        });
+    }
+    let cached = cache.as_mut().unwrap();
+    cached.rows.extend(
+        constraints[cached.rows.len()..]
+            .iter()
+            .map(|(row, _)| row.clone()),
+    );
+    cached.schur.resize_with(constraints.len(), || None);
+    let factor = &mut cached.factor;
+    let schur = &mut cached.schur;
     let linear: Vec<_> = constraints
         .iter()
         .map(|(row, b)| evaluate(row, initial) - b)
@@ -657,7 +728,6 @@ fn dual_update(
         .enumerate()
         .filter_map(|(i, &q)| (q < 1e-8).then_some(i))
         .collect();
-    let mut schur: Vec<Option<Vec<f64>>> = vec![None; constraints.len()];
     let mut vector = vec![0.; matrix.len()];
     for _ in 0..8 {
         budget.check()?;
@@ -666,7 +736,13 @@ fn dual_update(
         }
         let ids: Vec<_> = active.iter().copied().collect();
         if ids.is_empty() {
-            return Ok((initial.to_vec(), factor, Vec::new()));
+            return Ok((initial.to_vec(), factor.clone(), Vec::new()));
+        }
+        let retained = schur.iter().filter(|column| column.is_some()).count();
+        let missing = ids.iter().filter(|&&id| schur[id].is_none()).count();
+        if retained + missing > MAX_DUAL_ACTIVE {
+            // Bound retained columns across calls as well as within one QP.
+            schur.iter_mut().for_each(|column| *column = None);
         }
         for &id in &ids {
             if schur[id].is_some() {
@@ -676,7 +752,7 @@ fn dual_update(
             for &(i, a) in &constraints[id].0 {
                 vector[i] = a;
             }
-            let column = solve(&mut factor, &vector, budget)?;
+            let column = solve(factor, &vector, budget)?;
             schur[id] = Some(
                 constraints
                     .iter()
@@ -687,8 +763,15 @@ fn dual_update(
         let mut entries = BTreeMap::new();
         for (j, &id) in ids.iter().enumerate() {
             for (i, &other) in ids[..=j].iter().enumerate() {
-                let value =
-                    (schur[id].as_ref().unwrap()[other] + schur[other].as_ref().unwrap()[id]) * 0.5;
+                // Old columns need no new mesh-sized inverse solve when
+                // rows are appended: use symmetry and the new column instead.
+                let a = schur[id].as_ref().unwrap().get(other).copied();
+                let b = schur[other].as_ref().unwrap().get(id).copied();
+                let value = match (a, b) {
+                    (Some(a), Some(b)) => (a + b) * 0.5,
+                    (Some(value), None) | (None, Some(value)) => value,
+                    (None, None) => return Err("Integer-grid dual cache is incomplete".into()),
+                };
                 if !value.is_finite() {
                     return Err("Integer-grid dual matrix is nonfinite".into());
                 }
@@ -735,7 +818,7 @@ fn dual_update(
                 vector[i] += a * weight;
             }
         }
-        let correction = solve(&mut factor, &vector, budget)?;
+        let correction = solve(factor, &vector, budget)?;
         let x: Vec<_> = initial
             .iter()
             .zip(correction)
@@ -779,7 +862,7 @@ fn dual_update(
             );
             #[cfg(not(feature = "audit"))]
             let _ = started;
-            return Ok((x, factor, binding));
+            return Ok((x, factor.clone(), binding));
         }
         let before = active.len();
         active.extend(violated);
@@ -870,17 +953,20 @@ fn direct_factor(matrix: &[Vec<(usize, f64)>], budget: &Budget) -> Result<Direct
     #[cfg(test)]
     budget.factorizations.set(budget.factorizations.get() + 1);
     Ok(DirectFactor {
-        factor,
-        indices: permutation.iter().map(|&i| free[i]).collect(),
-        free: indices.iter().map(|&i| i != usize::MAX).collect(),
+        factor: Arc::new(std::sync::Mutex::new(factor)),
+        indices: Arc::new(permutation.iter().map(|&i| free[i]).collect()),
+        free: Arc::new(indices.iter().map(|&i| i != usize::MAX).collect()),
         variables,
     })
 }
 
+#[derive(Clone)]
 struct DirectFactor {
-    factor: QDLDLFactorisation<f64>,
-    indices: Vec<usize>,
-    free: Vec<bool>,
+    // The solver mutates only its scratch workspace. Shared ownership lets a
+    // warm preconditioner and the exact-system cache retain one factor safely.
+    factor: Arc<std::sync::Mutex<QDLDLFactorisation<f64>>>,
+    indices: Arc<Vec<usize>>,
+    free: Arc<Vec<bool>>,
     variables: usize,
 }
 impl DirectFactor {
@@ -888,14 +974,17 @@ impl DirectFactor {
         self.variables == matrix.len()
             && matrix
                 .iter()
-                .zip(&self.free)
+                .zip(self.free.iter())
                 .all(|(row, &free)| row.is_empty() || free)
     }
 
     fn solve(&mut self, rhs: &[f64], budget: &Budget) -> Result<Vec<f64>> {
         budget.check()?;
         let mut solution: Vec<_> = self.indices.iter().map(|&i| rhs[i]).collect();
-        self.factor.solve(&mut solution);
+        self.factor
+            .lock()
+            .map_err(|_| "Integer-grid factor workspace was interrupted")?
+            .solve(&mut solution);
         #[cfg(test)]
         budget.direct_solves.set(budget.direct_solves.get() + 1);
         let mut x = vec![0.; self.variables];
@@ -1187,6 +1276,123 @@ mod tests {
     }
 
     #[test]
+    fn dual_cache_reuses_appended_bounds_and_invalidates_changed_systems() {
+        let mut matrix = vec![vec![(0, 1.)], vec![(1, 1.)]];
+        let basis = Elimination::new(2);
+        let mut bounds = vec![(vec![(0, 1.)], 1.)];
+        let mut cache = None;
+        let mut budget = Budget::new(Arc::new(AtomicBool::new(false)));
+        let close = |actual: &[f64], expected: [f64; 2]| {
+            for (a, b) in actual.iter().zip(expected) {
+                assert!((a - b).abs() < 1e-7, "{actual:?} != {expected:?}");
+            }
+        };
+        let (x, _, _) = dual_update(
+            &matrix,
+            &[0., 0.],
+            &basis,
+            &[0., 0.],
+            &bounds,
+            &mut cache,
+            &mut budget,
+        )
+        .unwrap();
+        close(&x, [1., 0.]);
+        let factors = budget.factorizations.get();
+        bounds.push((vec![(1, 1.)], 2.));
+        let (x, _, _) = dual_update(
+            &matrix,
+            &[0., 0.],
+            &basis,
+            &[0., 0.],
+            &bounds,
+            &mut cache,
+            &mut budget,
+        )
+        .unwrap();
+        close(&x, [1., 2.]);
+        assert_eq!(
+            budget.factorizations.get(),
+            factors,
+            "appending a bound reuses the same system"
+        );
+        // Changed Hessian coefficients must invalidate the numerical factor.
+        matrix[0][0].1 = 2.;
+        let (x, _, _) = dual_update(
+            &matrix,
+            &[0., 0.],
+            &basis,
+            &[0., 0.],
+            &bounds,
+            &mut cache,
+            &mut budget,
+        )
+        .unwrap();
+        close(&x, [1., 2.]);
+        assert_eq!(budget.factorizations.get(), factors + 1);
+        // A changed prefix must not reuse old Schur products either.
+        bounds[0] = (vec![(0, 1.), (1, 1.)], 6.);
+        let (x, _, _) = dual_update(
+            &matrix,
+            &[0., 0.],
+            &basis,
+            &[0., 0.],
+            &bounds,
+            &mut cache,
+            &mut budget,
+        )
+        .unwrap();
+        close(&x, [2., 4.]);
+        assert_eq!(budget.factorizations.get(), factors + 2);
+        // Linear terms are not cached: H and C can remain identical while
+        // the unconstrained minimizer and the constrained answer both change.
+        let (x, _, _) = dual_update(
+            &matrix,
+            &[0., 3.],
+            &basis,
+            &[0., 3.],
+            &bounds,
+            &mut cache,
+            &mut budget,
+        )
+        .unwrap();
+        close(&x, [1., 5.]);
+        assert_eq!(budget.factorizations.get(), factors + 2);
+        bounds[0].1 = 3.6;
+        let (x, _, _) = dual_update(
+            &matrix,
+            &[0., 0.],
+            &basis,
+            &[0., 0.],
+            &bounds,
+            &mut cache,
+            &mut budget,
+        )
+        .unwrap();
+        close(&x, [1.2, 2.4]);
+        assert_eq!(
+            budget.factorizations.get(),
+            factors + 2,
+            "bound constants are recomputed too"
+        );
+        budget.cancel.store(true, Ordering::Relaxed);
+        assert!(
+            dual_update(
+                &matrix,
+                &[0., 3.],
+                &basis,
+                &[0., 3.],
+                &bounds,
+                &mut cache,
+                &mut budget
+            )
+            .err()
+            .unwrap()
+            .contains("cancelled")
+        );
+    }
+
+    #[test]
     fn small_dual_update_matches_oracle_with_seams_fixed_values_and_redundant_bounds() {
         let mut p = Problem::new(4);
         p.energy = vec![
@@ -1226,6 +1432,18 @@ mod tests {
             budget.solves, solves,
             "reuse the dual's active set without another QP"
         );
+        let factors = budget.factorizations.get();
+        let solves = budget.solves;
+        p.inequalities.push((vec![(0, 1.)], 3.));
+        let appended = p.update(&fixed, &result, &mut budget).unwrap();
+        for (actual, expected) in appended.iter().zip([3., 0.7, 0.7, 1.]) {
+            assert!((actual - expected).abs() < 1e-7);
+        }
+        assert_eq!(budget.factorizations.get(), factors);
+        assert!(
+            budget.solves > solves,
+            "new bounds take the cached dual path"
+        );
         for (actual, expected) in reused.iter().zip([2.05, 0.55, 0.55, 1.1]) {
             assert!((actual - expected).abs() < 1e-7);
         }
@@ -1238,6 +1456,7 @@ mod tests {
                 &Elimination::new(1),
                 &[0.],
                 &oversized,
+                &mut None,
                 &mut budget
             )
             .err()
