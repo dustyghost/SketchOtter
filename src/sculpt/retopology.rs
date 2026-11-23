@@ -11,6 +11,7 @@ pub(crate) type GuideCurves = std::sync::Arc<[Vec<PathSample>]>;
 pub(crate) struct Layout {
     pub mesh: Mesh,
     pub polygons: usize,
+    #[cfg(test)]
     pub guides: GuideCurves,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -347,6 +348,7 @@ impl Mesh {
         Ok(Layout {
             polygons: mesh.quads.len(),
             mesh,
+            #[cfg(test)]
             guides: guides.into(),
         })
     }

@@ -75,7 +75,7 @@ impl ProjectionControls {
                 .id_salt("retopology_paths")
                 .max_height(190.)
                 .show(ui, |ui| {
-                    for path in paths {
+                    for path in &paths {
                         ui.push_id(path.id, |ui| {
                             ui.horizontal(|ui| {
                                 let mut selected = self.flow_paths.contains(&path.id);
@@ -97,6 +97,9 @@ impl ProjectionControls {
                 });
         }
         ui.weak("Select any number of paths. Guides steer nearby edges; closed paths do not guarantee complete edge loops.");
+        if !paths.is_empty() {
+            ui.weak("Selected paths light up on the model. All saved surface paths follow the preview and move to the new model on Apply.");
+        }
         ui.add_enabled_ui(!self.flow_paths.is_empty(), |ui| {
             search::setting_response(
                 ui.add(egui::Slider::new(&mut self.layout.flow, 0. ..=1.).text("Path strength")),
@@ -190,9 +193,9 @@ impl UiState {
             }
             if let Some(report) = &state.report {
                 ui.label(report.summary());
-                if !state.flow_paths.is_empty() && state.layout.flow > 0. {
-                    ui.checkbox(&mut state.hide_flow_guide, "Hide path overlay");
-                }
+            }
+            if !state.flow_paths.is_empty() {
+                ui.checkbox(&mut state.hide_flow_guide, "Hide path overlay");
             }
             let mut requested = None;
             ui.horizontal_wrapped(|ui| {

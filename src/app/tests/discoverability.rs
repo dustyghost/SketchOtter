@@ -123,6 +123,81 @@ fn guided_retopology_defaults_to_integer_grid_and_retires_old_controls() {
 }
 
 #[test]
+fn guided_retopology_selection_draws_paths_before_preview_and_can_hide_them() {
+    use crate::sculpt::{Geometry, paths::PathMode, retopology::tests::fixture};
+    let (mesh, path) = fixture(true);
+    let mut app = App::default();
+    app.document.replace_geometry(Geometry::new(mesh)).unwrap();
+    for name in ["Guide A", "Guide B"] {
+        app.document
+            .create_path(
+                name.into(),
+                PathMode::Surface,
+                path.points.clone(),
+                false,
+                0.,
+            )
+            .unwrap();
+    }
+    app.camera.yaw = 0.;
+    app.camera.pitch = 0.;
+    app.ui.guide_paths = false;
+    let before = app.document.project();
+    let history = app.document.history_counts();
+    let ctx = egui::Context::default();
+    ctx.style_mut(|s| s.animation_time = 0.);
+    app.dispatch(Command::OpenRetopology, &ctx);
+    // Selecting paths is useful even when their solver strength is zero.
+    app.ui.projection.layout.flow = 0.;
+    let lines = |output: &egui::FullOutput| {
+        output
+            .shapes
+            .iter()
+            .filter(|s| {
+                matches!(&s.shape, egui::Shape::LineSegment { stroke, .. }
+            if stroke.width == 2. && stroke.color == egui::Color32::from_rgb(255, 187, 80))
+            })
+            .count()
+    };
+    assert_eq!(lines(&settle(&mut app, &ctx)), 0);
+    let mut count = 0;
+    for name in ["Guide A", "Guide B"] {
+        let output = settle(&mut app, &ctx);
+        click(&mut app, &ctx, text_center(&output, name));
+        let next = lines(&settle(&mut app, &ctx));
+        assert!(next > count + 100, "selected guide appears before solving");
+        count = next;
+    }
+    let output = settle(&mut app, &ctx);
+    click(
+        &mut app,
+        &ctx,
+        text_center(&output, "Mirror paths across X = 0"),
+    );
+    assert_eq!(lines(&settle(&mut app, &ctx)), count * 2);
+    let output = settle(&mut app, &ctx);
+    click(
+        &mut app,
+        &ctx,
+        text_center(&output, "Mirror paths across X = 0"),
+    );
+    let output = settle(&mut app, &ctx);
+    click(&mut app, &ctx, text_center(&output, "Hide path overlay"));
+    assert_eq!(lines(&settle(&mut app, &ctx)), 0);
+    let output = settle(&mut app, &ctx);
+    click(&mut app, &ctx, text_center(&output, "Hide path overlay"));
+    assert_eq!(lines(&settle(&mut app, &ctx)), count);
+    let output = settle(&mut app, &ctx);
+    click(&mut app, &ctx, text_center(&output, "Guide B"));
+    assert!(lines(&settle(&mut app, &ctx)) < count);
+    assert!(app.projection.draft.is_none() && !app.ui.projection.busy);
+    assert!(app.document.project() == before);
+    assert_eq!(app.document.history_counts(), history);
+    app.dispatch(Command::CancelProjection, &ctx);
+    assert_eq!(lines(&settle(&mut app, &ctx)), 0);
+}
+
+#[test]
 fn editable_paths_ring_controls_create_reorient_and_preserve_drafts() {
     use crate::{
         command::PathCommand,
@@ -496,6 +571,7 @@ fn dismissing_search_does_not_discard_an_existing_surface_preview() {
         mesh: mesh.clone(),
         revision: app.document.display_revision(),
         settings: app.document.capture_edit_settings(),
+        retopology_paths: Vec::new(),
     });
     app.viewport.session.projection_preview = Some(mesh.clone());
     settle(&mut app, &ctx);

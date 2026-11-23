@@ -190,6 +190,28 @@ fn native_retopology_controls_offscreen_review() {
     click_guide_label(&mut g, "Guide A");
     click_guide_label(&mut g, "Guide B");
     assert_eq!(g.app.ui.projection.flow_paths.len(), 2);
+    let (rect, pixels) = g.frame(vec![]);
+    assert!(
+        pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(i, p)| {
+                let x = (*i % g.size[0] as usize) as f32;
+                let y = (*i / g.size[0] as usize) as f32;
+                rect.contains(Pos2::new(x, y))
+                    && x > rect.center().x
+                    && p[0] > 235
+                    && p[1] > 165
+                    && p[1] < 205
+                    && p[2] < 110
+            })
+            .count()
+            > 100,
+        "selected guides render on the model before Preview"
+    );
+    g.save("selected-guides-before-preview");
     let before = g.app.document.project();
     click_guide_label(&mut g, "More detail");
     assert_eq!(

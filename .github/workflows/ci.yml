@@ -156,5 +156,7 @@ jobs:
             /tmp/clay-ring-editable-panel.png
             /tmp/clay-automatic-path-settings.png
             ${{ runner.temp }}/clay-guided-retopology/integer-grid-controls.png
+            ${{ runner.temp }}/clay-guided-retopology/selected-guides-before-preview.png
+            ${{ runner.temp }}/clay-guided-retopology/native-preview.png
           if-no-files-found: ignore
           retention-days: 7

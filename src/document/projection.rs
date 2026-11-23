@@ -94,6 +94,7 @@ impl Document {
     pub(crate) fn apply_retopology(
         &mut self,
         mesh: Mesh,
+        paths: Vec<crate::sculpt::paths::SurfacePath>,
         revision: u64,
         settings: Option<crate::diagnostics::EditSettings>,
     ) -> Result<(), String> {
@@ -104,6 +105,27 @@ impl Document {
         if mesh == *self.mesh() {
             return Ok(());
         }
+        let source_id = self.active_model_id();
+        let expected: std::collections::BTreeSet<_> = self
+            .paths()
+            .iter()
+            .filter(|p| p.target == source_id && p.mode == crate::sculpt::paths::PathMode::Surface)
+            .map(|p| p.id)
+            .collect();
+        let actual: std::collections::BTreeSet<_> = paths.iter().map(|p| p.id).collect();
+        if actual != expected || actual.len() != paths.len() {
+            return Err("Preview the layout again to reproject all surface paths".into());
+        }
+        for path in &paths {
+            path.validate()?;
+            if path.target != source_id
+                || path.mode != crate::sculpt::paths::PathMode::Surface
+                || path.is_stale(&mesh)
+                || !path.has_attached_route()
+            {
+                return Err("Preview the layout again to attach its surface paths".into());
+            }
+        }
         let active = self.active_model_index();
         let mut geometry = self.geometry_snapshot();
         let name = (1..)
@@ -111,7 +133,22 @@ impl Document {
             .find(|n| !self.submodel_names().any(|m| m == n))
             .unwrap();
         let mut result_metadata = geometry.scene.active_metadata.clone();
-        result_metadata.model_id = 0;
+        result_metadata.model_id = if paths.is_empty() {
+            0
+        } else {
+            std::iter::once(source_id)
+                .chain(geometry.submodels.iter().map(|m| m.metadata.model_id))
+                .chain(geometry.paths.iter().map(|p| p.target))
+                .max()
+                .unwrap_or(0)
+                .checked_add(1)
+                .ok_or("Model identity limit reached")?
+        };
+        for mut path in paths {
+            path.target = result_metadata.model_id;
+            let id = path.id;
+            *geometry.paths.iter_mut().find(|p| p.id == id).unwrap() = path;
+        }
         let mut source = crate::sculpt::Submodel {
             mesh: std::mem::replace(&mut geometry.mesh, mesh),
             mesh_settings: std::mem::take(&mut geometry.settings),

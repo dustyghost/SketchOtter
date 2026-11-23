@@ -519,6 +519,40 @@ exercise the new default. Real-click coverage checks the retired controls are
 absent and that sharp choices survive reopening. The manual legacy symmetry
 comparison remains explicitly selected only in its test tool.
 
+## Selected guides and path attachment
+
+Selected guides now highlight immediately, before solving, using the existing
+cached surface routes. Selection, deselection, mirroring and Hide path overlay
+update the display without editing the document; zero path strength does not
+hide a selected path. After Preview the overlay uses paths reprojected onto the
+private result, rather than the old source coordinates.
+
+The cancellable preview worker reprojects every Surface path on the active
+model, including unselected guides. It uses the existing bounded path projector
+and Editable paths Distance (initially 0.2), preserving IDs, closed/open state,
+seams, rounding and ring orientation. A failed attachment rejects the private
+result and identifies the path. Apply checks the complete prepared path set,
+allocates the result's model identity, and installs the mesh and paths in one
+history edit. Free paths and paths on other models stay unchanged. Cancel,
+rejected/stale Apply, Undo/Redo and save/reopen retain their transactional
+behavior. Diagnostic attempts include the reprojection distance.
+
+A focused replay uses the real path API from the production library and the
+previously validated 2,966-quad flat-detail output. The output coordinates are
+narrowed to f32 and independently validated again, retaining the selected render
+diagonals. Both saved closed rings reproject successfully at distance 0.2:
+147/143 controls and 2,058/2,065 attached route points. Reprojection takes 0.048 s
+for both rings on this run; validation plus replay takes 2.78 s and 41 MiB peak
+process-tree RSS. Source paths remain byte-for-byte unchanged in memory. The
+helper, logs and reprojected paths are retained privately with the saved case.
+
+The app library check passes with one compiler and a 1.2 GiB guard. CI coverage
+clicks selection/hide/mirror controls before Preview, checks on-model pixels,
+and requires selected plus unselected closed paths to follow a successful
+preview and Apply. It checks stored route positions against the new surface,
+rejection atomicity, Cancel, Undo/Redo and persistence. CI retains before-preview
+and preview screenshots for visual inspection.
+
 ## Focused coverage
 
 Focused checks cover constrained quadratic minimization, closed-sphere mapping,

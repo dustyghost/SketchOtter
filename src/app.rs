@@ -649,12 +649,21 @@ impl App {
             && self.ui.projection.mode == crate::ui::SurfaceMode::Retopology;
         self.viewport.session.retopology_guides = match &self.ui.projection.report {
             Some(crate::ui::SurfaceReport::Retopology { guides, .. })
-                if layout_preview && !self.ui.projection.hide_flow_guide =>
+                if layout_preview && !self.ui.projection.hide_flow_guide && !guides.is_empty() =>
             {
                 Some(guides.clone())
             }
             _ => None,
         };
+        self.viewport.session.retopology_selection = (layout_preview
+            && !self.ui.projection.hide_flow_guide
+            && self.viewport.session.retopology_guides.is_none())
+        .then(|| {
+            (
+                self.ui.projection.flow_paths.clone(),
+                self.ui.projection.layout.mirror_path_x,
+            )
+        });
         self.viewport.set_join_preview(self.fusion.display.clone());
         self.viewport.session.show_join_patch = self.ui.fusion.show_patch;
         self.viewport.session.show_join_removed = self.ui.fusion.show_removed;

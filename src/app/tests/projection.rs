@@ -351,6 +351,32 @@ fn guided_retopology_keeps_source_and_attributes_and_roundtrips_as_one_edit() {
         .document
         .create_path("Guide".into(), PathMode::Surface, path.points, false, 0.)
         .unwrap();
+    let normals = mesh.normals();
+    let ring = app
+        .document
+        .create_path(
+            "Unselected ring".into(),
+            PathMode::Surface,
+            (9 * 32..10 * 32)
+                .map(|i| crate::sculpt::paths::PathPoint {
+                    position: mesh.vertices[i],
+                    normal: normals[i],
+                })
+                .collect(),
+            true,
+            0.,
+        )
+        .unwrap();
+    let free = app
+        .document
+        .create_path(
+            "Free path".into(),
+            PathMode::Free,
+            app.document.path(id).unwrap().points.clone(),
+            false,
+            0.,
+        )
+        .unwrap();
     app.document.mark_saved("source.clay");
     let before = app.document.project();
     let undo = app.document.history_counts().0;
@@ -361,9 +387,68 @@ fn guided_retopology_keeps_source_and_attributes_and_roundtrips_as_one_edit() {
     assert!(app.document.project() == before && !app.document.is_dirty());
     app.dispatch(Command::OpenRetopology, &ctx);
     app.ui.projection.flow_paths = vec![id];
+    app.paths.reproject_distance = 1e-8;
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish_projection(&mut app);
+    assert!(
+        app.projection.draft.is_none(),
+        "reprojection failure rejects the private result"
+    );
+    assert!(
+        app.ui.status.contains("could not attach"),
+        "{}",
+        app.ui.status
+    );
+    assert!(app.document.project() == before && !app.document.is_dirty());
+    assert_eq!(app.document.history_counts().0, undo);
+    app.paths.reproject_distance = 0.2;
     app.dispatch(Command::PreviewProjection, &ctx);
     finish_projection(&mut app);
     assert!(app.document.project() == before && !app.document.is_dirty());
+    let draft = app
+        .projection
+        .draft
+        .as_ref()
+        .expect("private layout with paths");
+    assert_eq!(draft.retopology_paths.len(), 2);
+    let surface = crate::sculpt::projection::Surface::new(&draft.mesh, &|| false).unwrap();
+    let mut budget = 30_000_000;
+    for path in &draft.retopology_paths {
+        assert!(!path.is_stale(&draft.mesh));
+        for point in &path.attached_route.as_ref().unwrap().points {
+            assert!(
+                surface
+                    .nearest(point.position, 1e-5, None, &mut budget)
+                    .unwrap()
+                    .is_some(),
+                "saved route lies on the private preview without another projection"
+            );
+        }
+        let samples = path.samples_on_mesh(&draft.mesh, 0.025).unwrap();
+        assert!(crate::sculpt::paths::sample_surface_error(&draft.mesh, &samples) < 1e-5);
+    }
+    let crate::ui::SurfaceReport::Retopology { guides, .. } =
+        app.ui.projection.report.as_ref().unwrap()
+    else {
+        panic!("retopology report")
+    };
+    assert_eq!(guides.len(), 1, "only selected paths are overlaid");
+    assert!(crate::sculpt::paths::sample_surface_error(&draft.mesh, &guides[0]) < 1e-5);
+    let preview_mesh = (*draft.mesh).clone();
+    let revision = draft.revision;
+    assert!(
+        app.document
+            .apply_retopology(preview_mesh, Vec::new(), revision, None)
+            .is_err()
+    );
+    assert!(app.document.project() == before && !app.document.is_dirty());
+    assert_eq!(app.document.history_counts().0, undo);
+    app.dispatch(Command::CancelProjection, &ctx);
+    assert!(app.document.project() == before && !app.document.is_dirty());
+    app.dispatch(Command::OpenRetopology, &ctx);
+    assert_eq!(app.ui.projection.flow_paths, vec![id]);
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish_projection(&mut app);
     let result = app
         .projection
         .draft
@@ -377,9 +462,16 @@ fn guided_retopology_keeps_source_and_attributes_and_roundtrips_as_one_edit() {
     let reference = app.document.model(1).unwrap();
     assert_eq!(reference.mesh, &mesh);
     assert!(!reference.metadata.visible);
+    assert_ne!(reference.metadata.model_id, app.document.active_model_id());
+    for path_id in [id, ring] {
+        let path = app.document.path(path_id).unwrap();
+        assert_eq!(path.target, app.document.active_model_id());
+        assert!(!path.is_stale(app.document.mesh()));
+    }
+    assert!(app.document.path(ring).unwrap().closed);
     assert_eq!(
-        reference.metadata.model_id,
-        app.document.path(id).unwrap().target
+        app.document.path(free),
+        before.paths.iter().find(|p| p.id == free)
     );
     assert_eq!(result.mask.len(), result.vertices.len());
     assert_eq!(result.materials.len(), result.vertices.len());
