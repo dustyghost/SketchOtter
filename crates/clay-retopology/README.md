@@ -12,7 +12,9 @@ It does not use the lattice repair below. Closed surfaces, signed density and
 soft direction guides are supported; boundaries, sharp-bend protection and the
 app's symmetry modes are currently rejected. Clarabel supplies continuous Rust
 quadratic solves, with bounded rounding, cancellation and independent residual,
-map, topology and original-surface checks. The 60-second solve budget can reject
+map, topology and original-surface checks. Rounding reuses a bounded sparse
+factorization as a preconditioner, and updates new orientation conditions before
+restarting a full relaxation. The 60-second solve budget can reject
 a difficult input. This is a greedy experiment, not the 2013 paper's global
 optimizer; see [scope, measurements and limitations](../../docs/validation/guided-retopology/experimental-integer-grid.md).
 

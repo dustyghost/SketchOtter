@@ -128,25 +128,33 @@ fn relax(
 ) -> Result<Vec<f64>> {
     for _ in 0..16 {
         let x = atlas.problem.solve(fixed, budget)?;
-        let mut added = 0;
-        for f in 0..atlas.corners.len() {
-            let [a, b, c] = atlas.coordinates(&x, f);
-            if (b - a).perp_dot(c - a) <= 1e-9 {
-                if !active.insert(f) {
-                    return Err("Integer-grid orientation constraints failed validation".into());
-                }
-                atlas
-                    .problem
-                    .inequalities
-                    .extend(atlas.orientation_constraints(f));
-                added += 1;
-            }
-        }
-        if added == 0 {
+        if constrain_orientation(atlas, &x, active)? == 0 {
             return Ok(x);
         }
     }
     Err("Integer-grid orientation solve exceeded its iteration budget".into())
+}
+
+fn constrain_orientation(
+    atlas: &mut atlas::Atlas,
+    x: &[f64],
+    active: &mut BTreeSet<usize>,
+) -> Result<usize> {
+    let mut added = 0;
+    for f in 0..atlas.corners.len() {
+        let [a, b, c] = atlas.coordinates(x, f);
+        if (b - a).perp_dot(c - a) <= 1e-9 {
+            if !active.insert(f) {
+                return Err("Integer-grid orientation constraints failed validation".into());
+            }
+            atlas
+                .problem
+                .inequalities
+                .extend(atlas.orientation_constraints(f));
+            added += 1;
+        }
+    }
+    Ok(added)
 }
 
 fn parameterize(
@@ -242,35 +250,46 @@ fn update(
 ) -> Result<Vec<f64>> {
     #[cfg(feature = "audit")]
     let start = std::time::Instant::now();
-    let x = atlas.problem.update(fixed, initial, budget);
-    budget.check()?;
-    match x {
-        Ok(x) => {
-            let flipped = (0..atlas.corners.len())
-                .filter(|&f| {
-                    let [a, b, c] = atlas.coordinates(&x, f);
-                    (b - a).perp_dot(c - a) <= 1e-9
-                })
-                .count();
-            #[cfg(feature = "audit")]
-            eprintln!(
-                "MIQ update {:.3}s; {} fixed; {flipped} nonpositive triangles",
-                start.elapsed().as_secs_f64(),
-                fixed.len()
-            );
-            if flipped == 0 {
-                return Ok(x);
+    let mut initial = initial.to_vec();
+    // Use the same lazy orientation conditions as a full relaxation, but first
+    // update the warm system with them. A newly inverted triangle need not
+    // discard the reusable factor and restart the whole constrained optimizer.
+    for _ in 0..16 {
+        let x = atlas.problem.update(fixed, &initial, budget);
+        budget.check()?;
+        match x {
+            Ok(x) => {
+                let flipped = (0..atlas.corners.len())
+                    .filter(|&f| {
+                        let [a, b, c] = atlas.coordinates(&x, f);
+                        (b - a).perp_dot(c - a) <= 1e-9
+                    })
+                    .count();
+                #[cfg(feature = "audit")]
+                eprintln!(
+                    "MIQ update {:.3}s; {} fixed; {flipped} nonpositive triangles",
+                    start.elapsed().as_secs_f64(),
+                    fixed.len()
+                );
+                if flipped == 0 {
+                    return Ok(x);
+                }
+                if constrain_orientation(atlas, &x, active).is_err() {
+                    break;
+                }
+                initial = x;
             }
-        }
-        Err(error) => {
-            #[cfg(feature = "audit")]
-            eprintln!(
-                "MIQ update {:.3}s; {} fixed; {error}",
-                start.elapsed().as_secs_f64(),
-                fixed.len()
-            );
-            #[cfg(not(feature = "audit"))]
-            let _ = error;
+            Err(error) => {
+                #[cfg(feature = "audit")]
+                eprintln!(
+                    "MIQ update {:.3}s; {} fixed; {error}",
+                    start.elapsed().as_secs_f64(),
+                    fixed.len()
+                );
+                #[cfg(not(feature = "audit"))]
+                let _ = error;
+                break;
+            }
         }
     }
     relax(atlas, fixed, active, budget)

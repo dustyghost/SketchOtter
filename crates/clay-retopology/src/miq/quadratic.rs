@@ -1,6 +1,10 @@
 //! Bounded sparse quadratic relaxations and nearest-first integer fixing.
 use crate::Result;
-use clarabel::{algebra::CscMatrix, solver::*};
+use clarabel::{
+    algebra::CscMatrix,
+    qdldl::{QDLDLFactorisation, QDLDLSettings},
+    solver::*,
+};
 use std::{
     collections::BTreeMap,
     sync::{
@@ -19,12 +23,17 @@ pub(super) struct Problem {
     /// Each row is bounded below, not above.
     pub inequalities: Vec<(Row, f64)>,
     pub integers: Vec<usize>,
+    factor: Option<DirectFactor>,
 }
 
 pub(super) struct Budget {
     pub cancel: Arc<AtomicBool>,
     start: Instant,
     solves: usize,
+    #[cfg(test)]
+    direct_solves: std::cell::Cell<usize>,
+    #[cfg(test)]
+    factorizations: std::cell::Cell<usize>,
 }
 
 impl Budget {
@@ -33,6 +42,10 @@ impl Budget {
             cancel,
             start: Instant::now(),
             solves: 0,
+            #[cfg(test)]
+            direct_solves: std::cell::Cell::new(0),
+            #[cfg(test)]
+            factorizations: std::cell::Cell::new(0),
         }
     }
     pub fn check(&self) -> Result<()> {
@@ -71,6 +84,7 @@ impl Problem {
             equalities: Vec::new(),
             inequalities: Vec::new(),
             integers: Vec::new(),
+            factor: None,
         }
     }
 
@@ -168,7 +182,7 @@ impl Problem {
     /// The caller checks orientation and uses a constrained relaxation if this
     /// unconstrained minimizer leaves the valid-map region.
     pub fn update(
-        &self,
+        &mut self,
         fixed: &BTreeMap<usize, f64>,
         initial: &[f64],
         budget: &mut Budget,
@@ -204,13 +218,15 @@ impl Problem {
     }
 
     fn update_active(
-        &self,
+        &mut self,
         fixed: &BTreeMap<usize, f64>,
         initial: &[f64],
         binding: &std::collections::BTreeSet<usize>,
         budget: &mut Budget,
     ) -> Result<Vec<f64>> {
         budget.check()?;
+        #[cfg(feature = "audit")]
+        let started = Instant::now();
         let mut basis = Elimination::new(self.variables);
         for (i, (row, rhs)) in self.equalities.iter().enumerate() {
             if i % 128 == 0 {
@@ -226,6 +242,8 @@ impl Problem {
             basis.add(row, *b, &self.integers)?;
         }
         basis.expand()?;
+        #[cfg(feature = "audit")]
+        let eliminated = started.elapsed().as_secs_f64();
         let mut matrix = vec![BTreeMap::<usize, f64>::new(); self.variables];
         let mut rhs = vec![0.; self.variables];
         let mut entries = 0;
@@ -267,6 +285,8 @@ impl Problem {
         if diagonal.iter().any(|d| !d.is_finite() || *d <= 0.) {
             return Err("Integer-grid iterative system is not positive definite".into());
         }
+        #[cfg(feature = "audit")]
+        let assembled = started.elapsed().as_secs_f64();
         let multiply = |x: &[f64]| {
             matrix
                 .iter()
@@ -276,16 +296,54 @@ impl Problem {
         let dot = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(a, b)| a * b).sum::<f64>();
         let mut x = initial.to_vec();
         let mut residual: Vec<_> = rhs.iter().zip(multiply(&x)).map(|(b, a)| b - a).collect();
-        let mut z: Vec<_> = residual.iter().zip(&diagonal).map(|(r, d)| r / d).collect();
+        // A previous factor stays an SPD preconditioner when restricted to the
+        // remaining free coordinates. Changed constraints need only a few CG
+        // corrections; the independently checked residual still decides success.
+        if self
+            .factor
+            .as_ref()
+            .is_some_and(|factor| !factor.covers(&matrix))
+        {
+            self.factor = None;
+        }
+        let mut z = precondition(&mut self.factor, &matrix, &diagonal, &residual, budget)?;
         let mut direction = z.clone();
         let mut rho = dot(&residual, &z);
         let tolerance = 1e-16 * dot(&rhs, &rhs).max(1.);
+        if !tolerance.is_finite() {
+            return Err("Integer-grid linear system has a nonfinite residual scale".into());
+        }
+        #[cfg(feature = "audit")]
+        let mut iterations = 0;
         for iteration in 0..1500 {
             if dot(&residual, &residual) <= tolerance {
                 break;
             }
             if iteration % 8 == 0 {
                 budget.check()?;
+            }
+            // Most rounding changes are local. If a short warm iteration does
+            // not settle them, factor the reduced system instead of repeatedly
+            // sweeping the whole map (MIQ 2009, section 2.1).
+            if iteration == 32 {
+                match direct_factor(&matrix, budget) {
+                    Ok(mut factor) => {
+                        x = factor.solve(&rhs, budget)?;
+                        self.factor = Some(factor);
+                        break;
+                    }
+                    Err(error) => {
+                        #[cfg(feature = "audit")]
+                        eprintln!("MIQ direct fallback: {error}");
+                        #[cfg(not(feature = "audit"))]
+                        let _ = error;
+                        budget.check()?; // retain bounded CG fallback
+                    }
+                }
+            }
+            #[cfg(feature = "audit")]
+            {
+                iterations = iteration + 1;
             }
             let image = multiply(&direction);
             let denominator = dot(&direction, &image);
@@ -296,8 +354,8 @@ impl Problem {
             for i in 0..x.len() {
                 x[i] += alpha * direction[i];
                 residual[i] -= alpha * image[i];
-                z[i] = residual[i] / diagonal[i];
             }
+            z = precondition(&mut self.factor, &matrix, &diagonal, &residual, budget)?;
             let next = dot(&residual, &z);
             for i in 0..x.len() {
                 direction[i] = z[i] + (next / rho) * direction[i];
@@ -305,7 +363,15 @@ impl Problem {
             rho = next;
         }
         let residual: Vec<_> = rhs.iter().zip(multiply(&x)).map(|(b, a)| b - a).collect();
-        if dot(&residual, &residual) > tolerance * 4. {
+        #[cfg(feature = "audit")]
+        eprintln!(
+            "MIQ linear update: elimination {eliminated:.3}s, assembly {:.3}s, solve {:.3}s/{iterations} CG iterations, {entries} entries, {} active bounds",
+            assembled - eliminated,
+            started.elapsed().as_secs_f64() - assembled,
+            binding.len()
+        );
+        let residual_norm = dot(&residual, &residual);
+        if !residual_norm.is_finite() || residual_norm > tolerance * 4. {
             return Err("Integer-grid iterative solve exceeded its residual budget".into());
         }
         for (i, expression) in basis.rows.iter().enumerate() {
@@ -324,6 +390,179 @@ impl Problem {
         }
         Ok(x)
     }
+}
+
+/// Sparse LDL with explicit symbolic fill/work limits *before* factor allocation.
+/// AMD is already the ordering used by Clarabel. Ordering and numeric factorization
+/// have no cancellation callback, so only bounded systems enter those operations.
+fn direct_factor(matrix: &[Vec<(usize, f64)>], budget: &Budget) -> Result<DirectFactor> {
+    budget.check()?;
+    let free: Vec<_> = (0..matrix.len())
+        .filter(|&i| !matrix[i].is_empty())
+        .collect();
+    let n = free.len();
+    if n == 0 || n > 100_000 || matrix.iter().map(Vec::len).sum::<usize>() > 4_000_000 {
+        return Err("Integer-grid direct system exceeds its size budget".into());
+    }
+    let mut indices = vec![usize::MAX; matrix.len()];
+    for (i, &old) in free.iter().enumerate() {
+        indices[old] = i;
+    }
+    let mut pointers = vec![0];
+    let mut rows = Vec::new();
+    for &old in &free {
+        for &(j, _) in &matrix[old] {
+            if j <= old {
+                rows.push(indices[j]);
+            }
+        }
+        pointers.push(rows.len());
+    }
+    let (permutation, inverse, info) = amd::order(n, &pointers, &rows, &amd::Control::default())
+        .map_err(|_| "Integer-grid direct ordering failed")?;
+    #[cfg(feature = "audit")]
+    eprintln!(
+        "MIQ ordering estimate: {} entries, {} work",
+        info.lnz, info.n_mult_subs_ldl
+    );
+    #[cfg(not(feature = "audit"))]
+    let _ = info;
+    budget.check()?;
+    let mut columns = vec![Vec::new(); n];
+    for &old in &free {
+        let a = inverse[indices[old]];
+        for &(j, value) in &matrix[old] {
+            if j <= old {
+                let b = inverse[indices[j]];
+                columns[a.max(b)].push((a.min(b), value));
+            }
+        }
+    }
+    let mut pointers = vec![0];
+    let mut rows = Vec::new();
+    let mut values = Vec::new();
+    for column in &mut columns {
+        column.sort_unstable_by_key(|&(i, _)| i);
+        for &(i, value) in column.iter() {
+            rows.push(i);
+            values.push(value);
+        }
+        pointers.push(rows.len());
+    }
+    let variables = matrix.len();
+    let matrix = CscMatrix::new(n, n, pointers, rows, values);
+    let fill = factor_work(&matrix, budget)?;
+    budget.check()?;
+    let factor = QDLDLFactorisation::new(
+        &matrix,
+        Some(QDLDLSettings {
+            perm: Some((0..n).collect()),
+            regularize_enable: false,
+            ..Default::default()
+        }),
+    )
+    .map_err(|error| format!("Integer-grid direct factorization failed: {error}"))?;
+    budget.check()?;
+    if factor.positive_inertia() != n
+        || factor.nnzL() != fill
+        || factor.D.iter().any(|d| !d.is_finite() || *d <= 0.)
+    {
+        return Err("Integer-grid direct factor failed positive-definite/fill validation".into());
+    }
+    #[cfg(test)]
+    budget.factorizations.set(budget.factorizations.get() + 1);
+    Ok(DirectFactor {
+        factor,
+        indices: permutation.iter().map(|&i| free[i]).collect(),
+        free: indices.iter().map(|&i| i != usize::MAX).collect(),
+        variables,
+    })
+}
+
+struct DirectFactor {
+    factor: QDLDLFactorisation<f64>,
+    indices: Vec<usize>,
+    free: Vec<bool>,
+    variables: usize,
+}
+impl DirectFactor {
+    fn covers(&self, matrix: &[Vec<(usize, f64)>]) -> bool {
+        self.variables == matrix.len()
+            && matrix
+                .iter()
+                .zip(&self.free)
+                .all(|(row, &free)| row.is_empty() || free)
+    }
+
+    fn solve(&mut self, rhs: &[f64], budget: &Budget) -> Result<Vec<f64>> {
+        budget.check()?;
+        let mut solution: Vec<_> = self.indices.iter().map(|&i| rhs[i]).collect();
+        self.factor.solve(&mut solution);
+        #[cfg(test)]
+        budget.direct_solves.set(budget.direct_solves.get() + 1);
+        let mut x = vec![0.; self.variables];
+        for (&i, value) in self.indices.iter().zip(solution) {
+            x[i] = value;
+        }
+        budget.check()?;
+        Ok(x)
+    }
+}
+
+fn precondition(
+    factor: &mut Option<DirectFactor>,
+    matrix: &[Vec<(usize, f64)>],
+    diagonal: &[f64],
+    residual: &[f64],
+    budget: &Budget,
+) -> Result<Vec<f64>> {
+    if let Some(factor) = factor {
+        let mut z = factor.solve(residual, budget)?;
+        for (value, row) in z.iter_mut().zip(matrix) {
+            if row.is_empty() {
+                *value = 0.;
+            }
+        }
+        Ok(z)
+    } else {
+        Ok(residual.iter().zip(diagonal).map(|(r, d)| r / d).collect())
+    }
+}
+
+/// Walk the elimination tree's reach for each column. Each visited ancestor is
+/// one strict-lower factor entry; column counts also bound numeric multiply-adds.
+/// Stop while counting, rather than allocating a potentially dense factor first.
+fn factor_work(matrix: &CscMatrix<f64>, budget: &Budget) -> Result<usize> {
+    let n = matrix.n;
+    let mut parent = vec![usize::MAX; n];
+    let mut visited = vec![usize::MAX; n];
+    let mut counts = vec![0usize; n];
+    let (mut fill, mut work) = (0usize, 0usize);
+    for column in 0..n {
+        if column % 128 == 0 {
+            budget.check()?;
+        }
+        visited[column] = column;
+        for &row in &matrix.rowval[matrix.colptr[column]..matrix.colptr[column + 1]] {
+            let mut node = row;
+            while visited[node] != column {
+                visited[node] = column;
+                if parent[node] == usize::MAX {
+                    parent[node] = column;
+                }
+                counts[node] += 1;
+                fill += 1;
+                work += counts[node];
+                if fill > 4_000_000 || work > 500_000_000 {
+                    return Err("Integer-grid direct factor exceeds its fill/work budget".into());
+                }
+                node = parent[node];
+            }
+        }
+    }
+    #[cfg(feature = "audit")]
+    eprintln!("MIQ direct factor: {n} variables, {fill} entries, {work} work");
+    Ok(fill)
 }
 
 type Expression = (BTreeMap<usize, f64>, f64);
@@ -418,6 +657,99 @@ pub(super) fn evaluate(row: &Row, x: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sparse_rounding_update_matches_constrained_oracle() {
+        // A weakly anchored, anisotropic grid makes plain diagonal CG expensive.
+        // Compare the shortcut with a separate constrained solver, including a
+        // seam equation, a rounded coordinate and an active lower bound.
+        let side = 32;
+        let n = side * side;
+        let mut p = Problem::new(n);
+        for y in 0..side {
+            for x in 0..side {
+                let i = y * side + x;
+                for (j, weight) in [(i + 1, 1.), (i + side, 0.3)] {
+                    if (j == i + 1 && x + 1 < side) || (j == i + side && y + 1 < side) {
+                        p.energy.push((vec![(i, weight), (j, -weight)], 0.));
+                    }
+                }
+            }
+        }
+        p.energy.push((vec![(n - 1, 0.1)], 0.));
+        p.equalities.push((vec![(side - 1, 1.), (n - 1, -1.)], 0.));
+        p.inequalities.push((vec![(n - 1, 1.)], 1.5));
+        p.integers.push(0);
+        let fixed = BTreeMap::from([(0, 1.)]);
+        let mut budget = Budget::new(Arc::new(AtomicBool::new(false)));
+        let expected = p.solve(&fixed, &mut budget).unwrap();
+        let updated = p.update(&fixed, &vec![0.; n], &mut budget).unwrap();
+        assert!(
+            budget.direct_solves.get() > 0,
+            "must exercise the fast path"
+        );
+        for (a, b) in expected.iter().zip(&updated) {
+            assert!((a - b).abs() < 1e-6, "oracle {a}, update {b}");
+        }
+        assert_eq!(updated[0], 1.);
+        assert!((updated[n - 1] - 1.5).abs() < 1e-8);
+        assert!((updated[side - 1] - updated[n - 1]).abs() < 1e-8);
+
+        let factorizations = budget.factorizations.get();
+        let more_fixed = BTreeMap::from([(0, 1.), (n / 2, 0.)]);
+        let expected = p.solve(&more_fixed, &mut budget).unwrap();
+        let updated = p.update(&more_fixed, &updated, &mut budget).unwrap();
+        assert_eq!(
+            budget.factorizations.get(),
+            factorizations,
+            "reuse the existing factor"
+        );
+        for (a, b) in expected.iter().zip(&updated) {
+            assert!((a - b).abs() < 1e-6, "oracle {a}, reused factor {b}");
+        }
+
+        // Releasing an originally eliminated coordinate must invalidate a
+        // preconditioner that cannot represent it (e.g. changed active bounds).
+        let expected = p.solve(&BTreeMap::new(), &mut budget).unwrap();
+        let updated = p.update(&BTreeMap::new(), &updated, &mut budget).unwrap();
+        assert!(budget.factorizations.get() > factorizations);
+        for (a, b) in expected.iter().zip(updated) {
+            assert!((a - b).abs() < 1e-6, "oracle {a}, rebuilt factor {b}");
+        }
+    }
+
+    #[test]
+    fn direct_factor_is_bounded_before_allocation_and_honours_cancellation() {
+        let mut budget = Budget::new(Arc::new(AtomicBool::new(false)));
+        // Eliminating the hub first turns this sparse star into a dense factor.
+        // Its numerical work is rejected during symbolic counting.
+        let n = 2_000;
+        let entries = (0..n).flat_map(|i| [((i, i), 2.), ((i, 0), 1.)]).collect();
+        let star = sparse(n, n, entries);
+        assert!(
+            factor_work(&star, &budget)
+                .unwrap_err()
+                .contains("fill/work budget")
+        );
+        assert_eq!(budget.direct_solves.get(), 0);
+        // Never perturb a nonpositive system into a seemingly valid solution.
+        assert!(direct_factor(&[vec![(0, -1.)]], &budget).is_err());
+        assert!(direct_factor(&[vec![(0, f64::INFINITY)]], &budget).is_err());
+        budget.cancel.store(true, Ordering::Relaxed);
+        assert_eq!(
+            direct_factor(&[vec![(0, 1.)]], &budget).err().unwrap(),
+            "Retopology cancelled"
+        );
+        assert_eq!(
+            factor_work(&star, &budget).unwrap_err(),
+            "Retopology cancelled"
+        );
+        assert!(
+            Problem::new(1)
+                .update(&BTreeMap::new(), &[0.], &mut budget)
+                .is_err()
+        );
+    }
 
     #[test]
     fn coupled_relaxation_honours_equalities_bounds_and_fixed_integers() {

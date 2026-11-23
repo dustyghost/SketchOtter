@@ -40,6 +40,30 @@ SDP backend is selected. The locked dependency inventory was regenerated and
 The new AMD ordering dependency’s BSD-3-Clause attribution is included. Native
 platform package builds remain part of PR CI.
 
+Rounding starts with warm conjugate gradients. After 32 unsuccessful iterations,
+it tries a sparse LDL factorization of the eliminated system using Clarabel's
+existing QDLDL and AMD implementations. Later updates reuse that factor as an
+SPD preconditioner, restricted to the remaining free coordinates. The current
+system's independently recomputed residual, seam/fixed equations, inequalities
+and map orientation still determine acceptance. A change that frees a coordinate
+the cached factor cannot represent invalidates it. New orientation conditions
+first update this warm system before falling back to the full quadratic solver.
+
+Before factor allocation, an exact elimination-tree traversal limits strict-lower
+entries to four million and numeric multiply-subtract work to 500 million. The
+input remains limited to 100,000 free variables and four million matrix entries.
+Ordering and numeric factorization have no cancellation callback; budget checks
+surround them, and their input/work limits bound this uninterruptible section.
+Failed or oversized factors retain the bounded iterative/full-relaxation paths.
+Numerical factor regularization is disabled; a nonpositive factor is rejected.
+The overall 60-second deadline and geometry tolerances are unchanged.
+
+This follows the adaptive iterative/direct strategy in MIQ §2.1, without its
+local Gauss–Seidel queue. The pinned upstream
+[QuadriFlow optimizer](https://github.com/hjwdzh/QuadriFlow/blob/810b7a0967c35b0dc85b4464e3835e26a756c967/src/optimizer.cpp)
+also uses sparse factorization for its continuous position systems; that is a
+comparison of numerical methods, not algorithm parity for this parameterization.
+
 ## Current limits
 
 The alternative handles closed surfaces. Layout symmetry and Protect sharp bends
@@ -68,8 +92,8 @@ density paint, sharp protection off. The private geometry is not bundled here.
 
 The baseline spent 95.688 seconds on its first preparation/repair attempt; its
 existing alternative preparation then succeeded in 7.144 seconds. Repeated full
-quadratic solves were the initial alternative's measured bottleneck. The final
-implementation eliminates seam/fixed equations and updates the quadratic energy
+quadratic solves were the initial alternative's measured bottleneck. The first
+implementation eliminated seam/fixed equations and updated the quadratic energy
 with preconditioned conjugate gradients, carrying active orientation constraints.
 A failed update falls back to a full constrained relaxation. Carrying those
 constraints is a bounded heuristic, not a globally optimal active-set method.
@@ -98,6 +122,47 @@ placement and edge flow. Local view artifacts are retained under
 `target/retopo-slow-review/`; they are not published with the private geometry.
 The diagnostic renderer uses OBJ fan diagonals for display, while each solver
 independently chose valid render diagonals before returning its result.
+
+## Timeout investigation, 23 November 2026
+
+The native comparison reproduced the reported release-application solve-limit
+failure at target 3,583. With the app still open, the original executable completed once
+in 56.69 seconds (including process startup), while an instrumented rerun failed
+at 60.062 solver seconds. This is the same immutable source/settings above, not a
+larger target. The map has 57,288 triangles despite its 3,583-quad output target.
+Individual rounding updates took 800–1,200 diagonally preconditioned CG iterations;
+one newly inverted triangle also restarted several full constrained relaxations.
+
+| Change, same source/settings | Solver time | Peak process RSS |
+| --- | ---: | ---: |
+| Sparse LDL after 32 CG iterations, without factor reuse | 45.330 s | 185,668 KiB |
+| Reuse factor as preconditioner for successive updates | 29.609 s | 192,116 KiB |
+| Also update new orientation conditions in the warm system | 17.344 s | 146,032 KiB |
+| Final finite-value guards, repeat 1 | 16.112 s | 145,552 KiB |
+| Final finite-value guards, repeat 2 | 16.173 s | 145,328 KiB |
+
+The final path still produces 3,413 vertices and 3,411 quads. Quad connectivity is
+identical to the previous successful result; maximum corresponding-vertex change
+is 1.92e-6. Maximum sampled source error is 0.02845114; edge-ratio p95 is 1.3594844,
+maximum 3.7840109, and strict closed opposite-edge cycles remain zero. Front/rear
+wireframes show the same silhouette and edge flow. No tolerance, target, sample
+count or overall time limit was relaxed. Timing depends on system load and this
+single saved case does not establish general solver performance.
+The two final repeats and the preceding 17.344-second run produced byte-identical
+OBJs (`f518720f3013cda0825249c10833d1746d9cce1542ae6f5247e7ce17e68768d2`).
+Their process-group peaks were 149,456–150,056 KiB, with no memory-guard stop.
+Logs, outputs, and visual comparisons are retained locally under
+`target/retopo-slow-review/`, outside the source bundle.
+
+The numerical regression compares a 1,024-variable anisotropic grid against the
+separate constrained solver with seams, fixed coordinates and an active bound.
+It requires successful factor reuse after another rounding and invalidation when
+a previously eliminated coordinate becomes free. A sparse-star case is rejected
+by symbolic work counting before dense factor allocation. Nonpositive/nonfinite
+factors and cancellation are also checked. Audit logs now separate elimination,
+assembly, solve iterations and factor fill/work.
+
+## Focused coverage
 
 Focused checks cover constrained quadratic minimization, closed-sphere mapping,
 extraction and original-surface validation. A previously failing redistributed
