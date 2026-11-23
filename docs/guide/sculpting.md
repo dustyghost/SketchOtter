@@ -200,7 +200,7 @@ To brush along a reusable surface guide:
 
 Pressure, masks, symmetry and the active brush still apply, including Detail, Grab and Snake with their usual stencil restrictions.
 
-Enable **Only start strokes on paths** to ignore off-guide starts, or use **Stroke entire path** to apply the brush automatically. **New ring** creates a complete level or shortest-surface loop with one pen drag. See [editable 3D paths](paths.md) for editing and application settings.
+Enable **Only start strokes on paths** to ignore off-guide starts, or use **Stroke entire path** to apply the brush automatically. **New ring** creates a complete planar loop with one pen drag; choose **Auto** or a fixed **X / Y / Z** axis. See [editable 3D paths](paths.md) for editing and application settings.
 
 | Mode | Gesture | Useful for |
 | --- | --- | --- |

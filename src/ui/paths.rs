@@ -4,7 +4,7 @@ use crate::{
     app::paths::PathState,
     command::PathCommand,
     sculpt::paths::PathMode,
-    viewport::paths::{PathEditor, PathTool},
+    viewport::paths::{PathEditor, PathTool, RingAxis},
 };
 mod transform;
 
@@ -66,6 +66,33 @@ pub(crate) fn show(
         }
         if preview { ui.label("Brush preview — Apply or Cancel to continue editing."); }
         ui.add_enabled_ui(!busy && !preview,|ui| {
+            let can_start = !editor.has_unfinished(document) && !editor.gesture_active();
+            ui.horizontal_wrapped(|ui| {
+                for (label, command) in [
+                    ("New ring", PathCommand::NewRing),
+                    ("New surface path", PathCommand::New(PathMode::Surface)),
+                    ("New free path", PathCommand::New(PathMode::Free)),
+                ] {
+                    if ui.add_enabled(can_start, egui::Button::new(label))
+                        .on_disabled_hover_text("Save or discard your unfinished path before starting another")
+                        .clicked() { commands.push(Command::Path(command)); }
+                }
+            });
+            if editor.tool == PathTool::Ring || editor.draft.as_ref().is_some_and(|p| p.ring_orientation.is_some()) {
+                let before = editor.ring_orientation();
+                let mut axis = before;
+                ui.add_enabled_ui(!editor.gesture_active(), |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Ring axis");
+                        for (value,label) in [(RingAxis::Auto,"Auto"),(RingAxis::X,"X"),(RingAxis::Y,"Y"),(RingAxis::Z,"Z")] {
+                            ui.selectable_value(&mut axis, value, label);
+                        }
+                    });
+                });
+                if axis != before { editor.set_ring_axis(document, axis); }
+                ui.weak("Touch the model's side, then drag to position a complete ring. Auto fits the local shape; X, Y and Z fix its axis. Drag Tilt to angle it. Save path keeps the result.");
+                if before == RingAxis::Manual { ui.weak("Current ring: manual tilt"); }
+            }
             path_explorer(ui, editor, document, camera, &mut commands);
             if editor.draft.is_some() {
                 ui.horizontal_wrapped(|ui| {
