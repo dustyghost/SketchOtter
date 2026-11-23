@@ -747,6 +747,16 @@ fn one_drag_ring_authoring_offscreen_preview() {
                     egui::CentralPanel::default().show(ctx, |ui| app.show_viewport(ui));
                 },
             );
+            if frame == 2 && name == Some("editable-panel") {
+                for label in ["New ring", "Ring axis", "Auto", "X", "Y", "Z"] {
+                    assert!(
+                        output.shapes.iter().any(|shape| matches!(
+                            &shape.shape, egui::Shape::Text(text) if text.galley.text() == label
+                        )),
+                        "Missing Editable paths control: {label}"
+                    );
+                }
+            }
             let rgba = capture.render(&ctx, output);
             if frame == 2
                 && let Some(name) = name
@@ -780,6 +790,9 @@ fn one_drag_ring_authoring_offscreen_preview() {
     assert_eq!(app.document.paths().len(), 1, "{}", app.ui.status);
     assert_eq!(app.document.history_counts().0, history.0 + 1);
     render(&mut app, &mut capture, Some("pen-hud"));
+    app.viewport.paths.brush = None;
+    app.viewport.paths.panel = true;
+    render(&mut app, &mut capture, Some("editable-panel"));
     app.viewport.destroy_renderer();
 }
 

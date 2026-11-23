@@ -1,4 +1,4 @@
-//! Native surface-field reconstruction; attributes are sampled after validation.
+//! Native integer-grid reconstruction; attributes are sampled after validation.
 use super::{
     Axis, Mesh, Vec3,
     paths::{PathSample, SurfacePath},
@@ -11,10 +11,28 @@ pub(crate) type GuideCurves = std::sync::Arc<[Vec<PathSample>]>;
 pub(crate) struct Layout {
     pub mesh: Mesh,
     pub polygons: usize,
+    #[cfg(test)]
     pub guides: GuideCurves,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Method {
+    /// Retired from the app; retained for offline reference comparisons.
+    #[allow(dead_code)]
+    SurfaceField,
+    #[default]
+    IntegerGrid,
+}
+impl Method {
+    pub(crate) fn diagnostic_name(self) -> &'static str {
+        match self {
+            Self::SurfaceField => "native_surface_field",
+            Self::IntegerGrid => "native_miq_integer_grid_experimental",
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Options {
+    pub method: Method,
     pub input_triangle_limit: usize,
     pub target: usize,
     pub flow: f32,
@@ -31,13 +49,14 @@ pub(crate) struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            method: Method::IntegerGrid,
             input_triangle_limit: 200_000,
             target: 500,
             flow: 1.,
             density: 1.,
             adaptive: 0.,
             mirror_path_x: false,
-            preserve_sharp: false,
+            preserve_sharp: true,
             sharp_angle_degrees: 45.,
             symmetry_axis: None,
             symmetry_center: Vec3::default(),
@@ -47,6 +66,12 @@ impl Default for Options {
     }
 }
 impl Options {
+    pub(crate) fn require_method_settings(&self) -> Result<(), String> {
+        if self.method == Method::IntegerGrid && self.symmetry_axis.is_some() {
+            return Err("Layout symmetry is not supported by Guided retopology".into());
+        }
+        Ok(())
+    }
     pub(crate) fn require_input_budget(&self, mesh: &Mesh) -> Result<(), String> {
         if !(1..=super::max_triangles()).contains(&self.input_triangle_limit) {
             return Err(format!(
@@ -121,6 +146,7 @@ impl Mesh {
         progress: &dyn Fn(clay_retopology::Stage),
     ) -> Result<Layout, String> {
         check(cancel)?;
+        options.require_method_settings()?;
         options.require_input_budget(self)?;
         self.require_retopology_input()?;
         self.validate()?;
@@ -272,9 +298,14 @@ impl Mesh {
                 triangles: self.triangles.clone(),
             };
             (
-                clay_retopology::reconstruct_regularized_with_progress(
-                    &source, &settings, cancel, progress,
-                )?,
+                match options.method {
+                    Method::SurfaceField => clay_retopology::reconstruct_regularized_with_progress(
+                        &source, &settings, cancel, progress,
+                    )?,
+                    Method::IntegerGrid => clay_retopology::reconstruct_integer_grid_with_progress(
+                        &source, &settings, cancel, progress,
+                    )?,
+                },
                 self,
             )
         };
@@ -317,6 +348,7 @@ impl Mesh {
         Ok(Layout {
             polygons: mesh.quads.len(),
             mesh,
+            #[cfg(test)]
             guides: guides.into(),
         })
     }
@@ -464,6 +496,8 @@ pub(crate) fn progress_label(stage: clay_retopology::Stage) -> String {
     use clay_retopology::Stage::*;
     match stage {
         Preparation { iteration, .. } => format!("Preparing surface · pass {iteration}"),
+        Parameterization { remaining } => format!("Mapping the grid… {remaining} constraints left"),
+        MapValidation { .. } => "Checking the integer-grid map…".into(),
         RetryPreparation => {
             "Grid repair failed. Retrying with different surface preparation…".into()
         }

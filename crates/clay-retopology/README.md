@@ -4,7 +4,24 @@ Experimental Rust implementation for the automatic-retopology replacement in
 PR #119. It now powers the app's experimental guided-retopology preview.
 It is not a quality-equivalent release of QuadriFlow.
 
-The pipeline follows Huang et al., [QuadriFlow (2018)](https://stanford.edu/~jingweih/papers/quadriflow/):
+`reconstruct_integer_grid_with_progress` is a separate experimental alternative
+based on MIQ (2009) parameterization and IGM (2013) orientation conditions.
+It reuses the native orientation/sizing field, then solves seamless charts with
+integer singularities and translations and extracts unit grid cells directly.
+It does not use the lattice repair below. Closed surfaces, signed density and
+soft direction guides are supported; boundaries, sharp-bend protection and the
+app's symmetry modes are currently rejected. Clarabel supplies continuous Rust
+quadratic solves, with bounded rounding, cancellation and independent residual,
+map, topology and original-surface checks. Rounding reuses a bounded sparse
+factorization as a preconditioner, and updates new orientation conditions before
+restarting a full relaxation. Thin-cap constraints use normalized half-spaces
+and stable elimination pivots. A bounded small dual solve handles inconsistent
+tentative active sets; near-converged full solves require independent primal/dual
+validation before integer rounding. The 60-second solve budget can reject
+a difficult input. This is a greedy experiment, not the 2013 paper's global
+optimizer; see [scope, measurements and limitations](../../docs/validation/guided-retopology/experimental-integer-grid.md).
+
+The default Surface field pipeline follows Huang et al., [QuadriFlow (2018)](https://stanford.edu/~jingweih/papers/quadriflow/):
 
 1. Conforming surface sampling and an area-weighted hierarchy.
 2. Fourfold tangent-orientation and position fields.
@@ -97,6 +114,13 @@ cargo run --manifest-path crates/clay-retopology/Cargo.toml -j 1 --example compa
 The comparison executable refuses to overwrite an existing output. It reports
 stage timings and Linux resident memory when available; OBJ output is for visual
 review, not an app-save or attribute-transfer implementation.
+`--guides samples.json` supplies the same sample-array format as the audit
+commands: `position`, `normal`, `tangent` (three-component arrays), `radius` and
+`strength`. Capture samples with the app's surface-path sampler; merely reading
+the control points does not reproduce its guide input. An audit-feature build
+also accepts `CLAY_MIQ_RELAXATION_ITERATIONS=1..100` to reduce the per-relaxation
+iteration limit for controlled stop/recovery comparisons. It cannot increase
+the production limits and is not read by normal app builds.
 
 `symmetry.rs` adapts the extrinsic tangent-lattice helpers from
 [quadrs](https://github.com/vidstige/quadrs), under the included

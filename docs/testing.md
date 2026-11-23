@@ -31,22 +31,27 @@ unused instrumentation/import warnings are allowed only in the focused test
 crate. The complete default Clippy run remains mandatory.
 
 The former staging script selected 18 cases on main at `67b1352`. Coverage is
-retained as follows (function names below are unchanged):
+retained and extended as follows:
 
 | Owning module | Cases | Contract |
 | --- | ---: | --- |
-| `app::retopology_tests` | 5 | Private preview, Apply, source and attribute preservation, cancellation, failure/staleness, input limits, guide/path state, mirror inheritance, history and project round trip |
+| `app::retopology_tests` | 7 | Private preview, Apply, source and attribute preservation, cancellation, failure/staleness, input limits, default Integer grid, open-surface rejection, selected/unselected path reprojection, unsupported symmetry rejection, history and project round trip |
 | `document::retopology::tests` | 4 | Density Undo/save/subdivision, mask/group independence across levels, group-all replacement, atomic replacement at the group limit |
 | `sculpt::retopology::tests` | 6 | Exact solver coordinates, real quads, sculpt-mask independence, multiple/mirrored/stale guides, cancellation/limits, signed density, opt-in whole-sculpt adapter |
 | `app::tests::guide_captures` (default harness) | 3 | `native_retopology_controls_offscreen_review`, `native_retopology_whole_sculpt_offscreen_review`, `guided_retopology_offscreen_review` |
 
-The three group tests moved from `document::tests`; the five app tests moved from
-`app::tests::projection`. There are no duplicate bodies or test-name selection
-rules. The GPU control test remains in ordinary graphics CI; the two existing
+The three group tests moved from `document::tests`; the original five app tests
+and two Integer grid additions moved from `app::tests::projection`. There are no
+duplicate bodies or test-name selection rules. The GPU control test remains in ordinary graphics CI; the two existing
 manual captures and whole-sculpt adapter remain opt-in. Native solver crate
 coverage is unchanged. CI runs both default and focused harnesses and checks
 that the focused test inventory is a subset of the full inventory, includes all
 three owning CPU modules and contains no offscreen captures.
+
+PR #190 establishes this partition and the mixed invariant runner against main.
+PR #192 is stacked on #190 and updates the same shared retopology tests for the
+new default solver and path attachments. Merge #190 first, then refresh #192
+against the latest main and retarget it to main. Neither PR owns a second copy of these tests.
 
 See the [measurement record](validation/testing-batch-2026-11-22/README.md) for
 compiler/profile, guarded memory measurements and comparison with staging.

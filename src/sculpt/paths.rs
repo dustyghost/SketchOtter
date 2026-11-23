@@ -906,13 +906,17 @@ fn project_on_surface(
 
 #[cfg(test)]
 pub(crate) fn sample_surface_error(mesh: &Mesh, samples: &[PathSample]) -> f32 {
+    position_surface_error(mesh, samples.iter().map(|s| s.position))
+}
+
+#[cfg(test)]
+pub(crate) fn position_surface_error(mesh: &Mesh, points: impl Iterator<Item = Vec3>) -> f32 {
     let surface = super::projection::Surface::new(mesh, &|| false).unwrap();
     let mut budget = 30_000_000;
-    samples
-        .iter()
-        .map(|sample| {
+    points
+        .map(|position| {
             surface
-                .nearest(sample.position, 0.1, None, &mut budget)
+                .nearest(position, 0.1, None, &mut budget)
                 .unwrap()
                 .unwrap()
                 .2

@@ -4,7 +4,7 @@ pub(crate) use reference::midpoint as reference_midpoint;
 mod adjacency;
 use crate::{Options, Result, Surface, Vec3, check, topology};
 pub(crate) use adjacency::ordered_neighbours;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 #[cfg_attr(feature = "audit", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Default)]
@@ -35,7 +35,7 @@ pub(crate) fn solve(
     cancel: &dyn Fn() -> bool,
     progress: &dyn Fn(crate::Stage),
 ) -> Result<Field> {
-    solve_impl(source, options, false, false, cancel, progress)
+    solve_impl(source, options, false, false, None, cancel, progress)
 }
 
 /// Let guides steer orientation while keeping hard boundary and crease anchors.
@@ -45,7 +45,115 @@ pub(crate) fn solve_soft_directions(
     cancel: &dyn Fn() -> bool,
     progress: &dyn Fn(crate::Stage),
 ) -> Result<Field> {
-    solve_impl(source, options, true, false, cancel, progress)
+    solve_impl(source, options, true, false, None, cancel, progress)
+}
+
+/// Carry the detected source feature graph through conforming sample splits.
+pub(crate) fn solve_feature_directions(
+    source: &Surface,
+    options: &Options,
+    features: &mut BTreeSet<[usize; 2]>,
+    cancel: &dyn Fn() -> bool,
+    progress: &dyn Fn(crate::Stage),
+) -> Result<Field> {
+    solve_impl(
+        source,
+        options,
+        true,
+        false,
+        Some(features),
+        cancel,
+        progress,
+    )
+}
+
+/// A sharp crease has two tangent planes. Solve its directional constraints
+/// independently on both sides; sharing an averaged vertex normal would put
+/// artificial field singularities onto an otherwise smooth feature curve.
+pub(crate) fn feature_side_directions(
+    field: &Field,
+    features: &BTreeSet<[usize; 2]>,
+    limit: usize,
+    cancel: &dyn Fn() -> bool,
+    progress: &dyn Fn(crate::Stage),
+) -> Result<Vec<[Vec3; 3]>> {
+    let s = &field.surface;
+    let mut sides = BTreeMap::<_, Vec<_>>::new();
+    for (f, t) in s.triangles.iter().enumerate() {
+        if f % 1024 == 0 {
+            check(cancel)?;
+        }
+        for k in 0..3 {
+            sides
+                .entry(topology::edge(t[k], t[(k + 1) % 3]))
+                .or_default()
+                .push((f, k));
+        }
+    }
+    let mut dsu = topology::Dsu::new(3 * s.triangles.len());
+    for (e, faces) in sides {
+        if features.contains(&e) {
+            continue;
+        }
+        if let [(f, k), (g, l)] = faces.as_slice() {
+            dsu.join(3 * f + k, 3 * g + (l + 1) % 3);
+            dsu.join(3 * f + (k + 1) % 3, 3 * g + l);
+        }
+    }
+    let mut compact = BTreeMap::new();
+    let mut original = Vec::new();
+    let mut triangles = Vec::with_capacity(s.triangles.len());
+    for (f, t) in s.triangles.iter().enumerate() {
+        if f % 1024 == 0 {
+            check(cancel)?;
+        }
+        triangles.push(std::array::from_fn(|k| {
+            let root = dsu.find(3 * f + k);
+            *compact.entry(root).or_insert_with(|| {
+                original.push(t[k]);
+                original.len() - 1
+            })
+        }));
+        if original.len() > limit {
+            return Err("Sharp feature field exceeds the vertex budget".into());
+        }
+    }
+    let surface = Surface {
+        positions: original.iter().map(|&v| s.positions[v]).collect(),
+        triangles,
+    };
+    let (normals, areas, _, _) = topology::geometry(&surface);
+    let mut constraints = constraints(
+        &surface,
+        &normals,
+        &Options {
+            preserve_sharp: false,
+            ..Default::default()
+        },
+        None,
+        cancel,
+    )?;
+    for (i, c) in constraints.iter_mut().enumerate() {
+        if c.weight == 0. {
+            *c = field.constraints[original[i]];
+        }
+    }
+    let mut sided = Field {
+        surface,
+        normals,
+        areas,
+        constraints,
+        spacing: original.iter().map(|&v| field.spacing[v]).collect(),
+        directions: Vec::new(),
+        origins: Vec::new(),
+    };
+    reference::solve(&mut sided, true, cancel, progress)?;
+    Ok(sided
+        .surface
+        .triangles
+        .iter()
+        .map(|t| t.map(|v| sided.directions[v]))
+        .collect())
 }
 
 /// Controlled offline experiment: guide the orientation solve, then discard
@@ -58,7 +166,7 @@ pub(crate) fn solve_direction_guides(
     cancel: &dyn Fn() -> bool,
     progress: &dyn Fn(crate::Stage),
 ) -> Result<Field> {
-    solve_impl(source, options, true, true, cancel, progress)
+    solve_impl(source, options, true, true, None, cancel, progress)
 }
 
 fn solve_impl(
@@ -66,19 +174,27 @@ fn solve_impl(
     options: &Options,
     direction_only: bool,
     audit_without_hard_constraints: bool,
+    mut features: Option<&mut BTreeSet<[usize; 2]>>,
     cancel: &dyn Fn() -> bool,
     progress: &dyn Fn(crate::Stage),
 ) -> Result<Field> {
     progress(crate::Stage::Sampling);
     let (_, _, _, area) = topology::geometry(source);
     let base = (area / options.target_quads as f64).sqrt();
-    let (surface, detail) = refine(source, &options.detail, base, options.max_vertices, cancel)?;
+    let (surface, detail) = refine_with_features(
+        source,
+        &options.detail,
+        base,
+        options.max_vertices,
+        features.as_deref_mut(),
+        cancel,
+    )?;
     progress(crate::Stage::Hierarchy {
         samples: surface.positions.len(),
     });
     let (normals, areas, neighbours, _) = topology::geometry(&surface);
     let spacing = allocate_spacing(&normals, &areas, &neighbours, &detail, options);
-    let constraints = constraints(&surface, &normals, options, cancel)?;
+    let constraints = constraints(&surface, &normals, options, features.as_deref(), cancel)?;
     if audit_without_hard_constraints && constraints.iter().any(|c| c.weight >= 1.) {
         return Err("Direction-only audit excludes hard boundary/sharp constraints".into());
     }
@@ -166,6 +282,7 @@ fn constraints(
     s: &Surface,
     normals: &[Vec3],
     o: &Options,
+    features: Option<&BTreeSet<[usize; 2]>>,
     cancel: &dyn Fn() -> bool,
 ) -> Result<Vec<Constraint>> {
     let mut out = vec![Constraint::default(); s.positions.len()];
@@ -180,7 +297,12 @@ fn constraints(
     }
     let sharp_threshold = o.sharp_threshold();
     for ([a, b], ns) in edges {
-        if ns.len() == 1 || sharp_threshold.is_some_and(|threshold| ns[0].dot(ns[1]) <= threshold) {
+        if ns.len() == 1
+            || features.map_or_else(
+                || sharp_threshold.is_some_and(|threshold| ns[0].dot(ns[1]) <= threshold),
+                |es| es.contains(&[a, b]),
+            )
+        {
             for (i, j) in [(a, b), (b, a)] {
                 out[i] = Constraint {
                     tangent: tangent(s.positions[j] - s.positions[i], normals[i]),
@@ -262,6 +384,17 @@ fn refine(
     max_vertices: usize,
     cancel: &dyn Fn() -> bool,
 ) -> Result<(Surface, Vec<f64>)> {
+    refine_with_features(source, detail, scale, max_vertices, None, cancel)
+}
+
+fn refine_with_features(
+    source: &Surface,
+    detail: &[f64],
+    scale: f64,
+    max_vertices: usize,
+    mut features: Option<&mut BTreeSet<[usize; 2]>>,
+    cancel: &dyn Fn() -> bool,
+) -> Result<(Surface, Vec<f64>)> {
     let mut mesh = source.clone();
     let mut detail = if detail.is_empty() {
         vec![0.; mesh.positions.len()]
@@ -291,40 +424,57 @@ fn refine(
             mesh.positions
                 .push((mesh.positions[a] + mesh.positions[b]) * 0.5);
             detail.push((detail[a] + detail[b]) * 0.5);
+            if let Some(es) = features.as_deref_mut()
+                && es.remove(&[a, b])
+            {
+                es.extend([topology::edge(a, *v), topology::edge(*v, b)]);
+            }
         }
-        let mut faces = Vec::with_capacity(mesh.triangles.len() * 2);
-        for &[a, b, c] in &mesh.triangles {
-            let ms = [
-                mid.get(&topology::edge(a, b)).copied(),
-                mid.get(&topology::edge(b, c)).copied(),
-                mid.get(&topology::edge(c, a)).copied(),
-            ];
-            match ms {
-                [None, None, None] => faces.push([a, b, c]),
-                [Some(x), Some(y), Some(z)] => {
-                    faces.extend([[a, x, z], [x, b, y], [z, y, c], [x, y, z]])
-                }
-                _ => {
-                    let vs = [a, b, c];
-                    let count = ms.iter().filter(|x| x.is_some()).count();
-                    let k = if count == 1 {
-                        ms.iter().position(Option::is_some).unwrap()
-                    } else {
-                        ms.iter().position(Option::is_none).unwrap()
-                    };
-                    let [u, v, w] = [vs[k], vs[(k + 1) % 3], vs[(k + 2) % 3]];
-                    if count == 1 {
-                        let x = ms[k].unwrap();
-                        faces.extend([[u, x, w], [x, v, w]]);
-                    } else {
-                        let y = ms[(k + 1) % 3].unwrap();
-                        let z = ms[(k + 2) % 3].unwrap();
-                        faces.extend([[w, z, y], [u, v, z], [v, y, z]]);
-                    }
+        mesh.triangles = split_triangles(&mesh.triangles, &mid, cancel)?;
+    }
+    Err("Retopology could not resolve source edge lengths within its work budget".into())
+}
+
+/// Conforming edge splits shared by sampling and feature-domain preparation.
+pub(crate) fn split_triangles(
+    triangles: &[[usize; 3]],
+    mid: &BTreeMap<[usize; 2], usize>,
+    cancel: &dyn Fn() -> bool,
+) -> Result<Vec<[usize; 3]>> {
+    let mut faces = Vec::with_capacity(triangles.len() * 2);
+    for (i, &[a, b, c]) in triangles.iter().enumerate() {
+        if i % 1024 == 0 {
+            check(cancel)?;
+        }
+        let ms = [
+            mid.get(&topology::edge(a, b)).copied(),
+            mid.get(&topology::edge(b, c)).copied(),
+            mid.get(&topology::edge(c, a)).copied(),
+        ];
+        match ms {
+            [None, None, None] => faces.push([a, b, c]),
+            [Some(x), Some(y), Some(z)] => {
+                faces.extend([[a, x, z], [x, b, y], [z, y, c], [x, y, z]])
+            }
+            _ => {
+                let vs = [a, b, c];
+                let count = ms.iter().filter(|x| x.is_some()).count();
+                let k = if count == 1 {
+                    ms.iter().position(Option::is_some).unwrap()
+                } else {
+                    ms.iter().position(Option::is_none).unwrap()
+                };
+                let [u, v, w] = [vs[k], vs[(k + 1) % 3], vs[(k + 2) % 3]];
+                if count == 1 {
+                    let x = ms[k].unwrap();
+                    faces.extend([[u, x, w], [x, v, w]]);
+                } else {
+                    let y = ms[(k + 1) % 3].unwrap();
+                    let z = ms[(k + 2) % 3].unwrap();
+                    faces.extend([[w, z, y], [u, v, z], [v, y, z]]);
                 }
             }
         }
-        mesh.triangles = faces;
     }
-    Err("Retopology could not resolve source edge lengths within its work budget".into())
+    Ok(faces)
 }

@@ -172,7 +172,7 @@ fn native_retopology_limits_and_worker_cancellation_do_not_change_source() {
     let cancel = std::cell::Cell::new(false);
     let error = source
         .guided_retopology_with_progress(Options::default(), &[path], &|| cancel.get(), &|s| {
-            if matches!(s, clay_retopology::Stage::Preparation { iteration: 1, .. }) {
+            if matches!(s, clay_retopology::Stage::Parameterization { .. }) {
                 cancel.set(true);
             }
         })

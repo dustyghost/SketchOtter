@@ -765,6 +765,23 @@ impl PathEditor {
             Err(error) => self.notice = Some(format!("Ring unchanged: {error}")),
         }
     }
+
+    pub(crate) fn ring_orientation(&self) -> RingAxis {
+        self.ring_plane
+            .map_or(self.ring_axis, |plane| plane.orientation)
+    }
+
+    /// The panel edits a private draft; saving it remains an explicit command.
+    pub(crate) fn set_ring_axis(&mut self, document: &Document, axis: RingAxis) {
+        if let Some(plane) = self.ring_plane {
+            self.update_ring(document, plane.hit, axis, None);
+            if self.ring_orientation() == axis {
+                self.ring_axis = axis;
+            }
+        } else {
+            self.ring_axis = axis;
+        }
+    }
     #[allow(clippy::too_many_arguments)]
     pub(super) fn show(
         &mut self,

@@ -37,6 +37,10 @@ Edits remain a draft until **Save path** or **Save & sculpt**. Press **Escape** 
 
 ## Draw a ring with one pen drag
 
+In **Mesh → Editable paths**, choose **New ring**, then use **Ring axis → Auto / X / Y / Z** at the top of the panel. Touch the side of the model and drag to place the loop. **Save path** or **Save & sculpt** commits it. Selecting a saved ring shows the same axis controls; changing its axis updates a private draft until you save. Save or discard unfinished path edits before starting another ring. **New surface path** and **New free path** are available beside New ring.
+
+You can also create and edit rings with Path Brush:
+
 1. Choose **Ring** in the Path Brush **Mode** menu. **New ring · Auto** fits a planar section to the local shape. Choose **X**, **Y** or **Z** for a fixed axis.
 2. Touch the side of the model. Drag to position the loop and release to keep it. Tap elsewhere on the model to place another ring.
 3. Tap an existing ring to select it. Drag its start handle, or choose **Move ring** and tap a new location. An Auto ring refits to its new location. A fixed-axis ring keeps its chosen axis.

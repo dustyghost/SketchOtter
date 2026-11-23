@@ -65,6 +65,263 @@ fn click(app: &mut App, ctx: &egui::Context, position: Pos2) {
     frame(app, ctx, vec![primary_event(position, false)]);
 }
 
+#[test]
+fn guided_retopology_defaults_to_integer_grid_and_retires_old_controls() {
+    use crate::sculpt::{
+        Axis, Symmetry,
+        retopology::{Method, Options},
+    };
+    assert_eq!(Options::default().method, Method::IntegerGrid);
+    assert!(Options::default().preserve_sharp);
+    let mut app = App::default();
+    app.document
+        .set_symmetry(Symmetry {
+            enabled: true,
+            mirror: [true, false, false],
+            ..Default::default()
+        })
+        .unwrap();
+    // An old in-memory choice must not reopen the retired product path.
+    app.ui.projection.layout.method = Method::SurfaceField;
+    app.ui.projection.layout.symmetry_axis = Some(Axis::Y);
+    let ctx = egui::Context::default();
+    ctx.style_mut(|style| style.animation_time = 0.);
+    app.dispatch(Command::OpenRetopology, &ctx);
+    let before = app.document.project();
+    let history = app.document.history_counts();
+    let output = settle(&mut app, &ctx);
+    for label in [
+        "Surface field",
+        "Layout method",
+        "Layout symmetry (experimental)",
+    ] {
+        assert!(
+            !output
+                .shapes
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text()==label)),
+            "retired control {label}"
+        );
+    }
+    assert_eq!(app.ui.projection.layout.method, Method::IntegerGrid);
+    assert!(app.ui.projection.layout.preserve_sharp);
+    assert_eq!(app.ui.projection.layout.symmetry_axis, None);
+    for expected in [false, true] {
+        let output = settle(&mut app, &ctx);
+        click(&mut app, &ctx, text_center(&output, "Protect sharp bends"));
+        settle(&mut app, &ctx);
+        assert_eq!(app.ui.projection.layout.preserve_sharp, expected);
+        app.dispatch(Command::CancelProjection, &ctx);
+        app.dispatch(Command::OpenRetopology, &ctx);
+        assert_eq!(app.ui.projection.layout.method, Method::IntegerGrid);
+        assert_eq!(app.ui.projection.layout.preserve_sharp, expected);
+        assert_eq!(app.ui.projection.layout.symmetry_axis, None);
+        app.ui.projection.layout.require_method_settings().unwrap();
+    }
+    assert!(app.document.project() == before);
+    assert_eq!(app.document.history_counts(), history);
+}
+
+#[test]
+fn guided_retopology_selection_draws_paths_before_preview_and_can_hide_them() {
+    use crate::sculpt::{Geometry, paths::PathMode, retopology::tests::fixture};
+    let (mesh, path) = fixture(true);
+    let mut app = App::default();
+    app.document.replace_geometry(Geometry::new(mesh)).unwrap();
+    for name in ["Guide A", "Guide B"] {
+        app.document
+            .create_path(
+                name.into(),
+                PathMode::Surface,
+                path.points.clone(),
+                false,
+                0.,
+            )
+            .unwrap();
+    }
+    app.camera.yaw = 0.;
+    app.camera.pitch = 0.;
+    app.ui.guide_paths = false;
+    let before = app.document.project();
+    let history = app.document.history_counts();
+    let ctx = egui::Context::default();
+    ctx.style_mut(|s| s.animation_time = 0.);
+    app.dispatch(Command::OpenRetopology, &ctx);
+    // Selecting paths is useful even when their solver strength is zero.
+    app.ui.projection.layout.flow = 0.;
+    let lines = |output: &egui::FullOutput| {
+        output
+            .shapes
+            .iter()
+            .filter(|s| {
+                matches!(&s.shape, egui::Shape::LineSegment { stroke, .. }
+            if stroke.width == 2. && stroke.color == egui::Color32::from_rgb(255, 187, 80))
+            })
+            .count()
+    };
+    assert_eq!(lines(&settle(&mut app, &ctx)), 0);
+    let mut count = 0;
+    for name in ["Guide A", "Guide B"] {
+        let output = settle(&mut app, &ctx);
+        click(&mut app, &ctx, text_center(&output, name));
+        let next = lines(&settle(&mut app, &ctx));
+        assert!(next > count + 100, "selected guide appears before solving");
+        count = next;
+    }
+    let output = settle(&mut app, &ctx);
+    click(
+        &mut app,
+        &ctx,
+        text_center(&output, "Mirror paths across X = 0"),
+    );
+    assert_eq!(lines(&settle(&mut app, &ctx)), count * 2);
+    let output = settle(&mut app, &ctx);
+    click(
+        &mut app,
+        &ctx,
+        text_center(&output, "Mirror paths across X = 0"),
+    );
+    let output = settle(&mut app, &ctx);
+    click(&mut app, &ctx, text_center(&output, "Hide path overlay"));
+    assert_eq!(lines(&settle(&mut app, &ctx)), 0);
+    let output = settle(&mut app, &ctx);
+    click(&mut app, &ctx, text_center(&output, "Hide path overlay"));
+    assert_eq!(lines(&settle(&mut app, &ctx)), count);
+    let output = settle(&mut app, &ctx);
+    click(&mut app, &ctx, text_center(&output, "Guide B"));
+    assert!(lines(&settle(&mut app, &ctx)) < count);
+    assert!(app.projection.draft.is_none() && !app.ui.projection.busy);
+    assert!(app.document.project() == before);
+    assert_eq!(app.document.history_counts(), history);
+    app.dispatch(Command::CancelProjection, &ctx);
+    assert_eq!(lines(&settle(&mut app, &ctx)), 0);
+}
+
+#[test]
+fn editable_paths_ring_controls_create_reorient_and_preserve_drafts() {
+    use crate::{
+        command::PathCommand,
+        sculpt::{Geometry, Primitive, PrimitiveKind, paths::PathMode},
+        viewport::paths::{PathTool, RingAxis},
+    };
+    let mut app = App::default();
+    let mut cylinder = Primitive::for_kind(PrimitiveKind::Cylinder);
+    cylinder.segments = 24;
+    app.document
+        .replace_geometry(Geometry::new(cylinder.mesh().unwrap()))
+        .unwrap();
+    let ctx = egui::Context::default();
+    ctx.style_mut(|style| style.animation_time = 0.);
+    app.dispatch(Command::Path(PathCommand::Open), &ctx);
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts();
+    let button = |app: &mut App, label: &str| {
+        let output = settle(app, &ctx);
+        click(app, &ctx, text_center(&output, label));
+        settle(app, &ctx);
+    };
+    let axis = |app: &mut App, label: &str| {
+        let output = settle(app, &ctx);
+        let anchor = text_center(&output, "Ring axis");
+        let position = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == label => {
+                    let center = text.pos + text.galley.size() * 0.5;
+                    (center.x > anchor.x && (center.y - anchor.y).abs() < 5.).then_some(center)
+                }
+                _ => None,
+            })
+            .expect("ring-axis control must be visible beside its label");
+        click(app, &ctx, position);
+        settle(app, &ctx);
+    };
+    button(&mut app, "New free path");
+    assert_eq!(
+        app.viewport.paths.draft.as_ref().unwrap().mode,
+        PathMode::Free
+    );
+    button(&mut app, "New surface path");
+    assert_eq!(
+        app.viewport.paths.draft.as_ref().unwrap().mode,
+        PathMode::Surface
+    );
+    button(&mut app, "New ring");
+    assert!(app.viewport.paths.tool == PathTool::Ring);
+    assert!(app.viewport.paths.brush.is_none());
+    for (label, expected) in [
+        ("X", RingAxis::X),
+        ("Z", RingAxis::Z),
+        ("Auto", RingAxis::Auto),
+        ("Y", RingAxis::Y),
+    ] {
+        axis(&mut app, label);
+        assert_eq!(app.viewport.paths.ring_orientation(), expected);
+    }
+    assert_eq!(app.document.geometry_snapshot(), before);
+    assert_eq!(app.document.history_counts(), history);
+
+    let hit = app.ui.viewport_menu.viewport_rect.unwrap().center() + Vec2::new(45., 30.);
+    click(&mut app, &ctx, hit);
+    settle(&mut app, &ctx);
+    let draft = app.viewport.paths.draft.clone().unwrap();
+    assert!(
+        draft.closed && draft.points.len() >= 12,
+        "{}",
+        app.ui.status
+    );
+    assert_eq!(draft.ring_orientation, Some(RingAxis::Y));
+    assert!(
+        draft
+            .points
+            .iter()
+            .all(|p| (p.position.1 - draft.points[0].position.1).abs() < 1e-4)
+    );
+    assert_eq!(app.document.geometry_snapshot(), before);
+    button(&mut app, "New ring");
+    assert_eq!(
+        app.viewport.paths.draft.as_ref(),
+        Some(&draft),
+        "an unfinished ring must not be discarded"
+    );
+    button(&mut app, "Save path");
+    assert_eq!(app.document.paths().len(), 1);
+    assert_eq!(app.document.history_counts().0, history.0 + 1);
+    let saved = app.document.paths()[0].clone();
+
+    axis(&mut app, "X");
+    let turned = app.viewport.paths.draft.as_ref().unwrap();
+    assert_eq!(
+        turned.ring_orientation,
+        Some(RingAxis::X),
+        "{}",
+        app.ui.status
+    );
+    assert!(
+        turned
+            .points
+            .iter()
+            .all(|p| (p.position.0 - turned.points[0].position.0).abs() < 1e-4)
+    );
+    assert_ne!(turned.points, saved.points);
+    assert_eq!(
+        app.document.path(saved.id),
+        Some(&saved),
+        "axis edits remain private until Save"
+    );
+    assert_eq!(app.document.history_counts().0, history.0 + 1);
+    button(&mut app, "Save path");
+    assert_eq!(app.document.history_counts().0, history.0 + 2);
+    app.dispatch(Command::Undo, &ctx);
+    assert_eq!(app.document.path(saved.id), Some(&saved));
+    app.dispatch(Command::Redo, &ctx);
+    assert_eq!(
+        app.document.path(saved.id).unwrap().ring_orientation,
+        Some(RingAxis::X)
+    );
+}
+
 fn search(app: &mut App, ctx: &egui::Context, query: &str) -> egui::FullOutput {
     app.execute_action(Action::Search, ctx);
     settle(app, ctx);
@@ -314,6 +571,7 @@ fn dismissing_search_does_not_discard_an_existing_surface_preview() {
         mesh: mesh.clone(),
         revision: app.document.display_revision(),
         settings: app.document.capture_edit_settings(),
+        retopology_paths: Vec::new(),
     });
     app.viewport.session.projection_preview = Some(mesh.clone());
     settle(&mut app, &ctx);

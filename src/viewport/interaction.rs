@@ -16,6 +16,7 @@ pub(crate) struct InteractionSession {
     pub(crate) projection_preview: Option<std::sync::Arc<crate::sculpt::Mesh>>,
     pub(crate) projection_mode: bool,
     pub(crate) retopology_guides: Option<crate::sculpt::retopology::GuideCurves>,
+    pub(crate) retopology_selection: Option<(Vec<u64>, bool)>,
     pub(crate) density_paint: Option<(crate::sculpt::retopology::DensityPaint, f32, f32)>,
     pub(super) density_last: Option<Pos2>,
     pub(super) scene_preview: Option<std::sync::Arc<super::gpu::DisplayMesh>>,

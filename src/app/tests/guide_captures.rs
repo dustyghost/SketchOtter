@@ -78,6 +78,9 @@ fn native_retopology_whole_sculpt_offscreen_review() {
     g.app.ui.projection.layout.symmetry_centreline = centreline;
     g.app.ui.projection.layout.symmetry_axis = None;
     if let Some(side) = symmetry.as_deref() {
+        // Retain the historical symmetry comparison tool, outside the product UI.
+        g.app.ui.projection.layout.method = crate::sculpt::retopology::Method::SurfaceField;
+        g.app.ui.projection.layout.preserve_sharp = false;
         g.app.ui.projection.layout.symmetry_axis = Some(crate::sculpt::Axis::X);
         g.app.ui.projection.layout.symmetry_source = match side {
             "original" => crate::sculpt::retopology::SymmetrySource::Original,
@@ -187,6 +190,28 @@ fn native_retopology_controls_offscreen_review() {
     click_guide_label(&mut g, "Guide A");
     click_guide_label(&mut g, "Guide B");
     assert_eq!(g.app.ui.projection.flow_paths.len(), 2);
+    let (rect, pixels) = g.frame(vec![]);
+    assert!(
+        pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(i, p)| {
+                let x = (*i % g.size[0] as usize) as f32;
+                let y = (*i / g.size[0] as usize) as f32;
+                rect.contains(Pos2::new(x, y))
+                    && x > rect.center().x
+                    && p[0] > 235
+                    && p[1] > 165
+                    && p[1] < 205
+                    && p[2] < 110
+            })
+            .count()
+            > 100,
+        "selected guides render on the model before Preview"
+    );
+    g.save("selected-guides-before-preview");
     let before = g.app.document.project();
     click_guide_label(&mut g, "More detail");
     assert_eq!(
@@ -282,6 +307,21 @@ fn native_retopology_controls_offscreen_review() {
     );
     g.save("native-preview");
     let painted = g.app.document.project();
+    assert_eq!(
+        g.app.ui.projection.layout.method,
+        crate::sculpt::retopology::Method::IntegerGrid
+    );
+    assert!(g.app.ui.projection.layout.preserve_sharp);
+    assert_eq!(g.app.ui.projection.layout.symmetry_axis, None);
+    g.save("integer-grid-controls");
+    click_guide_label(&mut g, "Protect sharp bends");
+    assert!(!g.app.ui.projection.layout.preserve_sharp);
+    assert!(g.app.projection.draft.is_none());
+    assert!(g.app.ui.projection.report.is_none());
+    assert!(g.app.document.project() == painted);
+    click_guide_label(&mut g, "Preview layout");
+    super::projection::finish_projection(&mut g.app);
+    assert!(g.app.projection.draft.is_some(), "{}", g.app.ui.status);
     click_guide_label(&mut g, "Apply as new model");
     assert_eq!(g.app.document.model_count(), 2);
     g.app.document.mesh().validate_closed().unwrap();

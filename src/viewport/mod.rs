@@ -479,6 +479,11 @@ impl Viewport {
         if self.session.projection_mode {
             let density_drawing =
                 self.paint_retopology_density(ui, &response, &painter, &scene, document, options);
+            if let Some((paths, mirror)) = &self.session.retopology_selection {
+                self.session
+                    .guided
+                    .paint_selected(document, &scene, &painter, paths, *mirror);
+            }
             if let Some(guides) = &self.session.retopology_guides {
                 for samples in guides.iter() {
                     for pair in samples.windows(2) {

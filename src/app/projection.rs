@@ -1,6 +1,7 @@
 //! Shared private, cancellable surface-edit drafts; only Apply changes the document.
 use super::*;
 use crate::background_job::BackgroundJob;
+use crate::sculpt::paths::{PathMode, SurfacePath};
 use crate::sculpt::{Mesh, ProjectionOptions};
 use crate::ui::{SurfaceMode, SurfaceReport};
 use std::sync::Arc;
@@ -9,9 +10,15 @@ pub(super) struct ProjectionDraft {
     pub mesh: Arc<Mesh>,
     pub revision: u64,
     pub settings: crate::diagnostics::EditSettings,
+    pub retopology_paths: Vec<SurfacePath>,
+}
+struct SurfacePreview {
+    mesh: Mesh,
+    report: SurfaceReport,
+    retopology_paths: Vec<SurfacePath>,
 }
 struct Worker {
-    job: BackgroundJob<(Mesh, SurfaceReport)>,
+    job: BackgroundJob<SurfacePreview>,
     revision: u64,
     settings: crate::diagnostics::EditSettings,
     progress: Option<Arc<std::sync::Mutex<String>>>,
@@ -22,6 +29,7 @@ pub(super) struct ProjectionState {
     pub draft: Option<ProjectionDraft>,
     pub reference: Option<(u64, Arc<Mesh>)>,
     pub density_display: Option<(u64, Arc<Mesh>)>,
+    pub last_retopology_settings: Option<serde_json::Value>,
 }
 impl App {
     pub(super) fn open_projection(&mut self) -> Result<(), String> {
@@ -87,7 +95,11 @@ impl App {
         let job = BackgroundJob::start("clay-detail-projection", move |cancel| {
             target
                 .project_details(&source, options, &cancel)
-                .map(|(mesh, report)| (mesh, SurfaceReport::Projection(report)))
+                .map(|(mesh, report)| SurfacePreview {
+                    mesh,
+                    report: SurfaceReport::Projection(report),
+                    retopology_paths: Vec::new(),
+                })
         })?;
         let mut settings = self.document.capture_edit_settings();
         let view = settings
@@ -131,13 +143,18 @@ impl App {
                 return;
             }
             match result {
-                Ok((mesh, report)) => {
+                Ok(SurfacePreview {
+                    mesh,
+                    report,
+                    retopology_paths,
+                }) => {
                     self.ui.status = report.summary();
                     self.ui.projection.report = Some(report);
                     self.projection.draft = Some(ProjectionDraft {
                         mesh: Arc::new(mesh),
                         revision: worker.revision,
                         settings: worker.settings.clone(),
+                        retopology_paths,
                     });
                 }
                 Err(error) => {
@@ -153,17 +170,26 @@ impl App {
             .draft
             .take()
             .ok_or("Preview the surface edit before applying it")?;
-        let apply = match self.ui.projection.mode {
-            SurfaceMode::Projection => Document::apply_projection,
-            SurfaceMode::Relaxation => Document::apply_relaxation,
-            SurfaceMode::Retopology => Document::apply_retopology,
+        let path_count = draft.retopology_paths.len();
+        let result = if self.ui.projection.mode == SurfaceMode::Retopology {
+            self.document.apply_retopology(
+                (*draft.mesh).clone(),
+                draft.retopology_paths,
+                draft.revision,
+                Some(draft.settings),
+            )
+        } else {
+            let apply = match self.ui.projection.mode {
+                SurfaceMode::Relaxation => Document::apply_relaxation,
+                _ => Document::apply_projection,
+            };
+            apply(
+                &mut self.document,
+                (*draft.mesh).clone(),
+                draft.revision,
+                Some(draft.settings),
+            )
         };
-        let result = apply(
-            &mut self.document,
-            (*draft.mesh).clone(),
-            draft.revision,
-            Some(draft.settings),
-        );
         if result.is_ok()
             && self.ui.projection.mode == SurfaceMode::Relaxation
             && let Some((revision, _)) = &mut self.projection.reference
@@ -176,6 +202,12 @@ impl App {
             ));
             self.ui.status =
                 "Layout applied. The hidden model below is the detail projection reference.".into();
+            if path_count > 0 {
+                self.ui.status.push_str(&format!(
+                    " {path_count} surface paths reattached to the new model."
+                ));
+            }
+            self.refresh_path_after_history();
         }
         self.cancel_projection();
         result
@@ -203,16 +235,8 @@ impl App {
         state.open = true;
         // Start large sculpts at a bounded, reviewable budget. The explicit
         // control still permits up to 50,000 quads.
-        let symmetry = self.document.symmetry();
-        let mut enabled_axes = crate::sculpt::Axis::ALL
-            .into_iter()
-            .zip(symmetry.mirror)
-            .filter_map(|(axis, enabled)| enabled.then_some(axis));
-        state.layout.symmetry_axis = enabled_axes
-            .next()
-            .filter(|_| symmetry.enabled && enabled_axes.next().is_none());
-        state.layout.symmetry_center = symmetry.center;
-        state.layout.symmetry_source = crate::sculpt::retopology::SymmetrySource::Original;
+        state.layout.method = crate::sculpt::retopology::Method::IntegerGrid;
+        state.layout.symmetry_axis = None;
         state.layout.target = (self.document.mesh().triangles.len() / 10).clamp(4, 10_000);
         state.flow_paths.retain(|&id| {
             self.document.path(id).is_some_and(|p| {
@@ -228,10 +252,15 @@ impl App {
         Ok(())
     }
     fn start_retopology(&mut self) -> Result<(), String> {
+        let mut diagnostic_settings = self.retopology_diagnostic_settings();
+        diagnostic_settings["source_surface_signature"] =
+            crate::sculpt::paths::mesh_signature(self.document.mesh()).into();
+        self.projection.last_retopology_settings = Some(diagnostic_settings.clone());
         self.document.require_retopology_target()?;
         self.clear_projection_preview();
         self.viewport.cancel(&mut self.document);
         let options = self.ui.projection.layout;
+        options.require_method_settings()?;
         options.require_input_budget(self.document.mesh())?;
         self.ui.projection.density_paint = None;
         let paths = self
@@ -248,6 +277,14 @@ impl App {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let mesh = self.document.mesh().clone();
+        let mut retopology_paths: Vec<_> = self
+            .document
+            .paths()
+            .iter()
+            .filter(|p| p.target == self.document.active_model_id() && p.mode == PathMode::Surface)
+            .cloned()
+            .collect();
+        let reproject_distance = self.paths.reproject_distance;
         let progress = Arc::new(std::sync::Mutex::new(String::from("Preparing surface…")));
         let worker_progress = progress.clone();
         let job = BackgroundJob::start("clay-guided-retopology", move |cancel| {
@@ -257,19 +294,68 @@ impl App {
                         *label = crate::sculpt::retopology::progress_label(stage);
                     }
                 })?;
+            if let Ok(mut label) = worker_progress.lock() {
+                *label = "Reprojecting saved paths…".into();
+            }
+            let mut guides = Vec::new();
+            for path in &mut retopology_paths {
+                path.reproject_cancelled(&layout.mesh, reproject_distance, &cancel)
+                    .map_err(|e| {
+                        format!("Path ‘{}’ could not attach to the layout: {e}", path.name)
+                    })?;
+                if paths.iter().any(|p| p.id == path.id) {
+                    let length: f32 = path
+                        .surface_curve()
+                        .windows(2)
+                        .map(|p| (p[1].position - p[0].position).len())
+                        .sum();
+                    let mut samples = path.samples_on_mesh_cancelled(
+                        &layout.mesh,
+                        (length / 512.).max(0.0001),
+                        &cancel,
+                    )?;
+                    if path.closed {
+                        samples.push(*samples.first().ok_or("Guide has no samples")?);
+                    }
+                    if options.mirror_path_x {
+                        guides.push(
+                            samples
+                                .iter()
+                                .map(|s| {
+                                    let mirror = |v: crate::sculpt::Vec3| {
+                                        crate::sculpt::Vec3(-v.0, v.1, v.2)
+                                    };
+                                    crate::sculpt::paths::PathSample {
+                                        position: mirror(s.position),
+                                        normal: mirror(s.normal),
+                                        tangent: mirror(s.tangent),
+                                        binormal: mirror(s.binormal) * -1.,
+                                        ..*s
+                                    }
+                                })
+                                .collect(),
+                        );
+                    }
+                    guides.push(samples);
+                }
+            }
             let report = SurfaceReport::Retopology {
                 quads: layout.mesh.quads.len(),
                 polygons: layout.polygons,
                 changed: layout.mesh != mesh,
-                guides: layout.guides,
+                guides: guides.into(),
             };
-            Ok((layout.mesh, report))
+            Ok(SurfacePreview {
+                mesh: layout.mesh,
+                report,
+                retopology_paths,
+            })
         })?;
         let mut settings = self.document.capture_edit_settings();
         let view = settings
             .view_input
             .get_or_insert_with(|| serde_json::json!({}));
-        view["guided_retopology"] = serde_json::json!({"backend":"native_surface_field","input_triangle_limit":options.input_triangle_limit,"target":options.target,"paths":self.ui.projection.flow_paths,"path_strength":options.flow,"density_strength":options.density,"shape_adaptation":options.adaptive,"mirror_path_x":options.mirror_path_x,"preserve_sharp":options.preserve_sharp,"sharp_angle_degrees":options.sharp_angle_degrees,"symmetry_axis":options.symmetry_axis,"symmetry_center":options.symmetry_center,"symmetry_centreline":options.symmetry_centreline,"symmetry_source":options.symmetry_source});
+        view["guided_retopology"] = diagnostic_settings;
         self.projection.worker = Some(Worker {
             job,
             progress: Some(progress),
@@ -300,7 +386,11 @@ impl App {
         let job = BackgroundJob::start("clay-mesh-relaxation", move |cancel| {
             target
                 .relax_mesh(&reference, options, &cancel)
-                .map(|(mesh, report)| (mesh, SurfaceReport::Relaxation(report)))
+                .map(|(mesh, report)| SurfacePreview {
+                    mesh,
+                    report: SurfaceReport::Relaxation(report),
+                    retopology_paths: Vec::new(),
+                })
         })?;
         let mut settings = self.document.capture_edit_settings();
         let view = settings

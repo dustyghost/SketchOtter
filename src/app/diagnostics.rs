@@ -1,5 +1,9 @@
 use super::*;
 impl App {
+    pub(super) fn retopology_diagnostic_settings(&self) -> serde_json::Value {
+        let options = self.ui.projection.layout;
+        serde_json::json!({"backend":options.method.diagnostic_name(),"input_triangle_limit":options.input_triangle_limit,"target":options.target,"paths":self.ui.projection.flow_paths,"path_strength":options.flow,"path_reprojection_distance":self.paths.reproject_distance,"density_strength":options.density,"shape_adaptation":options.adaptive,"mirror_path_x":options.mirror_path_x,"preserve_sharp":options.preserve_sharp,"sharp_angle_degrees":options.sharp_angle_degrees,"symmetry_axis":options.symmetry_axis,"symmetry_center":options.symmetry_center,"symmetry_centreline":options.symmetry_centreline,"symmetry_source":options.symmetry_source,"target_model_id":self.document.active_model_id(),"source_vertices":self.document.mesh().vertices.len(),"source_triangles":self.document.mesh().triangles.len()})
+    }
     pub(super) fn diagnostic_warning(&mut self, category: &str) {
         let warnings = &mut self.diagnostic_environment.warnings;
         if warnings.len() == 32 {
@@ -26,6 +30,8 @@ impl App {
             "modeling_active": self.ui.modeling.active,
             "reverse_hold": format!("{:?}", self.ui.preferences.reverse),
             "smooth_hold": format!("{:?}", self.ui.preferences.smooth),
+            "guided_retopology": self.retopology_diagnostic_settings(),
+            "last_guided_retopology_attempt": self.projection.last_retopology_settings,
         }));
     }
     pub(super) fn show_diagnostics(&mut self, ctx: &egui::Context) {
@@ -89,6 +95,39 @@ impl App {
 #[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
+    #[test]
+    fn diagnostics_keep_rejected_retopology_settings_and_current_guide_selection() {
+        let mut app = App::default();
+        let ctx = egui::Context::default();
+        app.dispatch(Command::OpenRetopology, &ctx);
+        app.ui.projection.layout.method = crate::sculpt::retopology::Method::IntegerGrid;
+        app.ui.projection.layout.target = 3583;
+        app.ui.projection.flow_paths = vec![2, 1];
+        app.ui.projection.layout.preserve_sharp = true;
+        app.ui.projection.layout.symmetry_axis = Some(crate::sculpt::Axis::X);
+        let history = app.document.history_counts();
+        app.dispatch(Command::PreviewProjection, &ctx);
+        assert!(app.ui.status.contains("Layout symmetry"));
+        assert!(app.projection.draft.is_none());
+        assert_eq!(app.document.history_counts(), history);
+        app.ui.projection.flow_paths = vec![1];
+        app.ui.projection.layout.target = 1000;
+        app.capture_diagnostic_context(&ctx);
+        let manifest = app.document.diagnostic_manifest(Default::default());
+        let summary = manifest.summary();
+        assert!(summary.contains("target 3583, selected path IDs [2,1]"));
+        assert!(summary.contains("target 1000, selected path IDs [1]"));
+        let encoded = serde_json::to_vec(&manifest).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        let view = &saved["current_settings"]["view_input"];
+        let attempted = &view["last_guided_retopology_attempt"];
+        assert_eq!(attempted["backend"], "native_miq_integer_grid_experimental");
+        assert_eq!(attempted["target"], 3583);
+        assert_eq!(attempted["paths"], serde_json::json!([2, 1]));
+        assert_eq!(attempted["preserve_sharp"], true);
+        assert_eq!(view["guided_retopology"]["target"], 1000);
+        assert_eq!(view["guided_retopology"]["paths"], serde_json::json!([1]));
+    }
     #[test]
     fn diagnostics_latch_view_at_edit_and_keep_safe_bounded_warnings() {
         let mut app = App::default();

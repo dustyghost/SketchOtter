@@ -49,6 +49,19 @@ impl EditSettings {
                 "unavailable"
             }
         ));
+        if let Some(view) = &self.view_input {
+            for (key, label) in [
+                ("guided_retopology", "Guided retopology controls"),
+                (
+                    "last_guided_retopology_attempt",
+                    "Last Guided retopology attempt",
+                ),
+            ] {
+                if let Some(settings) = view.get(key).filter(|v| v.is_object()) {
+                    text.push_str(&format!("       {label}: method {}, target {}, selected path IDs {}; full settings in manifest\n", settings["backend"].as_str().unwrap_or("unavailable"), settings["target"], settings["paths"]));
+                }
+            }
+        }
         text
     }
     pub(crate) fn memory(&self) -> SettingsMemory {

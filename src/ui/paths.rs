@@ -4,7 +4,7 @@ use crate::{
     app::paths::PathState,
     command::PathCommand,
     sculpt::paths::PathMode,
-    viewport::paths::{PathEditor, PathTool},
+    viewport::paths::{PathEditor, PathTool, RingAxis},
 };
 mod transform;
 
@@ -66,6 +66,33 @@ pub(crate) fn show(
         }
         if preview { ui.label("Brush preview — Apply or Cancel to continue editing."); }
         ui.add_enabled_ui(!busy && !preview,|ui| {
+            let can_start = !editor.has_unfinished(document) && !editor.gesture_active();
+            ui.horizontal_wrapped(|ui| {
+                for (label, command) in [
+                    ("New ring", PathCommand::NewRing),
+                    ("New surface path", PathCommand::New(PathMode::Surface)),
+                    ("New free path", PathCommand::New(PathMode::Free)),
+                ] {
+                    if ui.add_enabled(can_start, egui::Button::new(label))
+                        .on_disabled_hover_text("Save or discard your unfinished path before starting another")
+                        .clicked() { commands.push(Command::Path(command)); }
+                }
+            });
+            if editor.tool == PathTool::Ring || editor.draft.as_ref().is_some_and(|p| p.ring_orientation.is_some()) {
+                let before = editor.ring_orientation();
+                let mut axis = before;
+                ui.add_enabled_ui(!editor.gesture_active(), |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Ring axis");
+                        for (value,label) in [(RingAxis::Auto,"Auto"),(RingAxis::X,"X"),(RingAxis::Y,"Y"),(RingAxis::Z,"Z")] {
+                            ui.selectable_value(&mut axis, value, label);
+                        }
+                    });
+                });
+                if axis != before { editor.set_ring_axis(document, axis); }
+                ui.weak("Drag on the model to place a ring. Auto fits the local shape; X / Y / Z fix its axis.");
+                if before == RingAxis::Manual { ui.weak("Current ring: manual tilt"); }
+            }
             path_explorer(ui, editor, document, camera, &mut commands);
             if editor.draft.is_some() {
                 ui.horizontal_wrapped(|ui| {
@@ -100,6 +127,12 @@ pub(crate) fn show(
                 .show_ui(ui,|ui| { for (i,brush) in document.brushes().iter().enumerate() { ui.selectable_value(selected_brush,i,&brush.name); } });
             let brush=&document.brushes()[*selected_brush];
             ui.label(format!("Strength {:.0}% · Spacing {:.0}% of radius",brush.strength*100.,brush.spacing*100.));
+            let ready=editor.draft.as_ref().is_some_and(|p|p.id!=0 && p.mode==PathMode::Surface && !p.is_stale(document.mesh())) && !editor.dirty(document);
+            ui.horizontal_wrapped(|ui| {
+                let response=ui.add_enabled(ready,egui::Button::new(egui::RichText::new("Stroke entire path").strong()));
+                if design::help(response,"Automatically apply the active brush over this entire saved path using the displayed size, constant pressure and current adaptive settings. Commits one undo step when finished; Cancel discards unfinished work.").clicked() { commands.push(Command::Path(PathCommand::StrokeEntirePath)); }
+                if ui.add_enabled(ready,egui::Button::new("Preview stroke")).on_hover_text("Inspect the result before choosing Apply stroke.").clicked() { commands.push(Command::Path(PathCommand::Preview)); }
+            });
             let linked=state.use_brush_size;
             if design::checkbox(ui, &mut state.use_brush_size,"Use active brush size").changed()
                 && linked && !state.use_brush_size
@@ -129,12 +162,6 @@ pub(crate) fn show(
                 design::checkbox(ui, &mut state.options.reverse,"Run in reverse");
                 design::checkbox(ui, &mut state.options.invert,"Invert brush effect");
             });
-            });
-            let ready=editor.draft.as_ref().is_some_and(|p|p.id!=0 && p.mode==PathMode::Surface && !p.is_stale(document.mesh())) && !editor.dirty(document);
-            ui.horizontal_wrapped(|ui| {
-                let response=ui.add_enabled(ready,egui::Button::new(egui::RichText::new("Stroke entire path").strong()));
-                if design::help(response,"Automatically apply the active brush over this entire saved path using the displayed size, constant pressure and current adaptive settings. Commits one undo step when finished; Cancel discards unfinished work.").clicked() { commands.push(Command::Path(PathCommand::StrokeEntirePath)); }
-                if ui.add_enabled(ready,egui::Button::new("Preview stroke")).on_hover_text("Inspect the result before choosing Apply stroke.").clicked() { commands.push(Command::Path(PathCommand::Preview)); }
             });
             ui.weak("Save edits first. Uses the active brush, masks, symmetry and adaptive sculpt settings; disable the stencil.");
             }

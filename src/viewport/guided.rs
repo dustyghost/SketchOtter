@@ -133,6 +133,44 @@ impl GuidedPaths {
             }
         }
     }
+    /// Preview a guide selection without enabling sculpt gestures or waiting for
+    /// a solver result. Reuse the surface-route cache used by ordinary guides.
+    pub(super) fn paint_selected(
+        &mut self,
+        document: &Document,
+        scene: &Scene,
+        painter: &egui::Painter,
+        selected: &[u64],
+        mirror: bool,
+    ) {
+        if selected.is_empty() {
+            return;
+        }
+        self.refresh(document);
+        for guide in self.guides.iter().filter(|g| selected.contains(&g.id)) {
+            for reflected in [false, true].into_iter().filter(|r| !r || mirror) {
+                for i in 0..512 {
+                    let mut a = guide.route.sample(guide.route.length() * i as f32 / 512.);
+                    let mut b = guide
+                        .route
+                        .sample(guide.route.length() * (i + 1) as f32 / 512.);
+                    if reflected {
+                        a.position.0 = -a.position.0;
+                        b.position.0 = -b.position.0;
+                        a.normal.0 = -a.normal.0;
+                    }
+                    if front(scene, &a)
+                        && let Some(segment) = scene.clip_segment([a.position, b.position])
+                    {
+                        painter.line_segment(
+                            segment,
+                            Stroke::new(2_f32, Color32::from_rgb(255, 187, 80)),
+                        );
+                    }
+                }
+            }
+        }
+    }
     /// Returns None for an ordinary free stroke, Some for a consumed guide gesture.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn update(

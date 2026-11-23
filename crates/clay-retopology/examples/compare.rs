@@ -5,9 +5,37 @@ use clay_retopology::{
 use std::{io::Write, time::Instant};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<_> = std::env::args().collect();
-    if !(args.len() == 4 || (args.len() == 5 && args[4] == "--regularize")) {
-        return Err("usage: compare source.clay output.obj target-quads [--regularize]".into());
+    let mut args: Vec<_> = std::env::args().collect();
+    let sharp_angle = if let Some(i) = args.iter().position(|s| s == "--sharp") {
+        let angle: f64 = args.get(i + 1).ok_or("missing sharp angle")?.parse()?;
+        args.drain(i..i + 2);
+        Some(angle)
+    } else {
+        None
+    };
+    let mut guides = Vec::new();
+    if let Some(i) = args.iter().position(|s| s == "--guides") {
+        let path = args.get(i + 1).ok_or("missing guide JSON file")?;
+        let values: Vec<serde_json::Value> =
+            serde_json::from_reader(std::io::BufReader::new(std::fs::File::open(path)?))?;
+        for g in values {
+            guides.push(clay_retopology::Guide {
+                position: Vec3::from_array(serde_json::from_value(g["position"].clone())?),
+                normal: Vec3::from_array(serde_json::from_value(g["normal"].clone())?),
+                tangent: Vec3::from_array(serde_json::from_value(g["tangent"].clone())?),
+                radius: serde_json::from_value(g["radius"].clone())?,
+                strength: serde_json::from_value(g["strength"].clone())?,
+            });
+        }
+        args.drain(i..i + 2);
+    }
+    if !(args.len() == 4
+        || (args.len() == 5 && ["--regularize", "--integer-grid"].contains(&args[4].as_str())))
+    {
+        return Err(
+            "usage: compare source.clay output.obj target-quads [--regularize|--integer-grid] [--guides samples.json] [--sharp angle-degrees]"
+                .into(),
+        );
     }
     let source = std::fs::canonicalize(&args[1])?;
     if std::path::Path::new(&args[2]).exists() {
@@ -24,13 +52,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     drop(doc);
     let options = Options {
+        guides,
         target_quads: args[3].parse()?,
-        preserve_sharp: false,
+        preserve_sharp: sharp_angle.is_some(),
+        sharp_angle_degrees: sharp_angle.unwrap_or(45.),
         max_vertices: 150_000,
         ..Options::default()
     };
     let start = Instant::now();
-    let reconstruct = if args.len() == 5 {
+    let reconstruct = if args.get(4).is_some_and(|s| s == "--integer-grid") {
+        clay_retopology::reconstruct_integer_grid_with_progress
+    } else if args.len() == 5 {
         reconstruct_regularized_with_progress
     } else {
         reconstruct_with_progress

@@ -8,6 +8,8 @@ pub(crate) enum SymmetrySource {
     #[default]
     Original,
     Positive,
+    /// Retained for legacy reference comparisons; unavailable in Guided retopology.
+    #[allow(dead_code)]
     Negative,
 }
 
