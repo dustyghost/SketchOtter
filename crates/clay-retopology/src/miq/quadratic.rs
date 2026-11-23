@@ -300,7 +300,7 @@ impl Problem {
         Ok(())
     }
 
-    fn validate_solution(&self, x: &[f64], fixed: &BTreeMap<usize, f64>) -> Result<()> {
+    pub(super) fn validate_solution(&self, x: &[f64], fixed: &BTreeMap<usize, f64>) -> Result<()> {
         if x.len() != self.variables
             || x.iter().any(|x| !x.is_finite())
             || self

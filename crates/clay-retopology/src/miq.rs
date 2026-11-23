@@ -4,6 +4,7 @@
 //! This is not the latter paper's global branch-and-cut optimizer.
 mod atlas;
 mod extract;
+mod features;
 mod quadratic;
 
 use crate::{Diagnostics, Layout, Options, Result, Stage, Surface, field};
@@ -23,11 +24,6 @@ pub fn reconstruct(
     progress: &dyn Fn(Stage),
 ) -> Result<Layout> {
     crate::validate_request(source, options, cancel)?;
-    if options.preserve_sharp {
-        return Err(
-            "Experimental integer-grid mapping does not yet support Protect sharp bends".into(),
-        );
-    }
     let flag = Arc::new(AtomicBool::new(false));
     let result = std::thread::scope(|scope| {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -73,11 +69,14 @@ fn run(
     let mut budget = Budget::new(flag.clone());
     // Parameterize the source domain directly, as in MIQ. The shared field
     // sampler may refine long triangles but does not redistribute the sculpt.
-    let field = field::solve_soft_directions(source, options, &cancel, progress)?;
-    let (atlas, x) = parameterize(&field, &mut budget, progress)?;
+    let (field, features) = solve_field(source, options, &cancel, progress)?;
+    let (atlas, x) = parameterize(&field, features, options, &mut budget, progress)?;
     progress(Stage::Extraction);
-    let (mut positions, quads) =
-        extract::extract(&field.surface, &atlas, &x, options.max_vertices, &cancel)?;
+    let extract::Extracted {
+        mut positions,
+        quads,
+        feature_edges,
+    } = extract::extract(&field.surface, &atlas, &x, options.max_vertices, &cancel)?;
     let triangles = crate::surface::triangulate(&quads, &cancel)?;
     let topology = crate::topology::validate(source)?;
     if crate::topology::validate_connectivity(&Surface {
@@ -88,11 +87,18 @@ fn run(
         return Err("Integer-grid extraction changed surface topology".into());
     }
     progress(Stage::SurfaceFit);
-    let fit = crate::surface::fit(
+    let mut fixed = vec![false; positions.len()];
+    for e in &feature_edges {
+        for &v in e {
+            fixed[v] = true;
+        }
+    }
+    let fit = crate::surface::fit_with_fixed(
         &field.surface,
         &field.spacing,
         &mut positions,
         &quads,
+        &fixed,
         &cancel,
     )?;
     let mut layout = Layout {
@@ -118,6 +124,26 @@ fn run(
     }
     budget.check()?;
     Ok(layout)
+}
+
+fn solve_field(
+    source: &Surface,
+    options: &Options,
+    cancel: &dyn Fn() -> bool,
+    progress: &dyn Fn(Stage),
+) -> Result<(field::Field, features::Features)> {
+    if options.preserve_sharp {
+        let (source, options, mut edges) = features::prepare(source, options, cancel)?;
+        let field =
+            field::solve_feature_directions(&source, &options, &mut edges, cancel, progress)?;
+        let graph = features::Features::from_edges(&field.surface, edges, cancel)?;
+        Ok((field, graph))
+    } else {
+        Ok((
+            field::solve_soft_directions(source, options, cancel, progress)?,
+            features::Features::default(),
+        ))
+    }
 }
 
 fn relax(
@@ -192,12 +218,78 @@ fn positive_orientation([a, b, c]: [glam::DVec2; 3]) -> bool {
 
 fn parameterize(
     field: &field::Field,
+    features: features::Features,
+    options: &Options,
     budget: &mut Budget,
     progress: &dyn Fn(Stage),
 ) -> Result<(atlas::Atlas, Vec<f64>)> {
-    let mut atlas = atlas::Atlas::new(field, &|| {
-        budget.cancel.load(std::sync::atomic::Ordering::Relaxed)
-    })?;
+    let cancel = || budget.cancel.load(std::sync::atomic::Ordering::Relaxed);
+    let directions = (!features.edges.is_empty())
+        .then(|| {
+            field::feature_side_directions(
+                field,
+                &features.edges,
+                options.max_vertices,
+                &cancel,
+                progress,
+            )
+        })
+        .transpose()?;
+    let mut atlas = atlas::Atlas::new(field, features.clone(), None, &cancel)?;
+    let mut alternate = None;
+    if let Some(directions) = directions {
+        let mut sided = atlas::Atlas::new(field, features, Some(&directions), &cancel)?;
+        // Both bounded constructions obey the same feature directions. Prefer
+        // fewer poles on smooth feature curves, then fewer total poles; sharp
+        // junctions/corners are intentional. Choose before the numerical solve.
+        let score = |a: &atlas::Atlas| {
+            let vertices: BTreeSet<_> = a.features.edges.iter().flatten().copied().collect();
+            let on_curve = a
+                .singularities
+                .iter()
+                .filter(|&&(f, k)| {
+                    let v = field.surface.triangles[f][k];
+                    vertices.contains(&v) && !a.features.corners.contains(&v)
+                })
+                .count();
+            (on_curve, a.singularities.len())
+        };
+        #[cfg(feature = "audit")]
+        eprintln!(
+            "MIQ feature field poles: shared {:?}, sided {:?}",
+            score(&atlas),
+            score(&sided)
+        );
+        if score(&sided) < score(&atlas) {
+            std::mem::swap(&mut atlas, &mut sided);
+        }
+        alternate = Some(sided);
+    }
+    match parameterize_atlas(atlas, field, budget, progress) {
+        Ok(map) => Ok(map),
+        Err(error) => {
+            budget.check()?;
+            let Some(alternate) = alternate else {
+                return Err(error);
+            };
+            // Field quality is a heuristic, not a feasibility certificate.
+            // One alternate construction shares the original overall deadline,
+            // constraints and all acceptance gates; it never changes methods.
+            #[cfg(feature = "audit")]
+            eprintln!(
+                "MIQ feature map rejected ({error}); trying the alternate feature field within the same budget"
+            );
+            parameterize_atlas(alternate, field, budget, progress)
+        }
+    }
+}
+
+fn parameterize_atlas(
+    mut atlas: atlas::Atlas,
+    field: &field::Field,
+    budget: &mut Budget,
+    progress: &dyn Fn(Stage),
+) -> Result<(atlas::Atlas, Vec<f64>)> {
     let mut fixed = BTreeMap::new();
     let mut active = BTreeSet::new();
     let mut x = relax(&mut atlas, &fixed, &mut active, budget)?;
@@ -271,6 +363,17 @@ fn parameterize(
             return Err("Integer-grid seam or singularity is not integral".into());
         }
     }
+    if !atlas.features.edges.is_empty() {
+        // Eliminating redundant equations can leave an integer at ~1e-15
+        // from its fixed value. Along a feature this manufactures tiny cells
+        // on the wrong side of an exact grid line. Canonicalize only certified
+        // integer coordinates, then revalidate the complete map and equations.
+        atlas.canonicalize_integers(&mut x)?;
+        atlas.problem.validate_solution(&x, &fixed)?;
+        if (0..atlas.corners.len()).any(|f| !positive_orientation(atlas.coordinates(&x, f))) {
+            return Err("Integer-grid feature snapping failed map orientation validation".into());
+        }
+    }
     Ok((atlas, x))
 }
 
@@ -327,15 +430,16 @@ fn update(
 
 #[cfg(test)]
 pub(crate) fn test_map(source: &Surface, options: &Options) -> Result<usize> {
-    let field = field::solve_soft_directions(source, options, &|| false, &|_| {})?;
+    let (field, features) = solve_field(source, options, &|| false, &|_| {})?;
     let mut budget = Budget::new(Arc::new(AtomicBool::new(false)));
-    let (atlas, x) = parameterize(&field, &mut budget, &|_| {})?;
+    let (atlas, x) = parameterize(&field, features, options, &mut budget, &|_| {})?;
     for f in 0..atlas.corners.len() {
         let [a, b, c] = atlas.coordinates(&x, f);
         assert!((b - a).perp_dot(c - a) > 0.);
     }
-    let (positions, quads) =
-        extract::extract(&field.surface, &atlas, &x, options.max_vertices, &|| false)?;
+    let extract::Extracted {
+        positions, quads, ..
+    } = extract::extract(&field.surface, &atlas, &x, options.max_vertices, &|| false)?;
     assert_eq!(
         crate::topology::validate(&Surface {
             positions: positions.clone(),

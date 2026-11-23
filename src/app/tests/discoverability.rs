@@ -66,7 +66,7 @@ fn click(app: &mut App, ctx: &egui::Context, position: Pos2) {
 }
 
 #[test]
-fn integer_grid_clears_and_disables_unsupported_layout_controls() {
+fn integer_grid_enables_sharp_features_and_disables_unsupported_symmetry() {
     use crate::sculpt::{Axis, Symmetry, retopology::Method};
     let mut app = App::default();
     app.document
@@ -109,7 +109,7 @@ fn integer_grid_clears_and_disables_unsupported_layout_controls() {
     assert_eq!(app.ui.projection.layout.symmetry_axis, Some(Axis::Y));
     button(&mut app, "Integer grid (experimental)");
     assert_eq!(app.ui.projection.layout.method, Method::IntegerGrid);
-    assert!(!app.ui.projection.layout.preserve_sharp);
+    assert!(app.ui.projection.layout.preserve_sharp);
     assert_eq!(app.ui.projection.layout.symmetry_axis, None);
     button(&mut app, "Protect sharp bends");
     axis(&mut app);
@@ -127,8 +127,12 @@ fn integer_grid_clears_and_disables_unsupported_layout_controls() {
     app.dispatch(Command::CancelProjection, &ctx);
     app.dispatch(Command::OpenRetopology, &ctx);
     assert_eq!(app.ui.projection.layout.method, Method::IntegerGrid);
-    assert!(!app.ui.projection.layout.preserve_sharp);
+    assert!(app.ui.projection.layout.preserve_sharp);
     assert_eq!(app.ui.projection.layout.symmetry_axis, None);
+    button(&mut app, "Protect sharp bends");
+    app.dispatch(Command::CancelProjection, &ctx);
+    app.dispatch(Command::OpenRetopology, &ctx);
+    assert!(!app.ui.projection.layout.preserve_sharp);
     assert!(app.document.project() == before);
     assert_eq!(app.document.history_counts(), history);
 }

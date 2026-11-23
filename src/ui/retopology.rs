@@ -22,17 +22,21 @@ impl ProjectionControls {
                 Method::SurfaceField,
                 "Surface field",
             );
-            ui.selectable_value(
-                &mut self.layout.method,
-                Method::IntegerGrid,
-                "Integer grid (experimental)",
-            );
+            if ui
+                .selectable_value(
+                    &mut self.layout.method,
+                    Method::IntegerGrid,
+                    "Integer grid (experimental)",
+                )
+                .changed()
+            {
+                self.layout.preserve_sharp = true;
+            }
         });
         let integer_grid = self.layout.method == Method::IntegerGrid;
         if integer_grid {
-            self.layout.preserve_sharp = false;
             self.layout.symmetry_axis = None;
-            ui.weak("A different quad layout for closed surfaces. Symmetry and sharp-bend protection are not yet supported.");
+            ui.weak("A different quad layout for closed surfaces. Layout symmetry is not yet supported.");
         }
         ui.horizontal(|ui| {
             setting_label(ui, Glyph::Mesh, "Target quads");
@@ -45,10 +49,7 @@ impl ProjectionControls {
         ui.weak("A fresh quad layout follows the surface. Face-group borders may move.");
         ui.horizontal_wrapped(|ui| {
             search::setting_response(
-                ui.add_enabled(
-                    !integer_grid,
-                    egui::Checkbox::new(&mut self.layout.preserve_sharp, "Protect sharp bends"),
-                ),
+                ui.checkbox(&mut self.layout.preserve_sharp, "Protect sharp bends"),
                 "Protect sharp bends",
             );
             search::setting_response(
@@ -61,6 +62,9 @@ impl ProjectionControls {
                 "Protect sharp bends",
             );
         });
+        if integer_grid && self.layout.preserve_sharp {
+            ui.weak("Detects creases at this angle and makes quad edges follow their connected curves. Sharp corners stay fixed. Does not add subdivision support loops.");
+        }
         ui.horizontal(|ui| {
             ui.label("Input triangle limit");
             design::help(

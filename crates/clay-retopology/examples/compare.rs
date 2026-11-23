@@ -6,6 +6,13 @@ use std::{io::Write, time::Instant};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args: Vec<_> = std::env::args().collect();
+    let sharp_angle = if let Some(i) = args.iter().position(|s| s == "--sharp") {
+        let angle: f64 = args.get(i + 1).ok_or("missing sharp angle")?.parse()?;
+        args.drain(i..i + 2);
+        Some(angle)
+    } else {
+        None
+    };
     let mut guides = Vec::new();
     if let Some(i) = args.iter().position(|s| s == "--guides") {
         let path = args.get(i + 1).ok_or("missing guide JSON file")?;
@@ -26,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         || (args.len() == 5 && ["--regularize", "--integer-grid"].contains(&args[4].as_str())))
     {
         return Err(
-            "usage: compare source.clay output.obj target-quads [--regularize|--integer-grid] [--guides samples.json]"
+            "usage: compare source.clay output.obj target-quads [--regularize|--integer-grid] [--guides samples.json] [--sharp angle-degrees]"
                 .into(),
         );
     }
@@ -47,7 +54,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = Options {
         guides,
         target_quads: args[3].parse()?,
-        preserve_sharp: false,
+        preserve_sharp: sharp_angle.is_some(),
+        sharp_angle_degrees: sharp_angle.unwrap_or(45.),
         max_vertices: 150_000,
         ..Options::default()
     };

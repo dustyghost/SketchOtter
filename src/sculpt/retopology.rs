@@ -64,10 +64,10 @@ impl Default for Options {
 }
 impl Options {
     pub(crate) fn require_method_settings(&self) -> Result<(), String> {
-        if self.method == Method::IntegerGrid
-            && (self.symmetry_axis.is_some() || self.preserve_sharp)
-        {
-            return Err("Integer grid (experimental) currently requires Layout symmetry Off and Protect sharp bends unchecked".into());
+        if self.method == Method::IntegerGrid && self.symmetry_axis.is_some() {
+            return Err(
+                "Integer grid (experimental) currently requires Layout symmetry Off".into(),
+            );
         }
         Ok(())
     }

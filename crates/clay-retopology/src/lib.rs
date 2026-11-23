@@ -523,15 +523,16 @@ mod tests {
         let mut options = Options {
             target_quads: 80,
             preserve_sharp: true,
+            sharp_angle_degrees: 181.,
             ..Options::default()
         };
         assert!(
             reconstruct_integer_grid_with_progress(&s, &options, &|| false, &|_| {})
                 .err()
                 .unwrap()
-                .contains("Protect sharp bends")
+                .contains("Sharp bend angle")
         );
-        options.preserve_sharp = false;
+        options.sharp_angle_degrees = 45.;
         let cancel = std::cell::Cell::new(false);
         let error =
             reconstruct_integer_grid_with_progress(&s, &options, &|| cancel.get(), &|stage| {

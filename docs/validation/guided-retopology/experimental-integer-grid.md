@@ -68,8 +68,10 @@ comparison of numerical methods, not algorithm parity for this parameterization.
 ## Current limits
 
 The alternative handles closed surfaces. The app clears and disables Layout
-symmetry and Protect sharp bends for this method; programmatic requests using
-those unsupported options are explicitly rejected. Signed density and direction guides use
+symmetry for this method; programmatic symmetry requests are explicitly rejected.
+Protect sharp bends detects source creases and constrains their quad-edge flow,
+as described below. Selecting Integer grid enables it; the checkbox and angle
+remain editable, and reopening preserves that choice. Signed density and direction guides use
 the shared sizing/field inputs. Nonuniform masks and materials use the existing
 attribute transfer. No fallback to Surface field is hidden behind the selector.
 The same private preview, explicit Apply and source-preserving attribute transfer
@@ -327,12 +329,13 @@ settings, build/run logs, hashes and review renders are retained under
 unsaved cut; the updated diagnostic export subsequently supplied its actual target
 and guide selection for the exact replay below.
 
-Selecting Integer grid now clears and disables Protect sharp bends (including
+At the `6004475` stage, selecting Integer grid cleared and disabled Protect sharp bends (including
 its angle control) and Layout symmetry. Reopening also keeps those unsupported
 settings off. Switching back to Surface field re-enables their controls without
 silently restoring them. Headless real-click coverage checks the state changes,
 disabled clicks, reopening and unchanged document/history; the existing GPU
-control capture retains the disabled appearance for review.
+control capture retained the disabled appearance for review. The sharp-feature
+implementation below supersedes that restriction; symmetry remains unsupported.
 
 ## Exact flat-detail export, 23 November 2026
 
@@ -414,6 +417,89 @@ retain independent constrained-solver, geometry, density and guide comparisons.
 The private stage, sampled guides, settings, executables, run logs, resource
 measurements and review artifacts are retained under
 `target/cant-retopo-flat-detail-review/`; private geometry is not committed.
+
+## Automatic sharp-feature flow, 23 November 2026
+
+Protect sharp bends now works with Integer grid. Selecting the method enables
+it at the existing angle (45 degrees by default); the user can change the angle
+or turn protection off. Reopening retains that choice. Layout symmetry remains
+disabled. This follows MIQ §5.2: constrain directions on both sides of each
+feature and require a constant integer coordinate perpendicular to that edge.
+It does not insert subdivision support loops or turn every selected path into
+a hard feature.
+
+Detection joins thresholded dihedral edges into ordered chains. Endpoints,
+junctions and turns of at least 45 degrees become fixed corners. Smooth closed
+curves remain curves, rather than requiring a grid vertex at every input sample.
+A narrow detection tolerance removes a duplicate chord only when all three
+sides of a cap ear appear sharp, its third point lies within 1e-5 of the longest
+edge's length, and the chord's adjacent normals have dot product below -0.99.
+The two shorter edges remain. On the exact export, this removes one numerical
+sliver chord (about 2.9e-8 model units from the other route), leaving **327 source
+edges in one closed curve**, with no artificial junction. Source geometry is
+not changed by this detection rule.
+
+Cap triangles whose vertices all lie on features need interior freedom before
+their boundary can map to grid lines. Preparation splits interior chords and
+fully featured triangles without moving the source; it interpolates signed
+density values and uses the existing conforming splitter. Feature provenance is
+carried through every later sample split instead of being redetected on tiny
+new triangles. The vertex budget and cancellation checks include this work.
+
+The field has at most two bounded constructions: the existing shared vertex
+field and a version with independent tangent planes on each side of a crease.
+Both use the native hierarchy and guide preferences. Before mapping, prefer
+fewer poles on smooth feature curves, then fewer total poles, with stable ties.
+This is a heuristic, not a feasibility guarantee. If its map is rejected, one
+alternate field may be attempted within the **same overall 60-second deadline**.
+There is no change of method, target, per-relaxation limit or acceptance tolerance.
+The translation gauge anchors on a feature when present, avoiding an interior
+point pinned to the same line as a nearby rounded crease.
+
+Feature corners receive integer coordinates. Certified integer coordinates are
+canonicalized through quarter-turn seams to remove floating-point roundoff;
+unrelated fractional coordinates stay fractional. Equations, fixed values and
+positive orientation are checked again afterwards. Extraction follows source
+provenance, verifies complete ordered chains made of actual quad perimeter edges,
+and rejects merged/lost chains. Their vertices stay on the original feature
+curves during projection, untangling and coverage repair. Original-surface and
+manifold/topology validation still apply. Curves are sampled at the requested
+resolution; junctions and poles can interrupt ordinary edge-loop traversal.
+
+Matched replay: the same exact stage and guide hashes above, target **3,133**,
+both rings, shape adaptation zero, no paint or symmetry:
+
+| Setting | Result | Elapsed | Peak process RSS |
+| --- | --- | ---: | ---: |
+| Protect sharp bends off | 2,971 quads; identical to `04b1315` | 23.797 s | 258,132 KiB |
+| Protect sharp bends on, 45 degrees | 2,966 validated quads | 13.614 s | 227,688 KiB |
+
+An independent check of the final OBJ finds **94 rim vertices / 94 rim edges**,
+all degree two in one connected component. The existing independent opposite-edge
+walker identifies that exact vertex set as one strict closed edge loop. Maximum
+rim-vertex distance from the source crease is 1.39e-16 model units. The unprotected
+comparison has one vertex on the rim and no closed rim loop. Both meshes retain
+Euler characteristic two and two incident quads per edge. Protected output SHA-256:
+`29c7e0d5735f0e5f5ba38ad553cc6b5068afd26817a56c82f144ab0f6a6d43d5`.
+Turning protection off reproduces SHA-256
+`2532af6614e1dd3b3fc4278af16ba187356c146e1c9dd1bfead39e5fa1e809b8`.
+
+Maximum sampled surface error is 0.0251144 (previously 0.0292129). The 95th-percentile
+quad edge ratio is 1.47057 (previously 1.49050); the worst ratio increases from
+3.96715 to 4.39595. Feature preservation therefore does not imply every quad's
+shape improves. Matched cap/detail wireframes and the independent rim checker
+are retained locally with the OBJ files and logs in
+`target/cant-retopo-flat-detail-review/`. Render previews use fixed OBJ fan
+diagonals; native validation independently chooses valid surface-facing diagonals.
+
+Seventeen focused MIQ tests and five existing end-to-end tests pass locally.
+New checks require successful reconstruction of all twelve cube creases and
+eight corners, including a narrow first face beside a crease; two closed curved
+rims; sliver rejection without a spurious feature route; density interpolation;
+bounded preparation/cancellation; and exact seam canonicalization that preserves
+unrelated fractions. Desktop real-click coverage now checks the enabled sharp
+control, remembered on/off choices, disabled symmetry and unchanged history.
+Broad app, native, GPU, formatting and lint checks remain in PR CI.
 
 ## Focused coverage
 

@@ -1,3 +1,4 @@
+use super::features::Features;
 use super::quadratic::{Problem, Row};
 use crate::{
     Result, Vec3,
@@ -27,15 +28,21 @@ pub(super) struct Edge {
 pub(super) struct Atlas {
     pub uv_variables: usize,
     pub corners: Vec<[usize; 3]>,
-    /// One (face, local corner) for each distinct source singularity.
+    /// One (face, local corner) for each singularity or sharp-feature corner.
     pub singularities: Vec<(usize, usize)>,
+    pub features: Features,
     pub edges: Vec<Edge>,
     pub reference: Vec<[DVec2; 3]>,
     pub problem: Problem,
 }
 
 impl Atlas {
-    pub fn new(field: &Field, cancel: &dyn Fn() -> bool) -> Result<Self> {
+    pub fn new(
+        field: &Field,
+        features: Features,
+        side_directions: Option<&[[Vec3; 3]]>,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<Self> {
         let surface = &field.surface;
         let mut frames = Vec::with_capacity(surface.triangles.len());
         let mut normals = Vec::with_capacity(surface.triangles.len());
@@ -46,14 +53,16 @@ impl Atlas {
             let n = (surface.positions[b] - surface.positions[a])
                 .cross(surface.positions[c] - surface.positions[a])
                 .normalize();
-            let mut q = field.directions[a] - n * field.directions[a].dot(n);
+            let directions =
+                side_directions.map_or_else(|| [a, b, c].map(|v| field.directions[v]), |d| d[i]);
+            let mut q = directions[0] - n * directions[0].dot(n);
             if q.length_squared() < 1e-12 {
                 q = surface.positions[b] - surface.positions[a];
             }
             q = q.normalize();
             let mut sum = Vec3::ZERO;
-            for v in [a, b, c] {
-                let u = (field.directions[v] - n * field.directions[v].dot(n)).normalize_or_zero();
+            for direction in directions {
+                let u = (direction - n * direction.dot(n)).normalize_or_zero();
                 let w = n.cross(u);
                 let best = [u, w, -u, -w]
                     .into_iter()
@@ -64,6 +73,25 @@ impl Atlas {
             let u = sum.normalize_or_zero();
             if u.length_squared() < 0.5 {
                 return Err("Cannot form an integer-grid face frame".into());
+            }
+            let mut u = u;
+            let sharp: Vec<_> = [
+                topology::edge(a, b),
+                topology::edge(b, c),
+                topology::edge(c, a),
+            ]
+            .into_iter()
+            .filter(|e| features.edges.contains(e))
+            .collect();
+            if sharp.len() > 1 {
+                return Err("Sharp feature domain needs interior support".into());
+            }
+            if let Some(&[a, b]) = sharp.first() {
+                let t = (surface.positions[b] - surface.positions[a]).normalize();
+                u = [t, n.cross(t), -t, -n.cross(t)]
+                    .into_iter()
+                    .max_by(|a, b| a.dot(u).total_cmp(&b.dot(u)))
+                    .unwrap();
             }
             frames.push([u, n.cross(u)]);
             normals.push(n);
@@ -111,15 +139,32 @@ impl Atlas {
         let mut comb = vec![None; frames.len()];
         let mut cut = vec![true; edges.len()];
         let mut anchors = Vec::new();
+        let feature_vertices: std::collections::BTreeSet<_> =
+            features.edges.iter().flatten().copied().collect();
         for root in 0..frames.len() {
             if comb[root].is_some() {
                 continue;
             }
-            anchors.push(root);
+            let mut anchor = (root, 0);
+            let mut anchor_rank = 0;
             comb[root] = Some(0i32);
             let mut queue = VecDeque::from([root]);
             while let Some(f) = queue.pop_front() {
                 crate::check(cancel)?;
+                // Fix the translation gauge on a feature when one exists.
+                // Anchoring a nearby interior vertex to (0,0) can otherwise
+                // force its boundary onto that same line during rounding.
+                for (k, &v) in surface.triangles[f].iter().enumerate() {
+                    let rank = if features.corners.contains(&v) {
+                        2
+                    } else {
+                        usize::from(feature_vertices.contains(&v))
+                    };
+                    if rank > anchor_rank {
+                        anchor = (f, k);
+                        anchor_rank = rank;
+                    }
+                }
                 for &(e, g) in &adjacency[f] {
                     if comb[g].is_none() {
                         let k = if edges[e].sides[0].0 == f {
@@ -133,6 +178,7 @@ impl Atlas {
                     }
                 }
             }
+            anchors.push(anchor);
         }
         for (f, frame) in frames.iter_mut().enumerate() {
             let [u, v] = *frame;
@@ -233,7 +279,7 @@ impl Atlas {
         let mut singularities = Vec::new();
         for (f, t) in surface.triangles.iter().enumerate() {
             for k in 0..3 {
-                if singular[t[k]] && !marked[t[k]] {
+                if (singular[t[k]] || features.corners.contains(&t[k])) && !marked[t[k]] {
                     marked[t[k]] = true;
                     singularities.push((f, k));
                     problem
@@ -242,11 +288,30 @@ impl Atlas {
                 }
             }
         }
-        for f in anchors {
+        // MIQ §5.2: the field is aligned above; now place each feature edge
+        // on a constant integer u or v line on both sides of every seam.
+        for e in &edges {
+            if !features.edges.contains(&e.ends) {
+                continue;
+            }
+            let tangent = surface.positions[e.ends[1]] - surface.positions[e.ends[0]];
+            for &(f, k) in &e.sides {
+                let axis = if tangent.dot(frames[f][0]).abs() >= tangent.dot(frames[f][1]).abs() {
+                    1
+                } else {
+                    0
+                };
+                let a = 2 * corners[f][k] + axis;
+                let b = 2 * corners[f][(k + 1) % 3] + axis;
+                problem.equalities.push((vec![(a, 1.), (b, -1.)], 0.));
+                problem.integers.extend([a, b]);
+            }
+        }
+        for (f, k) in anchors {
             for axis in 0..2 {
                 problem
                     .equalities
-                    .push((vec![(2 * corners[f][0] + axis, 1.)], 0.));
+                    .push((vec![(2 * corners[f][k] + axis, 1.)], 0.));
             }
         }
         let mut reference = Vec::with_capacity(frames.len());
@@ -281,6 +346,7 @@ impl Atlas {
             uv_variables,
             corners,
             singularities,
+            features,
             edges,
             reference,
             problem,
@@ -289,6 +355,42 @@ impl Atlas {
 
     pub fn coordinates(&self, x: &[f64], f: usize) -> [DVec2; 3] {
         self.corners[f].map(|v| DVec2::new(x[2 * v], x[2 * v + 1]))
+    }
+
+    /// Integer seam translations and quarter turns propagate integrality to
+    /// equivalent chart coordinates. Canonicalize only those proven integer;
+    /// an unrelated coordinate close to a grid line must retain its fraction.
+    pub fn canonicalize_integers(&self, x: &mut [f64]) -> Result<()> {
+        let mut equivalent = Dsu::new(self.uv_variables);
+        for e in &self.edges {
+            let [(f, k), (g, l)] = e.sides;
+            for (a, b) in [
+                (self.corners[f][k], self.corners[g][(l + 1) % 3]),
+                (self.corners[f][(k + 1) % 3], self.corners[g][l]),
+            ] {
+                for axis in 0..2 {
+                    equivalent.join(2 * a + axis, 2 * b + (axis + e.rotation as usize) % 2);
+                }
+            }
+        }
+        let mut integral = vec![false; self.uv_variables];
+        for &i in &self.problem.integers {
+            if i < self.uv_variables {
+                integral[equivalent.find(i)] = true;
+            }
+        }
+        for i in 0..self.uv_variables {
+            if integral[equivalent.find(i)] {
+                if (x[i] - x[i].round()).abs() > 1e-6 {
+                    return Err("Integer-grid equivalent coordinate is not integral".into());
+                }
+                x[i] = x[i].round();
+            }
+        }
+        for &i in &self.problem.integers {
+            x[i] = x[i].round();
+        }
+        Ok(())
     }
 
     /// Quarter-turn holonomy alone cannot distinguish a regular vertex from
@@ -366,6 +468,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn certified_integer_roundoff_propagates_across_rotated_seams_only() {
+        let mut atlas = Atlas {
+            uv_variables: 12,
+            corners: vec![[0, 1, 2], [3, 4, 5]],
+            singularities: vec![],
+            features: Default::default(),
+            reference: vec![],
+            edges: vec![Edge {
+                ends: [0, 1],
+                sides: [(0, 0), (1, 0)],
+                rotation: 1,
+                translation: Some(12),
+            }],
+            problem: Problem::new(14),
+        };
+        atlas.problem.integers.extend([0, 12, 13]);
+        let mut x = vec![
+            1. + 1e-15,
+            4. + 1e-12,
+            0.2,
+            0.3,
+            0.4,
+            0.5,
+            2.7,
+            6.2,
+            -1. - 1e-12,
+            7. + 1e-15,
+            0.6,
+            0.7,
+            3.,
+            6.,
+        ];
+        let fraction = x[1];
+        let equivalent_fraction = x[8];
+        atlas.canonicalize_integers(&mut x).unwrap();
+        assert_eq!(x[0], 1.);
+        assert_eq!(x[9], 7.);
+        assert_eq!(x[1], fraction);
+        assert_eq!(x[8], equivalent_fraction);
+        x[9] = 7.01;
+        assert!(
+            atlas
+                .canonicalize_integers(&mut x)
+                .unwrap_err()
+                .contains("not integral")
+        );
+    }
+
+    #[test]
     fn thin_triangle_orientation_bounds_remain_above_solver_tolerances() {
         for tip in [
             DVec2::new(0.5, 0.8),
@@ -377,6 +528,7 @@ mod tests {
                 uv_variables: 6,
                 corners: vec![[0, 1, 2]],
                 singularities: vec![],
+                features: Default::default(),
                 edges: vec![],
                 reference: vec![reference],
                 problem: Problem::new(6),
@@ -426,6 +578,7 @@ mod tests {
             uv_variables: x.len(),
             corners: (0..16).map(|f| [3 * f, 3 * f + 1, 3 * f + 2]).collect(),
             singularities: Vec::new(),
+            features: Default::default(),
             edges: Vec::new(),
             reference: Vec::new(),
             problem: Problem::new(x.len()),

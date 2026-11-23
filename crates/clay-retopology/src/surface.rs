@@ -332,6 +332,21 @@ pub(crate) fn fit(
     quads: &[[usize; 4]],
     cancel: &dyn Fn() -> bool,
 ) -> Result<Fit> {
+    fit_with_fixed(source, spacing, positions, quads, &[], cancel)
+}
+
+/// Keep extracted sharp-feature vertices fixed during projection and repair.
+pub(crate) fn fit_with_fixed(
+    source: &Surface,
+    spacing: &[f64],
+    positions: &mut [Vec3],
+    quads: &[[usize; 4]],
+    anchors: &[bool],
+    cancel: &dyn Fn() -> bool,
+) -> Result<Fit> {
+    if !anchors.is_empty() && anchors.len() != positions.len() {
+        return Err("Invalid feature anchor mask".into());
+    }
     let original = Bvh::new(source, cancel)?;
     let mut work = 50_000_000;
     let mut displacement = 0f64;
@@ -351,17 +366,21 @@ pub(crate) fn fit(
                 hit.distance
             ));
         }
-        *p = hit.point;
+        if !anchors.get(i).copied().unwrap_or(false) {
+            *p = hit.point;
+        }
     }
     let mut triangles =
         oriented_triangulation(&original, positions, quads, &mut work, cancel, false)?;
     let mut repaired = false;
-    if !untangle(&original, positions, quads, &triangles, &mut work, cancel)? {
+    if !untangle(
+        &original, positions, quads, &triangles, anchors, &mut work, cancel,
+    )? {
         if let Ok(outward) = outward_triangulation(&original, positions, quads, &mut work, cancel) {
             triangles = outward;
         } else {
             check(cancel)?;
-            repair_projected_quads(&original, positions, quads, &mut work, cancel)?;
+            repair_projected_quads(&original, positions, quads, anchors, &mut work, cancel)?;
             triangles = outward_triangulation(&original, positions, quads, &mut work, cancel)?;
             repaired = true;
         }
@@ -373,6 +392,7 @@ pub(crate) fn fit(
             positions,
             quads,
             &mut triangles,
+            anchors,
             &mut work,
             cancel,
         )?;
@@ -391,12 +411,14 @@ pub(crate) fn fit(
 
 // Restore source coverage around the repaired layout while keeping the output
 // on the source and rechecking orientation after each accepted move.
+#[allow(clippy::too_many_arguments)]
 fn repair_source_coverage(
     original: &Bvh<'_>,
     spacing: &[f64],
     positions: &mut [Vec3],
     quads: &[[usize; 4]],
     triangles: &mut Vec<[usize; 3]>,
+    anchors: &[bool],
     work: &mut usize,
     cancel: &dyn Fn() -> bool,
 ) -> Result<()> {
@@ -409,7 +431,9 @@ fn repair_source_coverage(
                 .or_insert(0) += 1;
         }
     }
-    let mut fixed = vec![false; positions.len()];
+    let mut fixed: Vec<_> = (0..positions.len())
+        .map(|i| anchors.get(i).copied().unwrap_or(false))
+        .collect();
     for ([a, b], count) in edges {
         if count == 1 {
             fixed[a] = true;
@@ -475,6 +499,7 @@ fn repair_projected_quads(
     source: &Bvh<'_>,
     positions: &mut [Vec3],
     quads: &[[usize; 4]],
+    anchors: &[bool],
     work: &mut usize,
     cancel: &dyn Fn() -> bool,
 ) -> Result<()> {
@@ -489,7 +514,9 @@ fn repair_projected_quads(
                 .or_insert(0) += 1;
         }
     }
-    let mut fixed = vec![false; positions.len()];
+    let mut fixed: Vec<_> = (0..positions.len())
+        .map(|i| anchors.get(i).copied().unwrap_or(false))
+        .collect();
     for (&[a, b], &count) in &edges {
         if count == 1 {
             fixed[a] = true;
@@ -750,6 +777,7 @@ fn untangle(
     positions: &mut [Vec3],
     quads: &[[usize; 4]],
     triangles: &[[usize; 3]],
+    anchors: &[bool],
     work: &mut usize,
     cancel: &dyn Fn() -> bool,
 ) -> Result<bool> {
@@ -788,7 +816,9 @@ fn untangle(
         row.sort_unstable();
         row.dedup();
     }
-    let mut fixed = vec![false; positions.len()];
+    let mut fixed: Vec<_> = (0..positions.len())
+        .map(|i| anchors.get(i).copied().unwrap_or(false))
+        .collect();
     for ([a, b], count) in edges {
         if count == 1 {
             fixed[a] = true;
