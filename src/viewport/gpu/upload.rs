@@ -105,7 +105,7 @@ pub(super) fn write_buffer(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
 
@@ -186,7 +186,7 @@ mod tests {
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", not(feature = "focused-retopology")))]
 mod gpu_tests {
     use super::super::{ui_capture::Headless, *};
     use crate::{

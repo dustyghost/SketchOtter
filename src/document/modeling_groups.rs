@@ -96,7 +96,7 @@ fn group_vertices(after: &mut Mesh, label: &str, selected: Vec<bool>) -> Result<
     result.map(|_| ())
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

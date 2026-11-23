@@ -234,7 +234,7 @@ fn resample(texture: &Texture, x: usize, y: usize, width: u32, height: u32) -> [
     result
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

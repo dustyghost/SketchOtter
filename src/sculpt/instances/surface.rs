@@ -219,5 +219,5 @@ fn topology(mesh: &Mesh) -> u64 {
     }
     hash
 }
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;

@@ -87,7 +87,7 @@ pub(super) fn face_bounds(scene: &Scene, face: usize, check_near: bool) -> egui:
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::viewport::gpu::DisplayMesh;

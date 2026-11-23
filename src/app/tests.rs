@@ -1,3 +1,4 @@
+use super::test_support::*;
 use super::*;
 use crate::viewport::Gesture;
 use eframe::egui::{Pos2, Vec2};
@@ -288,17 +289,6 @@ fn customized_tool_groups_render_in_all_docks_and_settings() {
     assert!(!app.document.is_dirty());
 }
 
-fn finish_mesh_job(app: &mut App) {
-    finish_mesh_job_with_timeout(app, std::time::Duration::from_secs(10));
-}
-fn finish_mesh_job_with_timeout(app: &mut App, timeout: std::time::Duration) {
-    let deadline = std::time::Instant::now() + timeout;
-    while app.mesh_job.is_some() {
-        app.poll_mesh_job();
-        assert!(std::time::Instant::now() < deadline, "mesh job timed out");
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
-}
 #[test]
 fn background_mesh_jobs_commit_once_and_cancellation_or_failure_keeps_original() {
     let mut app = App::default();

@@ -339,5 +339,5 @@ impl Write for LimitedWriter {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;

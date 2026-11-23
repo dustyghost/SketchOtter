@@ -626,7 +626,7 @@ impl Mesh {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]
@@ -886,7 +886,7 @@ fn check_cancel(cancel: &impl Fn() -> bool) -> Result<(), String> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod cancellation_tests {
     use super::*;
     #[test]

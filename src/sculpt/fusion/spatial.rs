@@ -441,7 +441,7 @@ pub(super) fn enclosed_triangles(
     Ok(shell_of.into_iter().map(|shell| enclosed[shell]).collect())
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod contact_tests {
     use super::*;
 

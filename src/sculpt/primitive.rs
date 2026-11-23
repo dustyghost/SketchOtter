@@ -467,7 +467,7 @@ fn torus(n: u32, r: u32, major: f32, minor: f32) -> Mesh {
     }
     mesh
 }
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

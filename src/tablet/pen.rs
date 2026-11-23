@@ -124,7 +124,7 @@ fn button(pos: Pos2, pressed: bool, modifiers: egui::Modifiers) -> Event {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     fn touch(id: u64, phase: TouchPhase) -> Event {

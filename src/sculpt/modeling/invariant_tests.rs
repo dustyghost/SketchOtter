@@ -1,114 +1,7 @@
 use super::*;
 use crate::sculpt::{Primitive, PrimitiveKind, Symmetry};
 
-fn shells(closed: bool) -> Mesh {
-    let (vertices, triangles) = if closed {
-        (
-            vec![
-                Vec3(-0.1, 0., 0.),
-                Vec3(-1., -1., -1.),
-                Vec3(-1., 1., -1.),
-                Vec3(-1., 0., 1.),
-                Vec3(0.1, 0., 0.),
-                Vec3(1., -1., -1.),
-                Vec3(1., 1., -1.),
-                Vec3(1., 0., 1.),
-            ],
-            vec![
-                [0, 1, 2],
-                [0, 2, 3],
-                [0, 3, 1],
-                [1, 3, 2],
-                [4, 6, 5],
-                [4, 7, 6],
-                [4, 5, 7],
-                [5, 6, 7],
-            ],
-        )
-    } else {
-        (
-            vec![
-                Vec3(-0.1, 0., 0.),
-                Vec3(-1., -1., 0.),
-                Vec3(-1., 1., 0.),
-                Vec3(0.1, 0., 0.),
-                Vec3(1., 1., 0.),
-                Vec3(1., -1., 0.),
-            ],
-            vec![[0, 1, 2], [3, 4, 5]],
-        )
-    };
-    Mesh {
-        mask: vec![0.; vertices.len()],
-        vertices,
-        triangles,
-        ..Default::default()
-    }
-}
-
-// Independent, intentionally simple oracle for tiny generated meshes. It scans
-// triangles and floods undirected links, rather than using production corner
-// adjacency or the directed-link walk in manifold().
-fn surface_invariants(mesh: &Mesh) -> bool {
-    let mut faces = BTreeSet::new();
-    let mut incidence = BTreeMap::<[usize; 2], (usize, i32)>::new();
-    for &t in &mesh.triangles {
-        let mut key = t;
-        key.sort_unstable();
-        if !faces.insert(key) || key.windows(2).any(|p| p[0] == p[1]) {
-            return false;
-        }
-        let [a, b, c] = t.map(|v| mesh.vertices[v]);
-        if (b - a).cross(c - a).len() <= 1e-12 {
-            return false;
-        }
-        for i in 0..3 {
-            let (a, b) = (t[i], t[(i + 1) % 3]);
-            let entry = incidence.entry([a.min(b), a.max(b)]).or_default();
-            entry.0 += 1;
-            entry.1 += if a < b { 1 } else { -1 };
-        }
-    }
-    if incidence
-        .values()
-        .any(|&(count, winding)| count > 2 || (count == 2 && winding != 0))
-    {
-        return false;
-    }
-    for v in 0..mesh.vertices.len() {
-        let mut link = BTreeMap::<usize, BTreeSet<usize>>::new();
-        for t in &mesh.triangles {
-            if t.contains(&v) {
-                let others: Vec<_> = t.iter().copied().filter(|&w| w != v).collect();
-                link.entry(others[0]).or_default().insert(others[1]);
-                link.entry(others[1]).or_default().insert(others[0]);
-            }
-        }
-        if link.values().any(|neighbors| neighbors.len() > 2) {
-            return false;
-        }
-        let ends = link
-            .values()
-            .filter(|neighbors| neighbors.len() == 1)
-            .count();
-        if ends != 0 && ends != 2 {
-            return false;
-        }
-        if let Some(&start) = link.keys().next() {
-            let mut visited = BTreeSet::new();
-            let mut stack = vec![start];
-            while let Some(w) = stack.pop() {
-                if visited.insert(w) {
-                    stack.extend(&link[&w]);
-                }
-            }
-            if visited.len() != link.len() {
-                return false;
-            }
-        }
-    }
-    true
-}
+use crate::sculpt::test_support::{fan, shells, surface_invariants};
 
 #[test]
 fn modeling_fan_gate_rejects_closed_and_open_pinched_welds() {
@@ -173,22 +66,6 @@ fn modeling_fan_gate_keeps_open_boundary_welds_and_explicit_wire_branches() {
     mixed.triangles.clear();
     mixed.loose_vertices = vec![0, 1, 3, 7];
     manifold(&mixed).unwrap();
-}
-
-fn fan(sides: usize) -> Mesh {
-    let mut vertices = vec![Vec3::default()];
-    for i in 0..sides {
-        let angle = std::f32::consts::TAU * i as f32 / sides as f32;
-        vertices.push(Vec3(angle.cos(), angle.sin(), 0.));
-    }
-    Mesh {
-        mask: vec![0.; vertices.len()],
-        vertices,
-        triangles: (0..sides)
-            .map(|i| [0, i + 1, (i + 1) % sides + 1])
-            .collect(),
-        ..Default::default()
-    }
 }
 
 #[test]

@@ -564,9 +564,17 @@ rounding, and rejection of unsupported settings/open surfaces also pass locally.
 
 The desktop regression covers rejected settings, cancellation, successful private
 preview, source/attribute preservation, Apply as one history edit, Undo/Redo,
-save/reopen and stale Apply rejection. The app library compile check passed;
-the desktop regression and broad suites run in CI to avoid the known monolithic
-test compilation memory cost on this laptop.
+save/reopen and stale Apply rejection. The app library compile check passed.
+PR #192 now builds on the supported focused partition from PR #190; all seven
+updated app retopology tests live once in `app::retopology_tests` and compile in
+both harnesses. Focused local checks use the working source directly; broad and
+GPU suites remain in CI. Merge #190 before #192.
+The stacked local retopology check passes 16 tests, with the existing manual
+whole-sculpt adapter ignored. It uses `--features focused-retopology`, the shared
+target cache, one compiler, one test thread, no test debug info and no incremental
+compilation. The 1,800 MiB guard records 1,480 MiB peak process-tree RSS, 88.90 s
+including compilation, and no memory stop; tests take 8.35 s. The seven moved app
+test bodies are unchanged from the path follow-up at `69988cd`.
 The interactive GPU regression changes sharp protection and verifies that it
 discards an existing private preview without editing the document, then previews
 and applies again using the default method.

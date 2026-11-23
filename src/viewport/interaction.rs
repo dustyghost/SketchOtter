@@ -140,7 +140,7 @@ impl PaintSampler {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]
@@ -171,7 +171,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod paint_sampling_tests {
     use super::*;
     fn line(events: usize, continuous: bool) -> Vec<PaintSample> {

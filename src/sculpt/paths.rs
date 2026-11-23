@@ -924,7 +924,7 @@ pub(crate) fn position_surface_error(mesh: &Mesh, points: impl Iterator<Item = V
         .fold(0_f32, f32::max)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

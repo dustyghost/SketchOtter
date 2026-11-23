@@ -493,7 +493,7 @@ impl Document {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::paths::{PathMode, PathPoint, mesh_signature};

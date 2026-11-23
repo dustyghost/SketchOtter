@@ -317,7 +317,7 @@ impl PaintScratch {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     fn assert_reference(mesh: &Mesh, occluders: &[&Mesh], depth: &DepthField, dab: &Dab) {

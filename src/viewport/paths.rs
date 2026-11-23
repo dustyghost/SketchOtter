@@ -1376,7 +1376,7 @@ fn faces_camera(scene: &Scene, point: &PathPoint) -> bool {
     point.normal.dot(view) > 0.
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod guide_tests {
     use super::*;
     use crate::sculpt::Geometry;

@@ -193,7 +193,7 @@ pub(crate) fn deserialize_list<'de, D: serde::Deserializer<'de>>(
     d.deserialize_seq(Images)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 pub(crate) mod tests {
     use super::*;
     pub(crate) fn image() -> ReferenceImage {

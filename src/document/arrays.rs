@@ -1,7 +1,7 @@
 //! Attached arrays retain their source mesh and replace only its evaluated display.
 use super::*;
 use crate::sculpt::{Vec3, instances::*};
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 
 impl Document {

@@ -107,7 +107,7 @@ impl super::brush::PreparedWeight<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]
@@ -165,7 +165,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod deposition_regressions {
     use super::*;
     #[test]

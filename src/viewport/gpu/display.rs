@@ -1244,7 +1244,7 @@ fn span_edge_axis(p: &crate::sculpt::Primitive, a: Vec3, b: Vec3) -> Option<usiz
     (changing.len() == 1).then(|| changing[0])
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{Geometry, Primitive, PrimitiveKind};
@@ -1439,10 +1439,10 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod stroke_tests;
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod packing_tests;
 
 #[cfg(test)]

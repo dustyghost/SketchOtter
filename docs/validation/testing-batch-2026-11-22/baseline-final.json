@@ -1,0 +1,21 @@
+{
+  "command": [
+    "env",
+    "CARGO_TARGET_DIR=/home/mark/Documents/ChatGPT/Clay From/sketchotter-rebrand/target",
+    "CARGO_PROFILE_TEST_DEBUG=0",
+    "CARGO_PROFILE_TEST_INCREMENTAL=false",
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "-j",
+    "1",
+    "retopology",
+    "--no-run"
+  ],
+  "limit_kib": 1228800,
+  "peak_tree_rss_kib": 1230348,
+  "elapsed_seconds": 21.64,
+  "exit_code": -15,
+  "stop_reason": "stopped: tree_rss_kib=1230348, available_kib=1645760, full_avg10=6.37"
+}

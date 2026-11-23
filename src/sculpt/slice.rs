@@ -687,7 +687,7 @@ impl Mesh {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{Primitive, PrimitiveKind};
@@ -877,7 +877,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod edge_cases {
     use super::*;
     use crate::sculpt::{Primitive, PrimitiveKind};

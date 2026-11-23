@@ -41,7 +41,7 @@ pub use subdivision::MeshSettings;
 pub(crate) use subdivision::{max_triangles, max_vertices};
 mod import;
 pub use symmetry::{Axis, GuidePlane, Symmetry};
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 
 mod transform;
@@ -65,7 +65,7 @@ mod shading;
 pub use shading::ShadingSeams;
 pub(crate) use shading::{SurfaceShading, SurfaceShadingTopology};
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod group_tests;
 
 mod visibility;
@@ -75,7 +75,7 @@ mod merge;
 mod mirror;
 pub use mirror::MirrorOptions;
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod mirror_tests;
 
 mod edges;
@@ -111,3 +111,6 @@ mod brush_loop_profile;
 
 #[cfg(test)]
 mod stamp_profile;
+
+#[cfg(test)]
+pub(crate) mod test_support;

@@ -74,5 +74,5 @@ pub(crate) fn with_test_capacity<T>(capacity: MeshCapacity, f: impl FnOnce() -> 
     f()
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;

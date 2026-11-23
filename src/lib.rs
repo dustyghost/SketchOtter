@@ -1,4 +1,10 @@
 //! SketchOtter: a UI-independent sculpt document with desktop input/rendering adapters.
+// The focused harness retains shared test instrumentation. The default suite
+// and its Clippy run still check every helper and import.
+#![cfg_attr(
+    all(test, feature = "focused-retopology"),
+    allow(dead_code, unused_imports)
+)]
 mod action;
 mod app;
 mod background_job;

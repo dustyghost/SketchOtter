@@ -448,5 +448,5 @@ impl Geometry {
 mod loops;
 mod smooth;
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;

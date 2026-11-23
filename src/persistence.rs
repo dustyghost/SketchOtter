@@ -315,7 +315,7 @@ pub fn export_obj(path: &str, mesh: &Mesh) -> Result<(), String> {
     std::fs::write(path, text).map_err(|e| e.to_string())
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]
@@ -464,7 +464,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod mesh_storage_tests {
     use super::*;
     #[test]
@@ -541,7 +541,7 @@ mod mesh_storage_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod adaptive_storage_tests {
     use super::*;
     #[test]
@@ -583,7 +583,7 @@ mod adaptive_storage_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod brush_library_tests {
     use super::*;
     #[test]

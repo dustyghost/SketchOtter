@@ -548,7 +548,7 @@ impl Viewport {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     fn moved(t: ComponentTransform, p: Vec3, pivot: Vec3) -> Vec3 {

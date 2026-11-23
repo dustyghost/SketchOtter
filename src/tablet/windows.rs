@@ -116,7 +116,7 @@ pub(super) fn pen_contacts(input: &mut RawInput) -> BTreeSet<u64> {
     OBSERVATIONS.with_borrow_mut(|observations| observations.classify(input))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use eframe::egui::Event;

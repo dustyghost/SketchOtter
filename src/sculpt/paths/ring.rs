@@ -697,7 +697,7 @@ pub fn shortest_ring_cancelled(
     finish_ring(points, hit, axis, epsilon)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{

@@ -227,7 +227,7 @@ pub(super) fn project(
     Ok(projected)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{Primitive, PrimitiveKind, QuadRemeshAlgorithm, Topology};

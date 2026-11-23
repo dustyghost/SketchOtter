@@ -84,7 +84,7 @@ impl Scene {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::super::gpu::DisplayMesh;
     use super::*;

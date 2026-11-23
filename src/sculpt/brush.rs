@@ -569,7 +569,7 @@ impl PreparedWeight<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod footprint_tests {
     use super::*;
     #[test]
@@ -600,7 +600,7 @@ mod footprint_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod stroke_tests {
     use super::*;
     #[test]
@@ -659,5 +659,5 @@ mod stroke_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod weight_tests;

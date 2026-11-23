@@ -221,7 +221,7 @@ fn save_impl(path: &Path, texture: &Texture, gimp_straight: bool) -> Result<(), 
     super::write_bytes(path, bytes.get_ref())
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

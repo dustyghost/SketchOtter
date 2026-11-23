@@ -1,0 +1,30 @@
+   Compiling sketchotter v0.1.0-alpha.5 (/home/mark/source/clay-form)
+    Finished `test` profile [unoptimized] target(s) in 31.73s
+     Running unittests src/lib.rs (/home/mark/Documents/ChatGPT/Clay From/sketchotter-rebrand/target/debug/deps/clay_form-f0a438573f247b78)
+
+running 22 tests
+test app::retopology_tests::guided_retopology_inherits_a_single_active_mirror_plane ... ok
+test app::retopology_tests::guided_retopology_input_limit_allows_larger_preview_and_apply ... ok
+test app::retopology_tests::guided_retopology_keeps_source_and_attributes_and_roundtrips_as_one_edit ... ok
+test app::retopology_tests::guided_retopology_opens_after_path_brush_work_is_complete ... ok
+test app::retopology_tests::guided_retopology_rejects_failed_and_stale_previews_without_adding_models ... ok
+test document::retopology::tests::face_replacement_at_group_limit_reclaims_an_old_slot_atomically ... ok
+test document::retopology::tests::group_all_replaces_groups_on_every_level_and_undo_restores_them ... ok
+test document::retopology::tests::groups_and_mask_intensity_are_independent_undoable_and_survive_levels ... ok
+test document::retopology::tests::retopology_density_undo_save_subdivision_and_group_all_preserve_independence ... ok
+test sculpt::brush_loop_profile::profile_brush_loops ... ignored, opt-in CPU brush timing; no wall-clock assertion
+test sculpt::retopology::tests::density_paint_is_signed_persistent_and_independent_of_selection_groups_and_mask ... ok
+test sculpt::retopology::tests::native_retopology_limits_and_worker_cancellation_do_not_change_source ... ok
+test sculpt::retopology::tests::native_retopology_multiple_guides_mirror_and_stale_attachments ... ok
+test sculpt::retopology::tests::native_retopology_reconstructs_quads_without_using_the_sculpt_mask_as_density ... ok
+test sculpt::retopology::tests::native_retopology_solver_coordinates_match_project_export_without_losing_f32_precision ... ok
+test sculpt::retopology::tests::native_retopology_whole_sculpt_adapter ... ignored, whole-sculpt adapter validation; set CLAY_RETOPO_SOURCE and optionally CLAY_RETOPO_OUTPUT
+test sculpt::stamp_normals::tests::broad_stamp_fallback_keeps_unsampled_outliers_safe ... ok
+test sculpt::stamp_normals::tests::local_stamp_normals_match_full_mesh_brush_results_after_edits ... ok
+test sculpt::stamp_normals::tests::profile_local_stamp_normals ... ignored, opt-in comparison of local and full normal preparation; no wall-clock assertions
+test sculpt::stamp_normals::tests::selected_normals_match_full_accumulation_bit_for_bit ... ok
+test sculpt::stamp_normals::tests::stamp_normal_selection_preserves_radius_boundary_and_special_brushes ... ok
+test sculpt::stamp_profile::profile_stamp_stages ... ignored, opt-in CPU stage diagnosis; no wall-clock assertion
+
+test result: ok. 18 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 16.32s
+
