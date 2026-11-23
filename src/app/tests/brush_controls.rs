@@ -372,6 +372,38 @@ fn brush_controls_popup_drag_edits_preset_without_closing_or_sculpting() {
     assert_eq!(app.document.brushes()[0].surface_cursor, !footprint);
     assert_eq!(app.ui.customization.popup_menu, Some(id));
     assert_eq!(app.document.geometry_snapshot(), geometry);
+
+    frame(&mut app, &ctx, size, vec![key(egui::Key::Escape)]);
+    assert!(app.ui.customization.popup_menu.is_none());
+    frame(
+        &mut app,
+        &ctx,
+        size,
+        vec![
+            egui::Event::PointerMoved(Pos2::new(790., 110.)),
+            key(egui::Key::S),
+        ],
+    );
+    frame(&mut app, &ctx, size, vec![]);
+    assert_eq!(app.ui.customization.popup_menu, Some(id));
+
+    // Dismiss over the sculpt surface, before a held press can become a stroke.
+    let outside = app.ui.viewport_menu.viewport_rect.unwrap().center();
+    frame(
+        &mut app,
+        &ctx,
+        size,
+        vec![egui::Event::PointerMoved(outside), button(outside, true)],
+    );
+    assert!(app.ui.customization.popup_menu.is_none());
+    frame(&mut app, &ctx, size, vec![button(outside, false)]);
+    assert_eq!(app.document.geometry_snapshot(), geometry);
+    let radius = app.document.brushes()[0].radius;
+
+    frame(&mut app, &ctx, size, vec![key(egui::Key::S)]);
+    frame(&mut app, &ctx, size, vec![]);
+    assert_eq!(app.ui.customization.popup_menu, Some(id));
+    assert_eq!(app.document.brushes()[0].radius, radius);
     frame(&mut app, &ctx, size, vec![key(egui::Key::Escape)]);
     assert!(app.ui.customization.popup_menu.is_none());
 }
