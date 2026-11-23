@@ -396,7 +396,7 @@ mod tests {
     #[test]
     fn project_and_custom_preset_survive_disk_save() {
         let dir = std::env::temp_dir().join(format!(
-            "clay-form-test-{}-{}",
+            "sketchotter-test-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

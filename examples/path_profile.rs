@@ -1,6 +1,6 @@
 //! Focused Detail path profile; --synthetic needs no private export.
 //! CLAY_PROFILE_AUTOMATIC=1 also compares a complete automatic stroke to live replay.
-use clay_form::{
+use sketchotter::{
     document::{Document, PathStrokeOptions},
     sculpt::{
         AdaptiveSettings, Brush, Kind, Primitive, PrimitiveKind, Vec3,
@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             0.5,
         )?;
     } else {
-        document.replace_project(clay_form::persistence::load_project(filename)?, filename)?;
+        document.replace_project(sketchotter::persistence::load_project(filename)?, filename)?;
     }
     if let Ok(source) = std::env::var("CLAY_PROFILE_SOURCE") {
         serde_json::to_writer(std::fs::File::create(source)?, &document.project())?;

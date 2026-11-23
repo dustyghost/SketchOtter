@@ -1,6 +1,6 @@
 # Local mesh fusion validation
 
-Implementation evidence for [#120](https://github.com/dustyghost/clay-form/issues/120) and [#121](https://github.com/dustyghost/clay-form/issues/121), 1 November 2026. These fixtures establish local preservation and the interaction flow. They are not an acceptance claim for every sculpt or every surface Boolean configuration.
+Implementation evidence for [#120](https://github.com/dustyghost/SketchOtter/issues/120) and [#121](https://github.com/dustyghost/SketchOtter/issues/121), 1 November 2026. These fixtures establish local preservation and the interaction flow. They are not an acceptance claim for every sculpt or every surface Boolean configuration.
 
 ## Preservation and transactions
 

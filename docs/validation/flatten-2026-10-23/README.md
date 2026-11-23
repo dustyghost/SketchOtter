@@ -1,6 +1,6 @@
 # Stable Flatten stroke review
 
-Issue [#30](https://github.com/dustyghost/clay-form/issues/30): Flatten previously targeted each new surface hit's height and normal. A focused regression reproduced the resulting change in output when those hits changed within one stroke.
+Issue [#30](https://github.com/dustyghost/SketchOtter/issues/30): Flatten previously targeted each new surface hit's height and normal. A focused regression reproduced the resulting change in output when those hits changed within one stroke.
 
 Flatten now samples an area-weighted surface plane at the beginning of the stroke, separately for each symmetry copy. The footprint follows the pointer while the target stays fixed. Projection is bounded to avoid overshooting; Subtract retains relief exaggeration. The plane is sampled again on the next stroke.
 

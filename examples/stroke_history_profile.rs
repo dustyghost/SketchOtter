@@ -1,10 +1,10 @@
 //! Measure a position-only history representation against the real document's Undo/Redo.
 //! Run the release example once per subdivision count (0..=3).
-use clay_form::{
+use serde_json::json;
+use sketchotter::{
     document::Document,
     sculpt::{Brush, Dab, Geometry, Kind, Material, Mesh, Symmetry, Vec3},
 };
-use serde_json::json;
 use std::time::Instant;
 
 const STROKES: usize = 3;

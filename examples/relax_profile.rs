@@ -1,5 +1,5 @@
 //! Focused Relax input-cost profile without rendering or private geometry.
-use clay_form::{
+use sketchotter::{
     document::Document,
     sculpt::{Brush, Dab, Kind, Primitive, PrimitiveKind, Vec3},
 };

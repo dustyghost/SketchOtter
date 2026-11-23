@@ -1,6 +1,6 @@
 # Manual topology construction — updated 16 November 2026
 
-Tickets: [#126](https://github.com/dustyghost/clay-form/issues/126) and the audit/first delivery of [#127](https://github.com/dustyghost/clay-form/issues/127). See the [capability matrix](../../research/modeling-capabilities-2026-11-15.md) for existing workflows, limits and separately tracked follow-ups.
+Tickets: [#126](https://github.com/dustyghost/SketchOtter/issues/126) and the audit/first delivery of [#127](https://github.com/dustyghost/SketchOtter/issues/127). See the [capability matrix](../../research/modeling-capabilities-2026-11-15.md) for existing workflows, limits and separately tracked follow-ups.
 
 Create face, Fill boundary, Connect vertices and Delete faces apply immediately. Each successful operation commits one normal Undo/Redo step. There is no construction draft or Apply/Cancel step, and switching to a sculpt brush after construction requires no pending-edit decision. Unsupported selections leave geometry and history unchanged, including the Redo stack.
 

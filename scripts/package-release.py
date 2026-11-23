@@ -45,7 +45,7 @@ def main():
         if not build_number.isdecimal() or int(build_number) < 1:
             raise SystemExit("macOS bundle build number must be a positive integer")
         (contents / "Info.plist").write_bytes(plistlib.dumps({
-            "CFBundleExecutable": binary, "CFBundleIdentifier": "io.github.dustyghost.clay-form",
+            "CFBundleExecutable": binary, "CFBundleIdentifier": "io.github.dustyghost.sketchotter",
             "CFBundleIconFile": "sketchotter.icns",
             "CFBundleName": "SketchOtter", "CFBundlePackageType": "APPL",
             # The full SemVer remains in About and BUILD-INFO.

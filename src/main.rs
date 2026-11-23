@@ -1,7 +1,7 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
-use clay_form::App;
 use eframe::egui;
+use sketchotter::App;
 fn main() -> eframe::Result {
     let mut args = std::env::args_os().skip(1);
     let project = match (args.next(), args.next()) {
@@ -37,7 +37,7 @@ fn main() -> eframe::Result {
             .with_inner_size([1280., 850.]),
         ..Default::default()
     };
-    clay_form::configure_native_input(&mut options);
+    sketchotter::configure_native_input(&mut options);
     eframe::run_native(
         "SketchOtter",
         options,

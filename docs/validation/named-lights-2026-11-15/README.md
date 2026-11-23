@@ -1,6 +1,6 @@
 # Named light controls — 15 November 2026
 
-Ticket: [#64](https://github.com/dustyghost/clay-form/issues/64).
+Ticket: [#64](https://github.com/dustyghost/SketchOtter/issues/64).
 
 Focused lighting tests passed (10 passed, 3 GPU/manual checks ignored by the ordinary filter). The software-GPU CPU/pixel comparison `gpu_lighting_types_colour_and_distance_match_cpu` passed with disabled lights interspersed through the rig and with every light disabled. Ambient fill remains independent. Serialization checks cover names, disabled state and migration from older saved lighting; optional light export omits disabled lights.
 

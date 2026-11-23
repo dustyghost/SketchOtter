@@ -25,7 +25,7 @@ export XDG_RUNTIME_DIR="$scratch/runtime" XDG_CONFIG_HOME="$scratch/config"
 export XDG_CACHE_HOME="$scratch/cache" XDG_DATA_HOME="$scratch/data"
 install -d -m 700 "$XDG_RUNTIME_DIR"
 # Suppress the pre-release notice in this isolated profile only.
-python3 - "$(dirname "$0")/../Cargo.toml" "$XDG_CONFIG_HOME/clay-form/preferences.json" <<'PYCONF'
+python3 - "$(dirname "$0")/../Cargo.toml" "$XDG_CONFIG_HOME/sketchotter/preferences.json" <<'PYCONF'
 import json, sys, tomllib
 from pathlib import Path
 version = tomllib.loads(Path(sys.argv[1]).read_text())['package']['version']

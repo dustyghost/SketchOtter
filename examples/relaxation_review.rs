@@ -1,6 +1,6 @@
 //! Reproduce relaxation measurements without opening or altering the source project.
 //! cargo run --example relaxation_review -- input.clay output.clay [strength iterations tolerance]
-use clay_form::{
+use sketchotter::{
     persistence::{load_project, save_project},
     sculpt::{Mesh, RelaxationOptions},
 };

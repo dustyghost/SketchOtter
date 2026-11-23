@@ -29,4 +29,4 @@ python3 scripts/profile-paint-pointer.py "$test_binary" target/paint-l4 --level 
 
 The paired test selects the old pointer entry point or the freehand entry point while using the same paint application and occlusion code. Both invalidate geometry after deformation and visibility changes. Separate regression tests cover image and vertex painting, shared textures, cancellation, mask and material changes, same-size topology and moving occluders. The timed fixture measures vertex Paint. Display presentation is outside this measurement. The final probe name includes the standard opt-in filter so normal headless rendering checks can run independently of the benchmark environment.
 
-[Hosted measurement run](https://github.com/dustyghost/clay-form/actions/runs/44957903198)
+[Hosted measurement run](https://github.com/dustyghost/SketchOtter/actions/runs/44957903198)

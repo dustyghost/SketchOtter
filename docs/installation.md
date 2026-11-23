@@ -6,7 +6,7 @@ Use this guide to build and open SketchOtter from its source code. You will need
 
 ## Before you start
 
-For a packaged build, download the archive for your operating system and CPU from the [releases page](https://github.com/dustyghost/clay-form/releases). Extract the archive and open `sketchotter` (Linux), `sketchotter.exe` (Windows) or `SketchOtter.app` (macOS). Existing Alpha 4 downloads carry the Clay Form name. Build this checkout to try SketchOtter before its first packaged release. The steps below cover building the current source checkout. See [release readiness and platform limits](open-source-readiness.md) for testing coverage.
+For a packaged build, download the archive for your operating system and CPU from the [releases page](https://github.com/dustyghost/SketchOtter/releases). Extract the archive and open `sketchotter` (Linux), `sketchotter.exe` (Windows) or `SketchOtter.app` (macOS). Alpha 5 is the first packaged SketchOtter release; earlier downloads retain their original Clay Form names. The steps below cover building the current source checkout. See [release readiness and platform limits](open-source-readiness.md) for testing coverage.
 
 You need an internet connection for the first build and enough time for Rust and the app's dependencies to download and compile.
 
@@ -32,8 +32,8 @@ Other Linux distributions use different package names. This is not a complete dr
 2. Download the repository and open its folder:
 
    ```sh
-   git clone https://github.com/dustyghost/clay-form.git
-   cd clay-form
+   git clone https://github.com/dustyghost/SketchOtter.git sketchotter
+   cd sketchotter
    ```
 
    Before the repository becomes public, this step requires GitHub access to it.

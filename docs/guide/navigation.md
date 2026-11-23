@@ -187,13 +187,13 @@ The **Tablet & navigation** panel shows live pressure and connection errors. Til
 For the `256c:006d` device, run from the repository or extracted release folder:
 
 ```sh
-sudo install -m 0644 packaging/linux/72-clay-form-huion.rules /etc/udev/rules.d/72-clay-form-huion.rules
+sudo install -m 0644 packaging/linux/72-sketchotter-huion.rules /etc/udev/rules.d/72-sketchotter-huion.rules
 sudo udevadm control --reload-rules
 ```
 
 Reconnect the tablet and restart SketchOtter. The rule grants the active desktop user access to this device through [systemd uaccess](https://cgit.freedesktop.org/systemd/systemd/tree/src/login/70-uaccess.rules).
 
-For OpenTabletDriver's virtual artist tablet, install `packaging/linux/72-clay-form-opentabletdriver.rules` into `/etc/udev/rules.d/` using the same command pattern, reload the rules, then restart OpenTabletDriver to recreate the virtual device. This rule grants access only to the artist tablet, not its virtual keyboard. Physical and virtual pen endpoints are monitored together, so an idle endpoint cannot hide pressure from the one in use.
+For OpenTabletDriver's virtual artist tablet, install `packaging/linux/72-sketchotter-opentabletdriver.rules` into `/etc/udev/rules.d/` using the same command pattern, reload the rules, then restart OpenTabletDriver to recreate the virtual device. This rule grants access only to the artist tablet, not its virtual keyboard. Physical and virtual pen endpoints are monitored together, so an idle endpoint cannot hide pressure from the one in use.
 
 Other devices may need their own narrowly scoped permission rule. If pressure reports permission denied, grant your normal user device-specific access; do not run the app as root. In **Brush settings → Brush shape and pressure**, enable **Pressure → strength**; **Pressure → radius** can stay off. The default curve of 1 is linear: 25% pressure produces one quarter of the full-pressure strength.
 

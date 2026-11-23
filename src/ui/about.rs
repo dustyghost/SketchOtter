@@ -38,7 +38,7 @@ impl UiState {
                 }
                 ui.label(format!("Build: {}", env!("CLAY_BUILD_ID")));
                 ui.label("Free, open-source sculpting • GPL-3.0-only");
-                ui.label("Copyright © 2026 Clay Form contributors. No warranty.");
+                ui.label("Copyright © 2026 SketchOtter contributors. No warranty.");
                 ui.horizontal_wrapped(|ui| {
                     ui.hyperlink_to("Source & contributions", env!("CARGO_PKG_REPOSITORY"));
                     ui.hyperlink_to("Releases & corresponding source", concat!(env!("CARGO_PKG_REPOSITORY"), "/releases"));
