@@ -320,5 +320,5 @@ fn write(
     Ok(changed)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 pub(crate) mod tests;

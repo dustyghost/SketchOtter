@@ -1264,11 +1264,19 @@ impl eframe::App for App {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 
 #[cfg(test)]
+mod retopology_tests;
+#[cfg(test)]
+mod test_support;
+
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod parameter_tests;
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod recovery_tests;
+
+#[cfg(test)]
+mod mixed_invariant_tests;

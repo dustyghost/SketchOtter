@@ -509,5 +509,5 @@ pub(crate) fn bridge(
     Ok(out)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 pub(crate) mod tests;

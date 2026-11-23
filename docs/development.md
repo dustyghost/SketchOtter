@@ -34,6 +34,9 @@ cargo clippy --locked --all-targets -- -D warnings
 
 CI runs these checks and a separate Mesa Vulkan job for GPU correctness. For graphics setup, GPU tests and app previews, follow [GPU validation](gpu-rendering.md#validation).
 
+For the supported CPU retopology compilation partition, memory precautions and
+coverage inventory, see [Testing](testing.md).
+
 The ordinary tests cover brushes and masks, legacy JSON, project and preset saves, strokes, bounded undo/redo, failed loads, save/open protection, and simulated viewport/gizmo gestures.
 
 ### Change the Rust toolchain

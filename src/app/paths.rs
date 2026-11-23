@@ -575,7 +575,7 @@ impl App {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod radius_tests {
     use super::*;
     use crate::sculpt::{Vec3, paths::PathPoint};

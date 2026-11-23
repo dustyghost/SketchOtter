@@ -155,5 +155,5 @@ pub(super) fn normals_at_positions(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;

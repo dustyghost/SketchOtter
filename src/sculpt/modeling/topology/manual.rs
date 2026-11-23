@@ -342,7 +342,7 @@ pub(in crate::sculpt::modeling) fn triangulate_boundary(
     Ok((triangles, quad))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{Material, Symmetry};

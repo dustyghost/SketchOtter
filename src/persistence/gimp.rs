@@ -272,7 +272,7 @@ fn guide_image(uv: &UvMap, width: u32, height: u32) -> image::RgbaImage {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::texture::{Channel, Pixels};

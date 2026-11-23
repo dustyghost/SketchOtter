@@ -474,7 +474,7 @@ impl Document {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod selection_storage_tests {
     use super::*;
     #[test]

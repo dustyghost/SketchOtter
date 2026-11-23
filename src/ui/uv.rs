@@ -1,7 +1,7 @@
 use super::*;
 mod interaction;
 mod library;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", not(feature = "focused-retopology")))]
 mod tests;
 #[derive(Default)]
 pub(crate) struct UvControls {

@@ -851,7 +851,7 @@ fn triangle_intersects_rect(triangle: [Pos2; 3], rect: Rect) -> bool {
     }
     true
 }
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

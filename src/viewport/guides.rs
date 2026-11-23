@@ -97,7 +97,7 @@ fn plane_segments(triangle: [Vec3; 3], normal: Vec3, center: Vec3) -> Vec<[Vec3;
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

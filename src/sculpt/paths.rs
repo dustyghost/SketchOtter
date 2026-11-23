@@ -920,7 +920,7 @@ pub(crate) fn sample_surface_error(mesh: &Mesh, samples: &[PathSample]) -> f32 {
         .fold(0_f32, f32::max)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

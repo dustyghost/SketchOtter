@@ -136,7 +136,7 @@ fn near(distance: f32, full: f32, end: f32) -> f32 {
     t * t * (3. - 2. * t)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{Alpha, Kind, Mesh, Primitive, PrimitiveKind, Symmetry};

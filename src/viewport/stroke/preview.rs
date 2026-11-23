@@ -239,7 +239,7 @@ impl Preview {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     use crate::sculpt::{Alpha, Geometry, Primitive, PrimitiveKind, StrokeMode, Vec3};

@@ -104,7 +104,7 @@ impl Document {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     fn document() -> (Document, u64) {
@@ -313,7 +313,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod budget_tests {
     use super::*;
     #[test]

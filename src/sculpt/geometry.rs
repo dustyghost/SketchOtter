@@ -60,7 +60,7 @@ impl ValidatedGeometry {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod subdivision_tests {
     use super::*;
     use crate::sculpt::{

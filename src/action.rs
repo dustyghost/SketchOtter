@@ -956,7 +956,7 @@ impl From<crate::viewport::TransformOperation> for Action {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod shortcut_tests {
     use super::*;
     use eframe::egui::{Key, Modifiers};

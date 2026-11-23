@@ -97,7 +97,7 @@ impl MeshJob {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod subdivision_profile {
     use super::*;
     use crate::sculpt::Mesh;

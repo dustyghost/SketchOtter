@@ -1,10 +1,10 @@
 //! Tablet pressure service; platform readers publish normalized pressure here.
 use eframe::egui;
-#[cfg(any(target_os = "windows", test))]
+#[cfg(all(any(target_os = "windows", test), not(feature = "focused-retopology")))]
 mod contact_types;
 #[cfg(target_os = "linux")]
 mod linux;
-#[cfg(any(target_os = "windows", test))]
+#[cfg(all(any(target_os = "windows", test), not(feature = "focused-retopology")))]
 pub(crate) mod pen;
 #[cfg(target_os = "windows")]
 mod windows;
@@ -150,7 +150,7 @@ impl Drop for Tablet {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]

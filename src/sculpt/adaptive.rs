@@ -1375,7 +1375,7 @@ fn edge(a: usize, b: usize) -> (usize, usize) {
     (a.min(b), a.max(b))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     #[test]
@@ -2185,7 +2185,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod group_tests {
     use super::*;
     #[test]

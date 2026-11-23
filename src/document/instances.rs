@@ -596,7 +596,7 @@ impl Document {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
     mod array_layers;

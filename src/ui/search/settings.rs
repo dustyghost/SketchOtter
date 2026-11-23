@@ -1090,7 +1090,7 @@ pub(crate) fn requested_any_section(ctx: &egui::Context, sections: &[&str]) -> O
         .find_map(|section| requested_section(ctx, section))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
 

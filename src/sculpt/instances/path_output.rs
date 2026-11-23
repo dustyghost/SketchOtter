@@ -4,7 +4,7 @@ use super::*;
 use crate::sculpt::paths::PathSample;
 use std::collections::HashMap;
 mod regions;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests;
 mod weld;
 pub use regions::PathRegions;
