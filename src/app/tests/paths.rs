@@ -745,7 +745,6 @@ fn one_drag_ring_authoring_offscreen_preview() {
                 },
                 |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| app.show_viewport(ui));
-                    app.show_paths(ctx);
                 },
             );
             if frame == 2 && name == Some("editable-panel") {

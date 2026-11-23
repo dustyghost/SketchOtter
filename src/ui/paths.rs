@@ -90,7 +90,7 @@ pub(crate) fn show(
                     });
                 });
                 if axis != before { editor.set_ring_axis(document, axis); }
-                ui.weak("Touch the model's side, then drag to position a complete ring. Auto fits the local shape; X, Y and Z fix its axis. Drag Tilt to angle it. Save path keeps the result.");
+                ui.weak("Drag on the model to place a ring. Auto fits the local shape; X / Y / Z fix its axis.");
                 if before == RingAxis::Manual { ui.weak("Current ring: manual tilt"); }
             }
             path_explorer(ui, editor, document, camera, &mut commands);
@@ -127,6 +127,12 @@ pub(crate) fn show(
                 .show_ui(ui,|ui| { for (i,brush) in document.brushes().iter().enumerate() { ui.selectable_value(selected_brush,i,&brush.name); } });
             let brush=&document.brushes()[*selected_brush];
             ui.label(format!("Strength {:.0}% · Spacing {:.0}% of radius",brush.strength*100.,brush.spacing*100.));
+            let ready=editor.draft.as_ref().is_some_and(|p|p.id!=0 && p.mode==PathMode::Surface && !p.is_stale(document.mesh())) && !editor.dirty(document);
+            ui.horizontal_wrapped(|ui| {
+                let response=ui.add_enabled(ready,egui::Button::new(egui::RichText::new("Stroke entire path").strong()));
+                if design::help(response,"Automatically apply the active brush over this entire saved path using the displayed size, constant pressure and current adaptive settings. Commits one undo step when finished; Cancel discards unfinished work.").clicked() { commands.push(Command::Path(PathCommand::StrokeEntirePath)); }
+                if ui.add_enabled(ready,egui::Button::new("Preview stroke")).on_hover_text("Inspect the result before choosing Apply stroke.").clicked() { commands.push(Command::Path(PathCommand::Preview)); }
+            });
             let linked=state.use_brush_size;
             if design::checkbox(ui, &mut state.use_brush_size,"Use active brush size").changed()
                 && linked && !state.use_brush_size
@@ -156,12 +162,6 @@ pub(crate) fn show(
                 design::checkbox(ui, &mut state.options.reverse,"Run in reverse");
                 design::checkbox(ui, &mut state.options.invert,"Invert brush effect");
             });
-            });
-            let ready=editor.draft.as_ref().is_some_and(|p|p.id!=0 && p.mode==PathMode::Surface && !p.is_stale(document.mesh())) && !editor.dirty(document);
-            ui.horizontal_wrapped(|ui| {
-                let response=ui.add_enabled(ready,egui::Button::new(egui::RichText::new("Stroke entire path").strong()));
-                if design::help(response,"Automatically apply the active brush over this entire saved path using the displayed size, constant pressure and current adaptive settings. Commits one undo step when finished; Cancel discards unfinished work.").clicked() { commands.push(Command::Path(PathCommand::StrokeEntirePath)); }
-                if ui.add_enabled(ready,egui::Button::new("Preview stroke")).on_hover_text("Inspect the result before choosing Apply stroke.").clicked() { commands.push(Command::Path(PathCommand::Preview)); }
             });
             ui.weak("Save edits first. Uses the active brush, masks, symmetry and adaptive sculpt settings; disable the stencil.");
             }

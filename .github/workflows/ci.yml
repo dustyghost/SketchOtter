@@ -152,6 +152,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: editable-path-ring-controls
-          path: /tmp/clay-ring-editable-panel.png
+          path: |
+            /tmp/clay-ring-editable-panel.png
+            /tmp/clay-automatic-path-settings.png
           if-no-files-found: ignore
           retention-days: 7
