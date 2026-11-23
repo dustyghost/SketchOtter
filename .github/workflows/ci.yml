@@ -147,7 +147,7 @@ jobs:
           CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-surface-arrays" cargo test --locked --lib surface_array_controls_offscreen_review -- --ignored --test-threads=1
           CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-attached-arrays" cargo test --locked --lib attached_array_controls_offscreen_review -- --ignored
 
-      - name: Retain Editable paths ring-control review
+      - name: Retain path and Integer grid control review
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -155,5 +155,6 @@ jobs:
           path: |
             /tmp/clay-ring-editable-panel.png
             /tmp/clay-automatic-path-settings.png
+            ${{ runner.temp }}/clay-guided-retopology/integer-grid-controls.png
           if-no-files-found: ignore
           retention-days: 7

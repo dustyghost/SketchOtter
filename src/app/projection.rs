@@ -214,6 +214,10 @@ impl App {
             .filter(|_| symmetry.enabled && enabled_axes.next().is_none());
         state.layout.symmetry_center = symmetry.center;
         state.layout.symmetry_source = crate::sculpt::retopology::SymmetrySource::Original;
+        if state.layout.method == crate::sculpt::retopology::Method::IntegerGrid {
+            state.layout.symmetry_axis = None;
+            state.layout.preserve_sharp = false;
+        }
         state.layout.target = (self.document.mesh().triangles.len() / 10).clamp(4, 10_000);
         state.flow_paths.retain(|&id| {
             self.document.path(id).is_some_and(|p| {

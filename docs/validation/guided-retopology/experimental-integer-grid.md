@@ -7,7 +7,7 @@ Rust parameterization path, not another name for its lattice repair.
 ## Research and implementation boundary
 
 - [Mixed-Integer Quadrangulation, 2009](https://cgg.unibe.ch/publications/miq/bommes_zimmer_2009_siggraph_011.pdf): field-aligned gradient energy, cut charts, quarter-turn seam transitions, integer translations and singularity coordinates, nearest-first rounding with continuous updates.
-- [Integer-Grid Maps for Reliable Quad Meshing, 2013](https://www.graphics.rwth-aachen.de/publication/03197/): positive map orientation and conservative linear orientation constraints. This experiment uses the general interior-barycentric-point construction from §3.1, with a centroid instead of the paper's Fermat point.
+- [Integer-Grid Maps for Reliable Quad Meshing, 2013](https://www.graphics.rwth-aachen.de/publication/03197/): positive map orientation and conservative linear orientation constraints. This experiment uses the general interior-barycentric-point construction from §3.1, with centroid sectors and normalized half-spaces; it does not implement the paper's Fermat-point/virtual-split optimization.
 
 The initial cross field and sizing field reuse our existing native field code.
 This is not a new implementation of the 2009 cross-field optimization. The
@@ -66,8 +66,9 @@ comparison of numerical methods, not algorithm parity for this parameterization.
 
 ## Current limits
 
-The alternative handles closed surfaces. Layout symmetry and Protect sharp bends
-are explicitly rejected for this method. Signed density and direction guides use
+The alternative handles closed surfaces. The app clears and disables Layout
+symmetry and Protect sharp bends for this method; programmatic requests using
+those unsupported options are explicitly rejected. Signed density and direction guides use
 the shared sizing/field inputs. Nonuniform masks and materials use the existing
 attribute transfer. No fallback to Surface field is hidden behind the selector.
 The same private preview, explicit Apply and source-preserving attribute transfer
@@ -173,15 +174,17 @@ defaults. The original export stores path geometry but omits selected guide IDs
 and current retopology controls; diagnostics now retain both current controls and
 the latest attempted settings, including failed attempts without a history edit.
 
-Two separate defects were isolated with the unchanged mesh and sampled guides:
+The following measurements record the first path fixes at `2484739`. Later
+trimmed-source changes and their final comparisons are recorded below. Two
+separate defects were isolated with the unchanged mesh and sampled guides:
 
 - With both rings, a single-CPU run reproduced the reported generic layout error
   in 23.464 seconds. Clarabel stopped a relaxation with `AlmostSolved`; its primal
   and dual residuals were 2.32e-14 and 1.13e-13. The previous status check rejected
-  the candidate without examining whether the existing warm update could finish
-  it. Such a candidate now first passes the unchanged independent feasibility
-  checks, then must converge through the bounded linear update and pass those
-  checks again. It is never returned directly. Infeasible/numerical-error states
+  the candidate without examining its independent residuals. That first fix
+  required a bounded linear cleanup before continuing. The trimmed cases below
+  replace that cleanup with an independent primal/dual check of the intermediate
+  relaxation. Infeasible/numerical-error states
   remain failures, and an actual `MaxTime` reports the solve limit. The overall
   deadline, per-relaxation time limit and geometry acceptance gates are unchanged.
   This uses Clarabel's documented
@@ -208,9 +211,10 @@ It does not raise any limit. This exercised actual polishing, integer rounding,
 extraction and final immutable-source checks on the saved case. Peak process RSS
 was 223,868 KiB, with maximum sampled source error 0.03495676. Polishing can take
 a different valid greedy rounding route; it does not promise identical quads to
-a fully converged relaxation. The focused numerical regression additionally
-requires the analytical optimum after polishing and rejects violated seams,
-bounds, fixed integers, nonfinite values, malformed vectors and cancellation.
+a fully converged relaxation. The current focused numerical regression
+checks the analytical optimum and its dual certificate, and rejects violated
+seams, bounds, fixed integers, nonfinite/malformed vectors, wrong dual signs,
+stationarity errors, excessive complementarity gaps and cancellation.
 
 The successful two-ring output is byte-identical before/after the clipping change
 (`97589bfd6bd92cad001a733c24ac78a9c58aff8e127adba0de4b23a4e8b1546d`).
@@ -222,6 +226,110 @@ sample arrays, build/run logs, output hashes and review artifacts are retained
 under `target/retopo-paths-review/` rather than included in source control.
 The unguided control still produces the identical 3,411-quad OBJ hash reported
 above, completing in 15.049 seconds in this run.
+
+## Trimmed sources and unsupported controls, 23 November 2026
+
+The reported `retopo-with-paths-flat` export was never written. The user kept the
+detailed side after Trim and reprojected both rings; the exact unsaved cut and
+post-trim target are unavailable. Reproject does not change the target, but
+reopening Guided retopology resets it to one tenth of the source triangle count.
+Controlled copies of the original saved stage therefore exercise both 3,583 and
+the reopened defaults. They use the production capped `Mesh::slice` and
+`SurfacePath::reproject` (distance 0.2), then the same production path sampler as
+the app. Both rings remain selected at strength 1. No private source was changed.
+
+- Keep `x >= -0.15`: 13,808 vertices / 27,612 triangles; default target 2,761.
+  Source SHA-256 `724732cd02dfa309018bdcc61d91a65b3fdccabd19e4c2a95ca58cccbebd5f82`.
+- Keep `z <= 0.15`: 12,086 vertices / 24,168 triangles; default target 2,416.
+  Source SHA-256 `174eaf0417a03895032edca77c789e62d6fca6c59740ef797fed4b70205b01c6`.
+
+Each copy has 117 guide samples. The second cut reproduced the generic layout
+error at `2484739`; the first failed its numerical residual check. Investigation
+isolated several numerical issues, rather than a missing path selection:
+
+- Forced cleanup of a feasible interior-point iterate can create inconsistent
+  equalities from feasible inequalities (the minimal regression is `x >= 1`
+  and `x >= 2`). Near-converged relaxations now pass the unchanged primal checks
+  plus independent stationarity, dual-sign and complementarity checks using the
+  original energy and constraints. Stationarity uses the full 1e-9 tolerance
+  and Clarabel's unscaled normalization; the gap uses its 5e-5 reduced threshold.
+  This is an intermediate relaxation, not an accepted quad mesh. Infeasible,
+  numerical-error and timeout statuses remain failures.
+- A cap triangle with positive doubled map area `7.4918377e-10` was rejected by
+  the old absolute `1e-9` cutoff, causing repeated full solves. The orientation
+  filter now requires a positive determinant above a conservative floating-point
+  error bound, following the first stage of
+  [Shewchuk's orientation predicate](https://www.cs.cmu.edu/~quake/robust.html).
+  Zero, negative, nonfinite, underflow-scale and numerically ambiguous signs
+  remain failures; this does not implement an exact-arithmetic fallback.
+- The existing IGM §3.1 centroid half-spaces are normalized so tiny reference
+  triangles retain their positive margin above absolute solver tolerances. This
+  preserves each half-space exactly. Regressions cover regular, obtuse and very
+  thin triangles, including reflection and collapse rejection. A controlled
+  Fermat-sector/virtual-split trial regressed the first cut and was not retained.
+- Initial orientation repairs reuse the bounded warm solver. Linear iterations
+  recompute the true residual before stopping, and a direct solve has at most
+  three refinement corrections. Partial pivoting avoids dividing by tiny
+  coefficients in thin-cap constraints. Residual acceptance is unchanged.
+- An inconsistent tentative active set can use a small nonnegative dual QP.
+  It considers at most 1,024 inequalities, activates at most 512, and adds
+  violated omitted bounds over at most eight rounds. Every original inequality
+  is checked before returning. Needed inverse columns are streamed and only
+  their Schur products are cached (at most 4 MiB of numeric data). Successful
+  dual active sets seed later warm updates; a full relaxation discards that cache. Analytical/oracle regressions cover
+  redundant bounds, added bounds, seam equations, fixed coordinates, reuse,
+  pre-allocation limits and cancellation.
+
+The overall 60-second deadline, sample/target limits and factor fill/work caps
+are unchanged. Full-source topology, positive map orientation, integral seams,
+singularity separation, extraction, render diagonals and sampled surface fit
+still determine whether any preview can be returned. A smaller target is not a
+guarantee of a faster solve because it can change field singularities.
+
+| Controlled input | Target | Final result | Solver time | Peak process RSS |
+| --- | ---: | --- | ---: | ---: |
+| Keep `x >= -0.15`, both rings | 3,583 | 3,497 validated quads | 28.884 s | 204,996 KiB |
+| Same cut, reopened default | 2,761 | 2,594 validated quads | 33.148 s | 231,056 KiB |
+| Keep `z <= 0.15`, both rings | 3,583 | Rejected: independent stationarity check; no output | 40.664 s | 224,584 KiB |
+| Same cut, reopened default | 2,416 | Rejected at the unchanged solve limit; no output | 61.044 s | 223,092 KiB |
+
+These are single-CPU runs using the same saved cuts and actual sampled guides.
+The second cut remains an unresolved case; this change does not claim that all
+capped cuts, or the user's unavailable cut, now work. At 3,583 its near-converged
+stationarity residual was 4.162e-9, above the unchanged 1e-9 check. At 2,416 it
+exhausted the deadline while repairing orientation. The UI now suggests a
+*different* target rather than implying that a smaller target must solve faster.
+
+For the two successful runs, maximum sampled surface errors are 0.02295007 and
+0.02591817; edge-ratio p95 values are 1.39984 and 1.55914, maxima 3.05449 and
+4.00576. Strict closed opposite-edge cycle counts are 18 and zero, respectively.
+Their OBJ SHA-256 values are
+`106b47d0b1a9490d617b8b1b951e04536f248f3ab4fa7a5dd07b047fa708e743` and
+`13d1893b2e8d84c0152150f8e5039df8f6b1413d0b111b4a8855635839df004c`.
+The original untrimmed two-ring control also succeeds: 3,404 quads in 19.220 s,
+peak process RSS 197,908 KiB and maximum sampled surface error 0.03357428.
+Its current OBJ SHA-256 is
+`034254fa848dc64a9c51b3a2cba4f7b5c154cc1f01b4ba5ba39f771ea104d95e`.
+The greedy route changes, so identical output is not promised. Front and cap
+wireframes of both successful trims and the original guided comparison were
+inspected: the silhouette and flat cap are retained, with visible differences in
+edge flow and stretching near the groove/poles. These diagnostic displays use
+fixed OBJ fan diagonals, not the solver's independently validated triangulation.
+Eleven focused numerical/extraction tests and five end-to-end Integer grid
+geometry, density, guide and cancellation tests pass on the final source.
+
+Private sources, guide samples, numerical snapshots, helper source, exact
+settings, build/run logs, hashes and review renders are retained under
+`target/retopo-trim-review/`. These controlled cuts cannot certify the user's
+unsaved cut; the updated diagnostic export retains the actual target and guide
+selection for a future exact replay.
+
+Selecting Integer grid now clears and disables Protect sharp bends (including
+its angle control) and Layout symmetry. Reopening also keeps those unsupported
+settings off. Switching back to Surface field re-enables their controls without
+silently restoring them. Headless real-click coverage checks the state changes,
+disabled clicks, reopening and unchanged document/history; the existing GPU
+control capture retains the disabled appearance for review.
 
 ## Focused coverage
 

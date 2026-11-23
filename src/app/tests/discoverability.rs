@@ -66,6 +66,74 @@ fn click(app: &mut App, ctx: &egui::Context, position: Pos2) {
 }
 
 #[test]
+fn integer_grid_clears_and_disables_unsupported_layout_controls() {
+    use crate::sculpt::{Axis, Symmetry, retopology::Method};
+    let mut app = App::default();
+    app.document
+        .set_symmetry(Symmetry {
+            enabled: true,
+            mirror: [true, false, false],
+            ..Default::default()
+        })
+        .unwrap();
+    let ctx = egui::Context::default();
+    ctx.style_mut(|style| style.animation_time = 0.);
+    app.dispatch(Command::OpenRetopology, &ctx);
+    let before = app.document.project();
+    let history = app.document.history_counts();
+    let button = |app: &mut App, label: &str| {
+        let output = settle(app, &ctx);
+        click(app, &ctx, text_center(&output, label));
+        settle(app, &ctx);
+    };
+    let axis = |app: &mut App| {
+        let output = settle(app, &ctx);
+        let anchor = text_center(&output, "Layout symmetry (experimental)");
+        let position = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == "Y" => {
+                    let center = text.pos + text.galley.size() * 0.5;
+                    (center.y > anchor.y && center.y < anchor.y + 60.).then_some(center)
+                }
+                _ => None,
+            })
+            .expect("Layout symmetry Y control is visible");
+        click(app, &ctx, position);
+        settle(app, &ctx);
+    };
+    button(&mut app, "Protect sharp bends");
+    axis(&mut app);
+    assert!(app.ui.projection.layout.preserve_sharp);
+    assert_eq!(app.ui.projection.layout.symmetry_axis, Some(Axis::Y));
+    button(&mut app, "Integer grid (experimental)");
+    assert_eq!(app.ui.projection.layout.method, Method::IntegerGrid);
+    assert!(!app.ui.projection.layout.preserve_sharp);
+    assert_eq!(app.ui.projection.layout.symmetry_axis, None);
+    button(&mut app, "Protect sharp bends");
+    axis(&mut app);
+    assert!(!app.ui.projection.layout.preserve_sharp);
+    assert_eq!(app.ui.projection.layout.symmetry_axis, None);
+    app.ui.projection.layout.require_method_settings().unwrap();
+    button(&mut app, "Surface field");
+    assert!(!app.ui.projection.layout.preserve_sharp);
+    assert_eq!(app.ui.projection.layout.symmetry_axis, None);
+    button(&mut app, "Protect sharp bends");
+    axis(&mut app);
+    assert!(app.ui.projection.layout.preserve_sharp);
+    assert_eq!(app.ui.projection.layout.symmetry_axis, Some(Axis::Y));
+    button(&mut app, "Integer grid (experimental)");
+    app.dispatch(Command::CancelProjection, &ctx);
+    app.dispatch(Command::OpenRetopology, &ctx);
+    assert_eq!(app.ui.projection.layout.method, Method::IntegerGrid);
+    assert!(!app.ui.projection.layout.preserve_sharp);
+    assert_eq!(app.ui.projection.layout.symmetry_axis, None);
+    assert!(app.document.project() == before);
+    assert_eq!(app.document.history_counts(), history);
+}
+
+#[test]
 fn editable_paths_ring_controls_create_reorient_and_preserve_drafts() {
     use crate::{
         command::PathCommand,

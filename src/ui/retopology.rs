@@ -28,7 +28,10 @@ impl ProjectionControls {
                 "Integer grid (experimental)",
             );
         });
-        if self.layout.method == Method::IntegerGrid {
+        let integer_grid = self.layout.method == Method::IntegerGrid;
+        if integer_grid {
+            self.layout.preserve_sharp = false;
+            self.layout.symmetry_axis = None;
             ui.weak("A different quad layout for closed surfaces. Symmetry and sharp-bend protection are not yet supported.");
         }
         ui.horizontal(|ui| {
@@ -42,7 +45,10 @@ impl ProjectionControls {
         ui.weak("A fresh quad layout follows the surface. Face-group borders may move.");
         ui.horizontal_wrapped(|ui| {
             search::setting_response(
-                ui.checkbox(&mut self.layout.preserve_sharp, "Protect sharp bends"),
+                ui.add_enabled(
+                    !integer_grid,
+                    egui::Checkbox::new(&mut self.layout.preserve_sharp, "Protect sharp bends"),
+                ),
                 "Protect sharp bends",
             );
             search::setting_response(
@@ -69,12 +75,14 @@ impl ProjectionControls {
 
         ui.separator();
         search::mark_destination(ui, "setting:Layout symmetry");
-        setting_label(ui, Glyph::Symmetry, "Layout symmetry (experimental)");
-        ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut self.layout.symmetry_axis, None, "Off");
-            for (axis, label) in [(Axis::X, "X"), (Axis::Y, "Y"), (Axis::Z, "Z")] {
-                ui.selectable_value(&mut self.layout.symmetry_axis, Some(axis), label);
-            }
+        ui.add_enabled_ui(!integer_grid, |ui| {
+            setting_label(ui, Glyph::Symmetry, "Layout symmetry (experimental)");
+            ui.horizontal_wrapped(|ui| {
+                ui.selectable_value(&mut self.layout.symmetry_axis, None, "Off");
+                for (axis, label) in [(Axis::X, "X"), (Axis::Y, "Y"), (Axis::Z, "Z")] {
+                    ui.selectable_value(&mut self.layout.symmetry_axis, Some(axis), label);
+                }
+            });
         });
         if let Some(axis) = self.layout.symmetry_axis {
             ui.label(format!(

@@ -55,10 +55,10 @@ pub fn reconstruct(
     result.map_err(|error| {
         #[cfg(feature="audit")]
         eprintln!("Integer-grid diagnostic: {error}");
-        if error.contains("relaxation did not converge") {
+        if error.contains("relaxation did not converge") || error.contains("relaxation failed independent") {
             "Integer grid could not find a valid layout with these settings. Try a different target or Surface field.".into()
         } else if error.contains("exceeded its solve budget") {
-            "Integer grid reached its solve limit. Try a lower target or Surface field.".into()
+            "Integer grid reached its solve limit. Try a different target or Surface field.".into()
         } else {error}
     })
 }
@@ -126,11 +126,23 @@ fn relax(
     active: &mut BTreeSet<usize>,
     budget: &mut Budget,
 ) -> Result<Vec<f64>> {
-    for _ in 0..16 {
-        let x = atlas.problem.solve(fixed, budget)?;
+    let mut x = atlas.problem.solve(fixed, budget)?;
+    for iteration in 0..16 {
         if constrain_orientation(atlas, &x, active)? == 0 {
             return Ok(x);
         }
+        if iteration == 15 {
+            break;
+        }
+        // Newly activated orientation rows can reuse the warm linear solve,
+        // just as they do during rounding, before restarting the full QP.
+        x = match atlas.problem.update(fixed, &x, budget) {
+            Ok(next) => next,
+            Err(_) => {
+                budget.check()?;
+                atlas.problem.solve(fixed, budget)?
+            }
+        };
     }
     Err("Integer-grid orientation solve exceeded its iteration budget".into())
 }
@@ -143,18 +155,39 @@ fn constrain_orientation(
     let mut added = 0;
     for f in 0..atlas.corners.len() {
         let [a, b, c] = atlas.coordinates(x, f);
-        if (b - a).perp_dot(c - a) <= 1e-9 {
+        if !positive_orientation([a, b, c]) {
             if !active.insert(f) {
+                #[cfg(feature = "audit")]
+                eprintln!(
+                    "MIQ active orientation: face {f}, signed area2 {:.17e}, reference area2 {:.17e}",
+                    (b - a).perp_dot(c - a),
+                    (atlas.reference[f][1] - atlas.reference[f][0])
+                        .perp_dot(atlas.reference[f][2] - atlas.reference[f][0])
+                );
                 return Err("Integer-grid orientation constraints failed validation".into());
             }
             atlas
                 .problem
                 .inequalities
-                .extend(atlas.orientation_constraints(f));
+                .extend(atlas.orientation_constraints(f)?);
             added += 1;
         }
     }
     Ok(added)
+}
+
+/// Filter the sign, not the triangle's absolute area. Shewchuk's orient2d
+/// first-stage error bound is below 4*EPSILON times the determinant sum.
+/// Ambiguous/zero/nonfinite signs still require repair; there is no exact-
+/// arithmetic fallback here. This retains tiny but provably positive cap faces.
+fn positive_orientation([a, b, c]: [glam::DVec2; 3]) -> bool {
+    let [u, v] = [b - a, c - a];
+    let left = u.x * v.y;
+    let right = u.y * v.x;
+    let determinant = left - right;
+    let magnitude = left.abs() + right.abs();
+    let error = 4. * f64::EPSILON * magnitude;
+    magnitude.is_normal() && determinant.is_finite() && determinant > error
 }
 
 fn parameterize(
@@ -260,10 +293,7 @@ fn update(
         match x {
             Ok(x) => {
                 let flipped = (0..atlas.corners.len())
-                    .filter(|&f| {
-                        let [a, b, c] = atlas.coordinates(&x, f);
-                        (b - a).perp_dot(c - a) <= 1e-9
-                    })
+                    .filter(|&f| !positive_orientation(atlas.coordinates(&x, f)))
                     .count();
                 #[cfg(feature = "audit")]
                 eprintln!(
@@ -314,4 +344,39 @@ pub(crate) fn test_map(source: &Surface, options: &Options) -> Result<usize> {
         crate::topology::validate(source)?
     );
     Ok(quads.len())
+}
+
+#[cfg(test)]
+mod orientation_tests {
+    use super::positive_orientation;
+    use glam::DVec2;
+
+    #[test]
+    fn tiny_positive_maps_pass_but_flipped_collapsed_and_uncertain_maps_do_not() {
+        for scale in [1., 1e-5] {
+            let t = [DVec2::ZERO, DVec2::new(1., 0.), DVec2::new(0.3, 1e-7)].map(|p| p * scale);
+            for offset in [DVec2::ZERO, DVec2::new(-35., 12.)] {
+                let p = t.map(|p| p + offset);
+                assert!(positive_orientation(p));
+                assert!(!positive_orientation([p[0], p[2], p[1]]));
+                assert!(!positive_orientation([p[0], p[1], p[1]]));
+            }
+        }
+        let almost_line = [
+            DVec2::ZERO,
+            DVec2::ONE,
+            DVec2::new(2., 2. + f64::EPSILON * 2.),
+        ];
+        assert!(!positive_orientation(almost_line));
+        assert!(!positive_orientation([
+            DVec2::ZERO,
+            DVec2::X,
+            DVec2::splat(f64::NAN)
+        ]));
+        assert!(!positive_orientation([
+            DVec2::ZERO,
+            DVec2::new(1e-160, 0.),
+            DVec2::new(0., 1e-160)
+        ]));
+    }
 }

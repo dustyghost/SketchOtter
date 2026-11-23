@@ -290,6 +290,9 @@ fn native_retopology_controls_offscreen_review() {
     assert!(g.app.projection.draft.is_none());
     assert!(g.app.ui.projection.report.is_none());
     assert!(g.app.document.project() == painted);
+    click_guide_label(&mut g, "Protect sharp bends");
+    assert!(!g.app.ui.projection.layout.preserve_sharp);
+    assert_eq!(g.app.ui.projection.layout.symmetry_axis, None);
     g.save("integer-grid-controls");
     click_guide_label(&mut g, "Surface field");
     assert_eq!(

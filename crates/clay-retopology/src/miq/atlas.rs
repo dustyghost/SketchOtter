@@ -330,7 +330,7 @@ impl Atlas {
         Ok(())
     }
 
-    pub fn orientation_constraints(&self, f: usize) -> Vec<(Row, f64)> {
+    pub fn orientation_constraints(&self, f: usize) -> crate::Result<Vec<(Row, f64)>> {
         let reference = self.reference[f];
         let center = reference.iter().sum::<DVec2>() / 3.;
         let direction = reference.map(|p| (p - center).normalize());
@@ -339,25 +339,63 @@ impl Atlas {
         let mut rows = Vec::new();
         for k in 0..3 {
             for n in [rays[(k + 2) % 3].perp(), -rays[k].perp()] {
+                let scale = (reference[k] - center).dot(n);
+                if !scale.is_finite() || scale <= 0. {
+                    return Err("Integer-grid orientation reference is degenerate".into());
+                }
                 let mut row = Vec::new();
                 for j in 0..3 {
                     for axis in 0..2 {
                         row.push((
                             2 * self.corners[f][j] + axis,
-                            n[axis] * (if j == k { 2. / 3. } else { -1. / 3. }),
+                            n[axis] * (if j == k { 2. / 3. } else { -1. / 3. }) / scale,
                         ));
                     }
                 }
-                rows.push((row, (reference[k] - center).dot(n) * 0.001));
+                // Normalize the same half-space so tiny cap triangles do not
+                // put its positive margin below absolute solver tolerances.
+                rows.push((row, 0.001));
             }
         }
-        rows
+        Ok(rows)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn thin_triangle_orientation_bounds_remain_above_solver_tolerances() {
+        for tip in [
+            DVec2::new(0.5, 0.8),
+            DVec2::new(0.3, 0.01),
+            DVec2::new(0.3, 1e-7),
+        ] {
+            let reference = [DVec2::ZERO, DVec2::X, tip];
+            let atlas = Atlas {
+                uv_variables: 6,
+                corners: vec![[0, 1, 2]],
+                singularities: vec![],
+                edges: vec![],
+                reference: vec![reference],
+                problem: Problem::new(6),
+            };
+            let rows = atlas.orientation_constraints(0).unwrap();
+            let x: Vec<_> = reference.iter().flat_map(|p| [p.x, p.y]).collect();
+            let shrunk: Vec<_> = x.iter().map(|v| v * 0.01).collect();
+            let reflected: Vec<_> = reference.iter().flat_map(|p| [p.x, -p.y]).collect();
+            for (row, b) in &rows {
+                assert_eq!(*b, 0.001);
+                assert!((super::super::quadratic::evaluate(row, &x) - 1.).abs() < 1e-8);
+                assert!(super::super::quadratic::evaluate(row, &shrunk) >= *b);
+            }
+            assert!(
+                rows.iter()
+                    .any(|(row, b)| super::super::quadratic::evaluate(row, &reflected) < b - 1e-7)
+            );
+        }
+    }
 
     #[test]
     fn full_turn_poles_are_integer_constraints_even_with_trivial_holonomy() {

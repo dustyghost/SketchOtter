@@ -24,6 +24,7 @@ pub(super) struct Problem {
     pub inequalities: Vec<(Row, f64)>,
     pub integers: Vec<usize>,
     factor: Option<DirectFactor>,
+    binding: Vec<usize>,
 }
 
 pub(super) struct Budget {
@@ -85,6 +86,7 @@ impl Problem {
             inequalities: Vec::new(),
             integers: Vec::new(),
             factor: None,
+            binding: Vec::new(),
         }
     }
 
@@ -179,13 +181,20 @@ impl Problem {
             solver.solution.r_dual
         );
         budget.check()?;
-        self.finish_relaxation(solver.solution.status, solver.solution.x, fixed, budget)
+        self.finish_relaxation(
+            solver.solution.status,
+            solver.solution.x,
+            &solver.solution.z,
+            fixed,
+            budget,
+        )
     }
 
     fn finish_relaxation(
         &mut self,
         status: SolverStatus,
-        mut x: Vec<f64>,
+        x: Vec<f64>,
+        dual: &[f64],
         fixed: &BTreeMap<usize, f64>,
         budget: &mut Budget,
     ) -> Result<Vec<f64>> {
@@ -200,15 +209,93 @@ impl Problem {
         }
         self.validate_solution(&x, fixed)?;
         if status == SolverStatus::AlmostSolved {
-            // A per-relaxation time/iteration stop can leave an accurate,
-            // feasible candidate. Treat it only as a warm start: the existing
-            // bounded linear update must converge and all original residual
-            // limits must still pass. Never publish an approximate QP result.
-            x = self.update(fixed, &x, budget)?;
-            self.validate_solution(&x, fixed)?;
+            // An interior-point iterate need not lie exactly on its active
+            // bounds. Forcing all violated bounds of an unconstrained update
+            // to equalities can manufacture an infeasible problem here.
+            // Independently certify this intermediate relaxation instead;
+            // integer rounding, orientation and final mesh gates still follow.
+            self.validate_near_optimum(&x, dual, fixed)?;
         }
         budget.check()?;
+        // A fresh constrained optimum can release the warm solver's bounds.
+        // Do not carry an obsolete active set into the next rounding step.
+        self.binding.clear();
         Ok(x)
+    }
+
+    fn validate_near_optimum(
+        &self,
+        x: &[f64],
+        dual: &[f64],
+        fixed: &BTreeMap<usize, f64>,
+    ) -> Result<()> {
+        let fail =
+            || "Integer-grid relaxation failed independent optimality validation".to_string();
+        if dual.len() != self.equalities.len() + fixed.len() + self.inequalities.len()
+            || dual.iter().any(|v| !v.is_finite())
+        {
+            return Err(fail());
+        }
+        let mut gradient = vec![0.; self.variables];
+        let mut linear = vec![0.; self.variables];
+        let mut objective = 0.;
+        for (row, target) in &self.energy {
+            let value = evaluate(row, x);
+            objective += value * (value - 2. * target);
+            for &(i, a) in row {
+                gradient[i] += 2. * a * (value - target);
+                linear[i] += 2. * a * target;
+            }
+        }
+        let mut gap = 0.;
+        let mut cursor = 0;
+        for (row, target) in &self.equalities {
+            let z = dual[cursor];
+            cursor += 1;
+            gap += ((evaluate(row, x) - target) * z).abs();
+            for &(i, a) in row {
+                gradient[i] += a * z;
+            }
+        }
+        for (&i, &target) in fixed {
+            let z = dual[cursor];
+            cursor += 1;
+            gap += ((x[i] - target) * z).abs();
+            gradient[i] += z;
+        }
+        for (row, target) in &self.inequalities {
+            let z = dual[cursor];
+            cursor += 1;
+            if z < 0. {
+                return Err(fail());
+            }
+            gap += ((evaluate(row, x) - target) * z).abs();
+            for &(i, a) in row {
+                gradient[i] -= a * z;
+            }
+        }
+        // Recompute KKT stationarity from the original energy/constraints,
+        // with Clarabel's unscaled relative-residual normalization and our
+        // full (not reduced-accuracy) feasibility tolerance of 1e-9.
+        let norm = |v: &[f64]| v.iter().map(|v| v * v).sum::<f64>().sqrt();
+        let residual = norm(&gradient);
+        let scale = (norm(&linear) + norm(x) + norm(dual)).max(1.);
+        #[cfg(feature = "audit")]
+        eprintln!(
+            "MIQ near optimum: stationarity {:.3e}, complementarity {:.3e}",
+            residual / scale,
+            gap / objective.abs().max(1.)
+        );
+        if !residual.is_finite()
+            || !scale.is_finite()
+            || !gap.is_finite()
+            || !objective.is_finite()
+            || residual > 1e-9 * scale
+            || gap > 5e-5 * objective.abs().max(1.)
+        {
+            return Err(fail());
+        }
+        Ok(())
     }
 
     fn validate_solution(&self, x: &[f64], fixed: &BTreeMap<usize, f64>) -> Result<()> {
@@ -239,6 +326,29 @@ impl Problem {
         initial: &[f64],
         budget: &mut Budget,
     ) -> Result<Vec<f64>> {
+        match self.update_bounds(fixed, initial, budget) {
+            Ok(x) => Ok(x),
+            Err(error) => {
+                budget.check()?;
+                if self.inequalities.is_empty() || self.inequalities.len() > MAX_DUAL_BOUNDS {
+                    return Err(error);
+                }
+                // A tentative active set can be inconsistent even when the
+                // inequality problem is feasible. Solve its small dual before
+                // falling back to the full chart/seam KKT system.
+                let x = self.update_active(fixed, initial, &Default::default(), true, budget)?;
+                self.validate_solution(&x, fixed)?;
+                Ok(x)
+            }
+        }
+    }
+
+    fn update_bounds(
+        &mut self,
+        fixed: &BTreeMap<usize, f64>,
+        initial: &[f64],
+        budget: &mut Budget,
+    ) -> Result<Vec<f64>> {
         let mut binding: std::collections::BTreeSet<_> = self
             .inequalities
             .iter()
@@ -246,9 +356,15 @@ impl Problem {
             .filter(|(_, (row, b))| (evaluate(row, initial) - b).abs() < 1e-7)
             .map(|(i, _)| i)
             .collect();
+        binding.extend(
+            self.binding
+                .iter()
+                .copied()
+                .filter(|&i| i < self.inequalities.len()),
+        );
         let mut initial = initial.to_vec();
         for _ in 0..8 {
-            let x = self.update_active(fixed, &initial, &binding, budget)?;
+            let x = self.update_active(fixed, &initial, &binding, false, budget)?;
             let violated: Vec<_> = self
                 .inequalities
                 .iter()
@@ -257,6 +373,7 @@ impl Problem {
                 .map(|(i, _)| i)
                 .collect();
             if violated.is_empty() {
+                self.binding = binding.into_iter().collect();
                 return Ok(x);
             }
             let before = binding.len();
@@ -274,6 +391,7 @@ impl Problem {
         fixed: &BTreeMap<usize, f64>,
         initial: &[f64],
         binding: &std::collections::BTreeSet<usize>,
+        constrained: bool,
         budget: &mut Budget,
     ) -> Result<Vec<f64>> {
         budget.check()?;
@@ -369,7 +487,16 @@ impl Problem {
         let mut iterations = 0;
         for iteration in 0..1500 {
             if dot(&residual, &residual) <= tolerance {
-                break;
+                // Recurrence residuals drift on the thin triangles of a cut.
+                // Restart from the actual residual inside the same iteration
+                // budget; only the original recomputed tolerance can stop us.
+                residual = rhs.iter().zip(multiply(&x)).map(|(b, a)| b - a).collect();
+                if dot(&residual, &residual) <= tolerance * 4. {
+                    break;
+                }
+                z = precondition(&mut self.factor, &matrix, &diagonal, &residual, budget)?;
+                direction = z.clone();
+                rho = dot(&residual, &z);
             }
             if iteration % 8 == 0 {
                 budget.check()?;
@@ -381,6 +508,19 @@ impl Problem {
                 match direct_factor(&matrix, budget) {
                     Ok(mut factor) => {
                         x = factor.solve(&rhs, budget)?;
+                        // Bounded iterative refinement uses the same factor,
+                        // without regularization or a looser acceptance bound.
+                        for _ in 0..3 {
+                            let residual: Vec<_> =
+                                rhs.iter().zip(multiply(&x)).map(|(b, a)| b - a).collect();
+                            if dot(&residual, &residual) <= tolerance {
+                                break;
+                            }
+                            let correction = factor.solve(&residual, budget)?;
+                            for (x, dx) in x.iter_mut().zip(correction) {
+                                *x += dx;
+                            }
+                        }
                         self.factor = Some(factor);
                         break;
                     }
@@ -426,6 +566,14 @@ impl Problem {
         if !residual_norm.is_finite() || residual_norm > tolerance * 4. {
             return Err("Integer-grid iterative solve exceeded its residual budget".into());
         }
+        if constrained {
+            self.factor = None;
+            let (next, factor, binding) =
+                dual_update(&matrix, &rhs, &basis, &x, &self.inequalities, budget)?;
+            x = next;
+            self.factor = Some(factor);
+            self.binding = binding;
+        }
         for (i, expression) in basis.rows.iter().enumerate() {
             if let Some((row, constant)) = expression {
                 x[i] = constant + row.iter().map(|(&j, &a)| a * x[j]).sum::<f64>();
@@ -442,6 +590,204 @@ impl Problem {
         }
         Ok(x)
     }
+}
+
+const MAX_DUAL_BOUNDS: usize = 1024;
+const MAX_DUAL_ACTIVE: usize = 512;
+
+/// For Hx=g, Cx>=b, eliminate x to solve the nonnegative dual:
+/// min 1/2 λᵀ(C H⁻¹ Cᵀ)λ + (Cx₀-b)ᵀλ, then x=x₀+H⁻¹Cᵀλ.
+/// At most 1024 bounds are considered, with <=512 in each small QP and
+/// eight separation rounds. Mesh-sized inverse columns are never retained.
+/// Only needed Schur columns are cached (at most 4 MiB). Every inverse solve
+/// and every original inequality is checked before returning a candidate.
+fn dual_update(
+    matrix: &[Vec<(usize, f64)>],
+    rhs: &[f64],
+    basis: &Elimination,
+    initial: &[f64],
+    inequalities: &[(Row, f64)],
+    budget: &mut Budget,
+) -> Result<(Vec<f64>, DirectFactor, Vec<usize>)> {
+    budget.check()?;
+    if inequalities.len() > MAX_DUAL_BOUNDS {
+        return Err("Integer-grid dual exceeds its bound budget".into());
+    }
+    let started = Instant::now();
+    let mut factor = direct_factor(matrix, budget)?;
+    let multiply = |x: &[f64]| {
+        matrix
+            .iter()
+            .map(|row| row.iter().map(|&(j, a)| a * x[j]).sum::<f64>())
+            .collect::<Vec<_>>()
+    };
+    let norm2 = |x: &[f64]| x.iter().map(|v| v * v).sum::<f64>();
+    let solve = |factor: &mut DirectFactor, b: &[f64], budget: &Budget| -> Result<Vec<f64>> {
+        let tolerance = 4e-16 * norm2(b).max(1.);
+        let mut x = factor.solve(b, budget)?;
+        for iteration in 0..=3 {
+            let residual: Vec<_> = b.iter().zip(multiply(&x)).map(|(b, a)| b - a).collect();
+            let error = norm2(&residual);
+            if error.is_finite() && error <= tolerance {
+                return Ok(x);
+            }
+            if iteration == 3 {
+                break;
+            }
+            let correction = factor.solve(&residual, budget)?;
+            for (x, dx) in x.iter_mut().zip(correction) {
+                *x += dx;
+            }
+        }
+        Err("Integer-grid dual inverse failed residual validation".into())
+    };
+    let constraints: Vec<_> = inequalities
+        .iter()
+        .map(|(row, b)| {
+            let (row, constant) = basis.substitute(row)?;
+            Ok((row.into_iter().collect::<Row>(), b - constant))
+        })
+        .collect::<Result<_>>()?;
+    let linear: Vec<_> = constraints
+        .iter()
+        .map(|(row, b)| evaluate(row, initial) - b)
+        .collect();
+    let mut active: std::collections::BTreeSet<_> = linear
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &q)| (q < 1e-8).then_some(i))
+        .collect();
+    let mut schur: Vec<Option<Vec<f64>>> = vec![None; constraints.len()];
+    let mut vector = vec![0.; matrix.len()];
+    for _ in 0..8 {
+        budget.check()?;
+        if active.len() > MAX_DUAL_ACTIVE {
+            return Err("Integer-grid dual exceeds its active bound budget".into());
+        }
+        let ids: Vec<_> = active.iter().copied().collect();
+        if ids.is_empty() {
+            return Ok((initial.to_vec(), factor, Vec::new()));
+        }
+        for &id in &ids {
+            if schur[id].is_some() {
+                continue;
+            }
+            vector.fill(0.);
+            for &(i, a) in &constraints[id].0 {
+                vector[i] = a;
+            }
+            let column = solve(&mut factor, &vector, budget)?;
+            schur[id] = Some(
+                constraints
+                    .iter()
+                    .map(|(row, _)| evaluate(row, &column))
+                    .collect(),
+            );
+        }
+        let mut entries = BTreeMap::new();
+        for (j, &id) in ids.iter().enumerate() {
+            for (i, &other) in ids[..=j].iter().enumerate() {
+                let value =
+                    (schur[id].as_ref().unwrap()[other] + schur[other].as_ref().unwrap()[id]) * 0.5;
+                if !value.is_finite() {
+                    return Err("Integer-grid dual matrix is nonfinite".into());
+                }
+                entries.insert((j, i), value);
+            }
+        }
+        let n = ids.len();
+        let p = sparse(n, n, entries);
+        let q: Vec<_> = ids.iter().map(|&i| linear[i]).collect();
+        let a = sparse(n, n, (0..n).map(|i| ((i, i), -1.)).collect());
+        budget.check()?;
+        let mut solver = DefaultSolver::new(
+            &p,
+            &q,
+            &a,
+            &vec![0.; n],
+            &[NonnegativeConeT(n)],
+            DefaultSettings {
+                verbose: false,
+                max_iter: 100,
+                time_limit: (60. - budget.start.elapsed().as_secs_f64()).min(10.),
+                // The small dual needs a tighter gap to identify its active
+                // bounds reliably for the next warm rounding update.
+                tol_feas: 1e-10,
+                tol_gap_abs: 1e-12,
+                tol_gap_rel: 1e-10,
+                ..Default::default()
+            },
+        )
+        .map_err(|e| format!("Cannot construct integer-grid dual: {e}"))?;
+        let cancel = budget.cancel.clone();
+        solver.set_termination_callback(move |_: &DefaultInfo<f64>| cancel.load(Ordering::Relaxed));
+        budget.solves += 1;
+        solver.solve();
+        budget.check()?;
+        if solver.solution.status != SolverStatus::Solved
+            || solver.solution.x.iter().any(|v| !v.is_finite() || *v < 0.)
+        {
+            return Err("Integer-grid dual requires a full relaxation".into());
+        }
+        vector.fill(0.);
+        for (&id, &weight) in ids.iter().zip(&solver.solution.x) {
+            for &(i, a) in &constraints[id].0 {
+                vector[i] += a * weight;
+            }
+        }
+        let correction = solve(&mut factor, &vector, budget)?;
+        let x: Vec<_> = initial
+            .iter()
+            .zip(correction)
+            .map(|(x, dx)| x + dx)
+            .collect();
+        let image = multiply(&x);
+        let residual: Vec<_> = rhs
+            .iter()
+            .zip(&vector)
+            .zip(image)
+            .map(|((b, c), a)| b + c - a)
+            .collect();
+        let error = norm2(&residual);
+        let scale = (norm2(rhs) + norm2(&vector)).max(1.);
+        if !error.is_finite() || !scale.is_finite() || error > 4e-16 * scale {
+            return Err("Integer-grid dual failed independent residual validation".into());
+        }
+        let violated: Vec<_> = constraints
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (row, b))| (evaluate(row, &x) < b - 1e-8).then_some(i))
+            .collect();
+        if violated.is_empty() {
+            // Seed the next warm update with the dual's active bounds. Scale
+            // the multiplier by its Schur diagonal to compare primal units;
+            // raw multiplier/slack comparisons misclassify thin-cap rows.
+            let binding = ids
+                .iter()
+                .zip(&solver.solution.x)
+                .filter_map(|(&id, &weight)| {
+                    let slack = (evaluate(&constraints[id].0, &x) - constraints[id].1).abs();
+                    (slack <= 1e-7 && weight * schur[id].as_ref().unwrap()[id] > slack.max(1e-8))
+                        .then_some(id)
+                })
+                .collect();
+            #[cfg(feature = "audit")]
+            eprintln!(
+                "MIQ dual update: {n}/{} bounds in {:.3}s",
+                constraints.len(),
+                started.elapsed().as_secs_f64()
+            );
+            #[cfg(not(feature = "audit"))]
+            let _ = started;
+            return Ok((x, factor, binding));
+        }
+        let before = active.len();
+        active.extend(violated);
+        if active.len() == before {
+            break;
+        }
+    }
+    Err("Integer-grid dual exceeded its separation budget".into())
 }
 
 /// Sparse LDL with explicit symbolic fill/work limits *before* factor allocation.
@@ -649,12 +995,17 @@ impl Elimination {
                 return Err("Integer-grid seam elimination exceeds its fill budget".into());
             }
         }
-        let Some(p) = row
-            .keys()
-            .copied()
-            .find(|i| !integers.contains(i))
-            .or_else(|| row.keys().next().copied())
-        else {
+        // Partial pivoting matters for thin-cap half-spaces: their first
+        // coefficient can be orders of magnitude smaller than another one.
+        // Prefer noninteger pivots, then the largest coefficient, with stable
+        // index ties. Dividing by a tiny first coefficient loses the solution.
+        let pivot = |avoid_integers: bool| {
+            row.iter()
+                .filter(|(i, _)| !avoid_integers || !integers.contains(i))
+                .max_by(|(i, a), (j, b)| a.abs().total_cmp(&b.abs()).then(j.cmp(i)))
+                .map(|(&i, _)| i)
+        };
+        let Some(p) = pivot(true).or_else(|| pivot(false)) else {
             return if rhs.abs() < 1e-6 {
                 Ok(())
             } else {
@@ -711,7 +1062,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn almost_solved_candidate_requires_polishing_and_unchanged_residual_limits() {
+    fn near_solved_relaxation_requires_independent_primal_dual_certificate() {
         let mut p = Problem::new(3);
         p.energy = vec![
             (vec![(0, 1.)], 0.2),
@@ -722,19 +1073,21 @@ mod tests {
         p.inequalities.push((vec![(0, 1.)], 0.4));
         let fixed = BTreeMap::from([(2, 1.)]);
         let mut budget = Budget::new(Arc::new(AtomicBool::new(false)));
-        // Feasible but not the minimizer: the coupled optimum is (0.45, 0.45, 1).
+        // Analytical optimum, with equality, fixed-coordinate and bound duals.
+        let initial = vec![0.45, 0.45, 1.];
+        let dual = [-0.5, 2., 0.];
         let x = p
             .finish_relaxation(
                 SolverStatus::AlmostSolved,
-                vec![0.6, 0.6, 1.],
+                initial.clone(),
+                &dual,
                 &fixed,
                 &mut budget,
             )
             .unwrap();
-        for (actual, expected) in x.iter().zip([0.45, 0.45, 1.]) {
-            assert!((actual - expected).abs() < 1e-8);
-        }
+        assert_eq!(x, initial);
         for invalid in [
+            vec![0.6, 0.6, 1.],
             vec![0.6, 0.7, 1.],
             vec![0.3, 0.3, 1.],
             vec![0.6, 0.6, 2.],
@@ -742,26 +1095,174 @@ mod tests {
             vec![0.6],
         ] {
             assert!(
-                p.finish_relaxation(SolverStatus::AlmostSolved, invalid, &fixed, &mut budget)
-                    .is_err()
+                p.finish_relaxation(
+                    SolverStatus::AlmostSolved,
+                    invalid,
+                    &dual,
+                    &fixed,
+                    &mut budget
+                )
+                .is_err()
+            );
+        }
+        for invalid in [
+            vec![],
+            vec![0., 2., 0.],
+            vec![-0.5, 2., -1.],
+            vec![f64::NAN, 2., 0.],
+        ] {
+            assert!(
+                p.finish_relaxation(
+                    SolverStatus::AlmostSolved,
+                    x.clone(),
+                    &invalid,
+                    &fixed,
+                    &mut budget
+                )
+                .is_err()
             );
         }
         for status in [
             SolverStatus::PrimalInfeasible,
+            SolverStatus::AlmostPrimalInfeasible,
             SolverStatus::MaxTime,
             SolverStatus::NumericalError,
         ] {
             assert!(
-                p.finish_relaxation(status, x.clone(), &fixed, &mut budget)
+                p.finish_relaxation(status, x.clone(), &dual, &fixed, &mut budget)
                     .is_err()
             );
         }
         budget.cancel.store(true, Ordering::Relaxed);
         assert_eq!(
-            p.finish_relaxation(SolverStatus::AlmostSolved, x, &fixed, &mut budget)
+            p.finish_relaxation(SolverStatus::AlmostSolved, x, &dual, &fixed, &mut budget)
                 .unwrap_err(),
             "Retopology cancelled"
         );
+    }
+
+    #[test]
+    fn near_solved_bounds_are_not_all_forced_to_equalities() {
+        let mut p = Problem::new(1);
+        p.energy.push((vec![(0, 1.)], 0.));
+        p.inequalities = vec![(vec![(0, 1.)], 1.), (vec![(0, 1.)], 2.)];
+        let mut budget = Budget::new(Arc::new(AtomicBool::new(false)));
+        let fixed = BTreeMap::new();
+        // Both bounds are violated by the unconstrained minimum x=0. Forcing
+        // both equalities during cleanup falsely declares this feasible QP
+        // inconsistent. The independent oracle and certificate agree at x=2.
+        let oracle = p.solve(&fixed, &mut budget).unwrap();
+        let x = 2. + 1e-9;
+        let certified = p
+            .finish_relaxation(
+                SolverStatus::AlmostSolved,
+                vec![x],
+                &[0., 2. * x],
+                &fixed,
+                &mut budget,
+            )
+            .unwrap();
+        assert!((certified[0] - oracle[0]).abs() < 1e-7);
+        let updated = p.update(&fixed, &[3.], &mut budget).unwrap();
+        assert!((updated[0] - oracle[0]).abs() < 1e-7);
+        // A fresh full solve can release the cached active bound. A later
+        // warm update must follow the changed energy, not remain pinned at 2.
+        p.energy[0].1 = 3.;
+        let released = p.solve(&fixed, &mut budget).unwrap();
+        let released = p.update(&fixed, &released, &mut budget).unwrap();
+        assert!((released[0] - 3.).abs() < 1e-7);
+        p.energy[0].1 = 0.;
+        // Stationarity alone is insufficient: this feasible point and dual
+        // have a large complementarity gap and must be rejected.
+        assert!(
+            p.finish_relaxation(
+                SolverStatus::AlmostSolved,
+                vec![3.],
+                &[0., 6.],
+                &fixed,
+                &mut budget
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn small_dual_update_matches_oracle_with_seams_fixed_values_and_redundant_bounds() {
+        let mut p = Problem::new(4);
+        p.energy = vec![
+            (vec![(0, 1.)], 0.),
+            (vec![(1, 1.)], 0.7),
+            (vec![(2, 1.)], 0.7),
+            (vec![(3, 1.)], 2.),
+        ];
+        p.equalities.push((vec![(1, 1.), (2, -1.)], 0.));
+        p.inequalities = vec![
+            (vec![(0, 1.)], 1.),
+            (vec![(0, 1.)], 2.),
+            (vec![(0, 1.), (1, -1.)], 1.5),
+            (vec![(1, 1.)], 0.55),
+        ];
+        let fixed = BTreeMap::from([(3, 1.)]);
+        let mut budget = Budget::new(Arc::new(AtomicBool::new(false)));
+        let oracle = p.solve(&fixed, &mut budget).unwrap();
+        let solves = budget.solves;
+        let result = p.update(&fixed, &[3., 0.7, 0.7, 1.], &mut budget).unwrap();
+        for ((actual, oracle), analytic) in result.iter().zip(oracle).zip([2.05, 0.55, 0.55, 1.]) {
+            assert!((actual - oracle).abs() < 1e-7);
+            assert!((actual - analytic).abs() < 1e-7);
+        }
+        assert!(
+            budget.solves >= solves + 2,
+            "add the initially satisfied y bound after the first small solve"
+        );
+        assert!(
+            budget.factorizations.get() > 0,
+            "exercise the small dual fallback"
+        );
+        let solves = budget.solves;
+        let changed_fixed = BTreeMap::from([(3, 1.1)]);
+        let reused = p.update(&changed_fixed, &result, &mut budget).unwrap();
+        assert_eq!(
+            budget.solves, solves,
+            "reuse the dual's active set without another QP"
+        );
+        for (actual, expected) in reused.iter().zip([2.05, 0.55, 0.55, 1.1]) {
+            assert!((actual - expected).abs() < 1e-7);
+        }
+        let before = budget.factorizations.get();
+        let oversized = vec![(vec![(0, 1.)], 1.); MAX_DUAL_BOUNDS + 1];
+        assert!(
+            dual_update(
+                &[vec![(0, 1.)]],
+                &[0.],
+                &Elimination::new(1),
+                &[0.],
+                &oversized,
+                &mut budget
+            )
+            .err()
+            .unwrap()
+            .contains("bound budget")
+        );
+        assert_eq!(budget.factorizations.get(), before);
+        budget.cancel.store(true, Ordering::Relaxed);
+        assert_eq!(
+            p.update(&fixed, &result, &mut budget).unwrap_err(),
+            "Retopology cancelled"
+        );
+    }
+
+    #[test]
+    fn thin_half_space_elimination_preserves_the_small_solution_coordinate() {
+        for epsilon in [1e-6, 1e-7] {
+            let mut p = Problem::new(2);
+            p.energy = vec![(vec![(0, 1.)], 0.), (vec![(1, 1.)], 0.)];
+            p.inequalities.push((vec![(0, epsilon), (1, 1.)], 1.));
+            let mut budget = Budget::new(Arc::new(AtomicBool::new(false)));
+            let x = p.update(&BTreeMap::new(), &[0., 1.], &mut budget).unwrap();
+            assert!((x[0] - epsilon / (1. + epsilon * epsilon)).abs() < 1e-12);
+            assert!((x[1] - 1. / (1. + epsilon * epsilon)).abs() < 1e-12);
+        }
     }
 
     #[test]
