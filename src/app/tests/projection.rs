@@ -411,19 +411,20 @@ fn guided_retopology_keeps_source_and_attributes_and_roundtrips_as_one_edit() {
         .as_ref()
         .expect("private layout with paths");
     assert_eq!(draft.retopology_paths.len(), 2);
-    let surface = crate::sculpt::projection::Surface::new(&draft.mesh, &|| false).unwrap();
-    let mut budget = 30_000_000;
     for path in &draft.retopology_paths {
         assert!(!path.is_stale(&draft.mesh));
-        for point in &path.attached_route.as_ref().unwrap().points {
-            assert!(
-                surface
-                    .nearest(point.position, 1e-5, None, &mut budget)
+        assert!(
+            crate::sculpt::paths::position_surface_error(
+                &draft.mesh,
+                path.attached_route
+                    .as_ref()
                     .unwrap()
-                    .is_some(),
-                "saved route lies on the private preview without another projection"
-            );
-        }
+                    .points
+                    .iter()
+                    .map(|p| p.position),
+            ) < 1e-5,
+            "saved route lies on the private preview without another projection"
+        );
         let samples = path.samples_on_mesh(&draft.mesh, 0.025).unwrap();
         assert!(crate::sculpt::paths::sample_surface_error(&draft.mesh, &samples) < 1e-5);
     }
