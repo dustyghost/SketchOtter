@@ -171,7 +171,7 @@ fn mesh_capacity_startup_budget_is_shared_with_workers_and_immutable() {
             mesh_capacity: limits,
             ..Default::default()
         };
-        preferences::save(&config.join("clay-form/preferences.json"), &prefs).unwrap();
+        preferences::save(&config.join("sketchotter/preferences.json"), &prefs).unwrap();
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args(["sculpt::capacity::tests::mesh_capacity_startup_budget_is_shared_with_workers_and_immutable", "--exact", "--nocapture"])
             .env(CHILD,"1").env("XDG_CONFIG_HOME", &config).output().unwrap();

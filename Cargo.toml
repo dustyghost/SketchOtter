@@ -4,10 +4,10 @@ version = "0.1.0-alpha.5"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "A free, open-source desktop sculpting application"
-repository = "https://github.com/dustyghost/clay-form"
+repository = "https://github.com/dustyghost/SketchOtter"
 
 [lib]
-name = "clay_form"
+name = "sketchotter"
 
 [features]
 # Test compilation partition only; production code is identical.

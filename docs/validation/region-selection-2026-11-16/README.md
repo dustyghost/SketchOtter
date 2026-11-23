@@ -1,6 +1,6 @@
 # Q topology actions and shared-hold region selection — 16 November 2026
 
-PR [#158](https://github.com/dustyghost/clay-form/pull/158) exposes immediate topology edits in the shared Modeling menu/Q popup and places the Mesh panel’s Topology section beside Modeling functions. Z gains Select while Modeling is enabled. Rectangle, Lasso and Line select the current component mode with Replace/Add/Remove and Visible only/Through mesh. They use the configured shared selection hold (Ctrl+Shift by default), preserving the previous Modeling function/options. Selection history remains separate from geometry history.
+PR [#158](https://github.com/dustyghost/SketchOtter/pull/158) exposes immediate topology edits in the shared Modeling menu/Q popup and places the Mesh panel’s Topology section beside Modeling functions. Z gains Select while Modeling is enabled. Rectangle, Lasso and Line select the current component mode with Replace/Add/Remove and Visible only/Through mesh. They use the configured shared selection hold (Ctrl+Shift by default), preserving the previous Modeling function/options. Selection history remains separate from geometry history.
 
 Mask gains Rectangle and depth choices for all region shapes. Existing through-depth presets retain that default; line-side flipping does not invert other shapes. Through mesh includes occluded/rear components but excludes explicitly hidden geometry and protected vertices. Region hit tests use vertices, edge midpoints or face centres; exact symmetry expands complete unprotected sets.
 

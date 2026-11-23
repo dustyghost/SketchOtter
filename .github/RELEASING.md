@@ -24,16 +24,20 @@ artifact contents, source correspondence and licence notices. Configure private
 security reporting, signing and notarization as appropriate. Opening the
 repository to the public is a separate maintainer action.
 
-## SketchOtter repository rename
+## SketchOtter repository identity
 
-Keep the existing repository address through review. After the rebrand PR is merged, the release checks pass and the naming review on issue #180 is signed off, rename the existing repository in **Settings → General** to `SketchOtter`. The dated searches and remaining checks are recorded on [issue #180](https://github.com/dustyghost/clay-form/issues/180).
+The existing repository was renamed to **dustyghost/SketchOtter** on 23 November
+2026 after Alpha 5 passed its release checks. History, issues, PRs, releases and
+Actions remain in the same repository. The migration is tracked in
+[issue #180](https://github.com/dustyghost/SketchOtter/issues/180).
 
-1. Verify the old issue, PR, clone and release URLs lead to the same history and downloadable assets. Check project membership and the Actions workflows at the new address. Keep the old repository name unused so GitHub can serve its redirects.
-2. For each local clone, run `git remote set-url origin https://github.com/dustyghost/SketchOtter.git` (or `git@github.com:dustyghost/SketchOtter.git` for SSH). Run `git fetch origin` to confirm access.
-3. Update the repository URLs in both Cargo manifests, the Arch recipe, contributing and security links, project working agreements, guides, badges and external listings. Review active references with `git grep -in 'dustyghost/clay-form'`. The app and package source links derive from the root manifest. Refresh the notice inputs after changing the manifest and verify CI and native packaging again.
-4. Check the historical downloads and new source archive from the release page. Record verification on #180 before closing it.
+Use `https://github.com/dustyghost/SketchOtter.git` for remotes. Keep the former
+repository name unused so GitHub can continue redirecting existing links.
+Published Alpha 1–4 archives retain their original names and contents; never
+replace a release asset merely to change branding. Alpha 5 is the first
+SketchOtter release.
 
-[GitHub repository rename guidance](https://docs.github.com/en/repositories/creating-and-managing-repositories/renaming-a-repository)
+[Migration and compatibility details](../docs/sketchotter-migration.md)
 
 ## Create a draft release
 

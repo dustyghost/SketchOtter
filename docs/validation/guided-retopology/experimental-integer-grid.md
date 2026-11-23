@@ -1,6 +1,6 @@
 # Experimental integer-grid parameterization
 
-Native Integer grid reconstruction for [#191](https://github.com/dustyghost/clay-form/issues/191).
+Native Integer grid reconstruction for [#191](https://github.com/dustyghost/SketchOtter/issues/191).
 At the user's request, Integer grid is now the default and sole method offered
 by Guided retopology. Surface field is retired from the app; its core remains
 available for offline reference comparisons and regression coverage. Historical

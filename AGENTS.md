@@ -23,7 +23,7 @@
 
 ## Story tracking
 
-- Add every new issue/story in `dustyghost/clay-form` to [Clay Form Development](https://github.com/users/dustyghost/projects/6) as part of creating it. Do not leave project membership as a later cleanup step.
+- Add every new issue/story in `dustyghost/SketchOtter` to [SketchOtter Development](https://github.com/users/dustyghost/projects/6) as part of creating it. Do not leave project membership as a later cleanup step.
 - Set new work to **Backlog** unless another status is already justified; move every story in an agreed implementation batch to **In progress** when work starts.
 - Verify project membership and status through GitHub after creation or an update. If automatic addition fails or is unavailable, add the issue explicitly before reporting it as tracked.
 - Keep stories **In progress** while their PR awaits review or merge; mark them **Done** only after acceptance and merge.

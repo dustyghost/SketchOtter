@@ -25,13 +25,15 @@ export XDG_RUNTIME_DIR="$scratch/runtime" XDG_CONFIG_HOME="$scratch/config"
 export XDG_CACHE_HOME="$scratch/cache" XDG_DATA_HOME="$scratch/data"
 install -d -m 700 "$XDG_RUNTIME_DIR"
 # Suppress the pre-release notice in this isolated profile only.
-python3 - "$(dirname "$0")/../Cargo.toml" "$XDG_CONFIG_HOME/clay-form/preferences.json" <<'PYCONF'
+python3 - "$(dirname "$0")/../Cargo.toml" "$XDG_CONFIG_HOME/sketchotter/preferences.json" <<'PYCONF'
 import json, sys, tomllib
 from pathlib import Path
 version = tomllib.loads(Path(sys.argv[1]).read_text())['package']['version']
 prefs = Path(sys.argv[2])
 prefs.parent.mkdir(parents=True, exist_ok=True)
 prefs.write_text(json.dumps({'dismissed_startup_version': version}))
+# Older release binaries share this isolated profile through the legacy name.
+prefs.parent.with_name('clay-form').symlink_to(prefs.parent.name, target_is_directory=True)
 PYCONF
 unset WAYLAND_DISPLAY
 openbox >"$output/window-manager.log" 2>&1 &

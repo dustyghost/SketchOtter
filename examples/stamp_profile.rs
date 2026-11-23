@@ -1,5 +1,5 @@
 //! Manual release-mode stamp timings. Optional output captures exact geometry.
-use clay_form::{
+use sketchotter::{
     document::Document,
     sculpt::{AdaptiveSettings, Brush, Dab, Kind, StrokeMode, Vec3, alpha},
 };

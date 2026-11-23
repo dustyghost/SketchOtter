@@ -1,5 +1,5 @@
 //! Manual release-mode edit timings; no timing assertions in the test suite.
-use clay_form::{
+use sketchotter::{
     document::Document,
     sculpt::{Geometry, Mesh, Transform, Vec3},
 };

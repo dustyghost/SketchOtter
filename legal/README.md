@@ -25,7 +25,7 @@ generator also preserves the actual four font notices from the locked
 `epaint_default_fonts` package; Hack includes Bitstream Vera/DejaVu terms that
 must not be reduced to the package's umbrella licence expression.
 
-Font licences apply to the bundled font data, not to Clay Form's original code
+Font licences apply to the bundled font data, not to SketchOtter's original code
 or the user's artwork. Do not rename or modify fonts without checking their
 specific terms. Blender and GIMP are separately installed optional applications,
 not bundled binaries. Rust standard-library notices are copied from the pinned

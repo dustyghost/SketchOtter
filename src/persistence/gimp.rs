@@ -12,7 +12,7 @@ use std::{
 
 fn directory() -> Result<PathBuf, String> {
     let path = std::env::temp_dir()
-        .join("clay-form-texture-exchange")
+        .join("sketchotter-texture-exchange")
         .join(format!("exchange-{}", Texture::new_id()));
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     Ok(path)

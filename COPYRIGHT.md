@@ -1,6 +1,6 @@
 # Licence and your work
 
-Copyright © 2026 Clay Form contributors.
+Copyright © 2026 SketchOtter contributors.
 
 SketchOtter's original code and repository content are licensed under the GNU
 General Public License, version 3 only (`GPL-3.0-only`). See [LICENSE](LICENSE)

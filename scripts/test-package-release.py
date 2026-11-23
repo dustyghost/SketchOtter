@@ -76,6 +76,7 @@ class NativeArchiveTests(unittest.TestCase):
                     self.assertIn(name + '/SketchOtter.app/Contents/Resources/LICENSE', members)
                     plist = plistlib.loads((stage / 'SketchOtter.app/Contents/Info.plist').read_bytes())
                     self.assertEqual(plist['CFBundleExecutable'], binary)
+                    self.assertEqual(plist['CFBundleIdentifier'], 'io.github.dustyghost.sketchotter')
                     self.assertIn(name + '/SketchOtter.app/Contents/Resources/' + plist['CFBundleIconFile'], members)
                     self.assertEqual(plist['CFBundleShortVersionString'], version.split('-')[0])
                     self.assertGreater(int(plist['CFBundleVersion']), 0)

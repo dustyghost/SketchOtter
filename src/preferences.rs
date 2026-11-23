@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub(crate) use crate::action::Action;
+mod storage;
 mod touch;
 mod viewport_controls;
 pub(crate) use touch::{TouchDrag, TouchScroll, TouchSettings};
@@ -1158,8 +1159,7 @@ pub(crate) fn path() -> PathBuf {
         .filter(|p| !p.is_empty())
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".config")));
-    base.unwrap_or_else(|| PathBuf::from("."))
-        .join("clay-form/preferences.json")
+    storage::path(&base.unwrap_or_else(|| PathBuf::from(".")))
 }
 pub(crate) fn save(path: &std::path::Path, prefs: &Preferences) -> Result<(), String> {
     prefs.validate()?;

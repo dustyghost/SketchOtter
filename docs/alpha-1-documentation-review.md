@@ -6,14 +6,14 @@ Use this checklist to review the documentation and packages before the first pub
 
 ## Choose the right release instructions
 
-Alpha 1 preparation is pending in [PR #77](https://github.com/dustyghost/clay-form/pull/77). The following links point to its reviewed snapshot at `e6f0b553e9d6cf5579e869327bff574d5275be5d`, so they remain readable before those files reach `main`.
+Alpha 1 preparation is pending in [PR #77](https://github.com/dustyghost/SketchOtter/pull/77). The following links point to its reviewed snapshot at `e6f0b553e9d6cf5579e869327bff574d5275be5d`, so they remain readable before those files reach `main`.
 
 | You need to… | Read |
 | --- | --- |
-| Understand contribution rights, attribution and bug reports | [Contributor guidance](https://github.com/dustyghost/clay-form/blob/e6f0b553e9d6cf5579e869327bff574d5275be5d/CONTRIBUTING.md) |
-| Review platform support and remaining launch decisions | [Open-source readiness](https://github.com/dustyghost/clay-form/blob/e6f0b553e9d6cf5579e869327bff574d5275be5d/docs/open-source-readiness.md) |
-| Prepare and inspect an Alpha draft | [Alpha release instructions](https://github.com/dustyghost/clay-form/blob/e6f0b553e9d6cf5579e869327bff574d5275be5d/.github/RELEASING.md) |
-| Understand recorded attribution uncertainty | [Licence verification findings](https://github.com/dustyghost/clay-form/blob/e6f0b553e9d6cf5579e869327bff574d5275be5d/docs/research/license-verification.md) |
+| Understand contribution rights, attribution and bug reports | [Contributor guidance](https://github.com/dustyghost/SketchOtter/blob/e6f0b553e9d6cf5579e869327bff574d5275be5d/CONTRIBUTING.md) |
+| Review platform support and remaining launch decisions | [Open-source readiness](https://github.com/dustyghost/SketchOtter/blob/e6f0b553e9d6cf5579e869327bff574d5275be5d/docs/open-source-readiness.md) |
+| Prepare and inspect an Alpha draft | [Alpha release instructions](https://github.com/dustyghost/SketchOtter/blob/e6f0b553e9d6cf5579e869327bff574d5275be5d/.github/RELEASING.md) |
+| Understand recorded attribution uncertainty | [Licence verification findings](https://github.com/dustyghost/SketchOtter/blob/e6f0b553e9d6cf5579e869327bff574d5275be5d/docs/research/license-verification.md) |
 
 **Check the branch before running a workflow.** The current [`main` release instructions](../.github/RELEASING.md) describe a Linux workflow that publishes automatically. PR #77 proposes a six-target **Native packages** workflow that creates drafts. Do not use the current workflow as an Alpha draft preview.
 

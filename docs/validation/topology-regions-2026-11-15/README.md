@@ -1,6 +1,6 @@
 # Partial-chain bridges and face-region edits — 15 November 2026
 
-Tickets: [#156](https://github.com/dustyghost/clay-form/issues/156) and [#157](https://github.com/dustyghost/clay-form/issues/157). This batch is based on the manual topology previews in open PR #158. No existing PR was merged.
+Tickets: [#156](https://github.com/dustyghost/SketchOtter/issues/156) and [#157](https://github.com/dustyghost/SketchOtter/issues/157). This batch is based on the manual topology previews in open PR #158. No existing PR was merged.
 
 Eleven focused `topology_regions_` geometry/controller tests passed. They cover bridge segment counts 1/2/16, source preservation and interpolation, exact mirror correspondence, unequal counts, closed loops, stale edges, hidden geometry, obstructions and folded strips; complete-shell reversal including triangle-corner UV identity and a reversible quad flip; planar interior removal, unrelated materials/UVs/creases/hard edges, concave tessellation, disconnected regions and hole rejection; protection of internal quad UV seams, mapped/unmapped boundaries, face groups, curvature and painted detail; private preview, Cancel, one-step Undo/Redo, save/reopen, changed selection/settings, failed-preview cleanup and legacy preset defaults.
 

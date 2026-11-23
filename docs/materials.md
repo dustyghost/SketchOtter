@@ -1,6 +1,6 @@
 # Material channel contract
 
-Issues [#9](https://github.com/dustyghost/clay-form/issues/9) and [#61](https://github.com/dustyghost/clay-form/issues/61) provide vertex painting and shared layered surfaces for later texture painting and Blender exchange.
+Issues [#9](https://github.com/dustyghost/SketchOtter/issues/9) and [#61](https://github.com/dustyghost/SketchOtter/issues/61) provide vertex painting and shared layered surfaces for later texture painting and Blender exchange.
 
 ## Storage and shared definitions
 

@@ -5,7 +5,7 @@ and release; there is no long-term support commitment for older versions.
 
 Do not post exploit details, credentials, private artwork or diagnostic bundles
 in public issues. Use GitHub's private vulnerability reporting on the
-[Security page](https://github.com/dustyghost/clay-form/security) when enabled.
+[Security page](https://github.com/dustyghost/SketchOtter/security) when enabled.
 Before the repository becomes public, the maintainer must enable private
 vulnerability reporting and verify that a report can be submitted.
 

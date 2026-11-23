@@ -1,6 +1,6 @@
 # Vertex material painting review — 24 October 2026
 
-Feature: [#9](https://github.com/dustyghost/clay-form/issues/9). The CI cleanup selected for this batch had already shipped in #57; no duplicate screenshot jobs were added.
+Feature: [#9](https://github.com/dustyghost/SketchOtter/issues/9). The CI cleanup selected for this batch had already shipped in #57; no duplicate screenshot jobs were added.
 
 ## Verified locally
 

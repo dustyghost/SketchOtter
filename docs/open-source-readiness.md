@@ -1,7 +1,7 @@
 # Open-source readiness
 
 Preparation started 28 October 2026; tracked in
-[#76](https://github.com/dustyghost/clay-form/issues/76). This document records
+[#76](https://github.com/dustyghost/SketchOtter/issues/76). This document records
 completed preparation and remaining publication requirements. It is not a
 claim that SketchOtter is already cleared or tested on every platform.
 

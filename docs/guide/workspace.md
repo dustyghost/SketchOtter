@@ -232,8 +232,10 @@ Restoring hidden or floating panels is a normal layout edit, so it saves to the 
 
 Preferences save separately from projects, after a short delay and on exit:
 
-- `$XDG_CONFIG_HOME/clay-form/preferences.json`, if set.
-- Otherwise `~/.config/clay-form/preferences.json`.
+- Windows: `%APPDATA%/sketchotter/preferences.json` (or the user's `AppData/Roaming` folder).
+- Linux and macOS: `$XDG_CONFIG_HOME/sketchotter/preferences.json`, if set; otherwise `~/.config/sketchotter/preferences.json`.
+
+Existing installations still use the `clay-form` directory when no `sketchotter` directory exists. Preferences and recovery always use the same directory. If both directories exist, SketchOtter uses `sketchotter` without merging or overwriting the old data. A compatibility link from `clay-form` to `sketchotter` lets older releases use the migrated data too. See [migration details](../sketchotter-migration.md).
 
 Invalid preferences fall back to defaults with a status message. Key and layout reset controls are independent.
 

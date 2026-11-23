@@ -160,7 +160,7 @@ In **Textures → Open texture library**, expand **Capture colour to texture** a
 
 Capture requires current, nondegenerate UVs inside 0–1. Arrange overlapping islands first if they need different paint. It uses the active model, includes temporarily hidden faces, adds gutter padding and commits one Undo step. Existing texture identity and linked uses are retained. Roughness and metallic images already in the project are untouched. A running capture exposes progress and Cancel; cancelling preserves the original images. Size conversion uses area filtering when reducing an image and bilinear filtering when enlarging, in linear light with coverage-aware colour.
 
-The generic **Bake material maps** action is hidden for now. The deferred workflows are tracked in [#70: roughness/metallic authoring and preview](https://github.com/dustyghost/clay-form/issues/70), [#13: normal, bump and displacement baking](https://github.com/dustyghost/clay-form/issues/13), and [#69: AO and texture export sets](https://github.com/dustyghost/clay-form/issues/69). Hiding these controls does not remove existing maps or 32-bit colour/EXR support.
+The generic **Bake material maps** action is hidden for now. The deferred workflows are tracked in [#70: roughness/metallic authoring and preview](https://github.com/dustyghost/SketchOtter/issues/70), [#13: normal, bump and displacement baking](https://github.com/dustyghost/SketchOtter/issues/13), and [#69: AO and texture export sets](https://github.com/dustyghost/SketchOtter/issues/69). Hiding these controls does not remove existing maps or 32-bit colour/EXR support.
 
 ![Vertex-colour capture controls](../images/texture-bake-controls.png)
 

@@ -55,7 +55,7 @@ Export borrows the document without marking it saved or consuming undo/redo. Exi
 
 Export is local and user initiated. It includes embedded reference images in the current project and user-authored names, so review those before sharing. It includes app version/source build identity, OS family/architecture, available renderer/backend/GPU/driver information and an input-device category. It excludes project paths, device paths, credentials and environment variables. Up to 32 recent application-command/mesh-job warning categories and the current recovery-error category are available; detailed error text and a full log are not collected.
 
-For tooling, `clay_form::diagnostics::load_manifest` checks the schema version, indices, transition ordering and stage filenames. Load individual stage files with the normal validated project loader. Consumers must reject unsupported manifest versions.
+For tooling, `sketchotter::diagnostics::load_manifest` checks the schema version, indices, transition ordering and stage filenames. Load individual stage files with the normal validated project loader. Consumers must reject unsupported manifest versions.
 
 ## OBJ import
 
@@ -131,7 +131,7 @@ Startup offers retained copies after an interrupted session. You can also open t
 
 ### Find recovery files
 
-Copies live in `~/.config/clay-form/recovery/`, or `$XDG_CONFIG_HOME/clay-form/recovery/` when set. Recovery preferences are global, independent of workspaces.
+Copies live beside the active preferences file, in its `recovery/` directory. New installations use `~/.config/sketchotter/recovery/`, `$XDG_CONFIG_HOME/sketchotter/recovery/` when set, or `%APPDATA%/sketchotter/recovery/` on Windows. Existing `clay-form` storage remains supported. See [data locations](workspace.md#where-preferences-are-stored). Recovery preferences are global, independent of workspaces.
 
 If a recovery save fails, earlier copies remain available and an error stays visible. The app retries at your chosen interval. Save your project normally to a working destination before continuing.
 
