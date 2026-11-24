@@ -1,0 +1,48 @@
+version: '3'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  build:
+    desc: Build SketchOtter in release mode
+    cmds:
+      - cargo build --locked --release
+
+  run:
+    desc: Build and run SketchOtter in release mode
+    cmds:
+      - cargo run --locked --release
+
+  build-and-run:
+    desc: Build and run SketchOtter in release mode
+    cmds:
+      - cargo run --locked --release
+
+  check:
+    desc: Check the project for compilation errors
+    cmds:
+      - cargo check --locked
+
+  test:
+    desc: Run the test suite
+    cmds:
+      - cargo test --locked
+
+  fmt:
+    desc: Format Rust source files
+    cmds:
+      - cargo fmt --all
+
+  fmt-check:
+    desc: Check Rust formatting without changing files
+    cmds:
+      - cargo fmt --all --check
+
+  clippy:
+    desc: Run Clippy with warnings treated as errors
+    cmds:
+      - cargo clippy --locked --all-targets -- -D warnings
