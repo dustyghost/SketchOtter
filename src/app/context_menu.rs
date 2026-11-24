@@ -686,6 +686,73 @@ mod tests {
     }
 
     #[test]
+    fn selection_quick_menu_inverts_and_clears_mask_and_visibility() {
+        for (mode, context, pinned) in [
+            (
+                preferences::SelectionMode::Mask,
+                ViewportMenuContext::Mask,
+                false,
+            ),
+            (
+                preferences::SelectionMode::Visibility,
+                ViewportMenuContext::Visibility,
+                true,
+            ),
+        ] {
+            let (mut app, ctx) = setup();
+            app.dispatch(Command::ModelingMode(false), &ctx);
+            app.ui.preferences.selection_mode = mode;
+            let vertices = app.document.mesh().vertices.clone();
+            let history = app.document.history_counts().0;
+            app.open_quick_menu(&ctx, Action::MaskVisibilityMenu);
+            app.ui.viewport_menu.pinned = pinned;
+            frame(&mut app, &ctx, egui::Modifiers::NONE, vec![]);
+            for (label, expected_mask, hidden) in [
+                ("Invert mask", 1., false),
+                ("Clear mask", 0., false),
+                ("Invert visibility", 0., true),
+                ("Show all", 0., false),
+            ] {
+                let output = frame(&mut app, &ctx, egui::Modifiers::NONE, vec![]);
+                let pos = output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == label => {
+                            Some(text.pos + text.galley.size() * 0.5)
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| panic!("Missing quick menu action {label}"));
+                for pressed in [true, false] {
+                    frame(
+                        &mut app,
+                        &ctx,
+                        egui::Modifiers::NONE,
+                        vec![
+                            egui::Event::PointerMoved(pos),
+                            egui::Event::PointerButton {
+                                pos,
+                                button: egui::PointerButton::Primary,
+                                pressed,
+                                modifiers: egui::Modifiers::NONE,
+                            },
+                        ],
+                    );
+                }
+                assert_eq!(app.ui.viewport_menu.context, Some(context));
+                assert!(
+                    app.document.mesh().mask.iter().all(|&v| v == expected_mask),
+                    "Unexpected mask after {label}"
+                );
+                assert_eq!(app.document.mesh().has_hidden_faces(), hidden, "{label}");
+            }
+            assert_eq!(app.document.mesh().vertices, vertices);
+            assert_eq!(app.document.history_counts().0, history + 4);
+        }
+    }
+
+    #[test]
     fn shared_selection_tabs_control_hold_and_restore_brush_without_edits() {
         let (mut app, ctx) = setup();
         // A custom non-history key can open the menu while the shared hold is down.
