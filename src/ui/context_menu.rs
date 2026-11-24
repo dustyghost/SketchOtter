@@ -687,17 +687,26 @@ impl UiState {
                     | ViewportMenuContext::Visibility
                     | ViewportMenuContext::Slice
             ) {
-                if !matches!(
+                if matches!(
                     context,
-                    ViewportMenuContext::Slice | ViewportMenuContext::Components
+                    ViewportMenuContext::Mask | ViewportMenuContext::Visibility
                 ) {
-                    ui.strong("Clear");
-                    ui.horizontal(|ui| {
-                        for (clear, label, hint) in [
+                    ui.horizontal_wrapped(|ui| {
+                        for (operation, label, hint) in [
+                            (
+                                Action::InvertMask,
+                                "Invert mask",
+                                "Swap masked and unmasked areas, preserving soft mask values.",
+                            ),
                             (
                                 Action::ClearMask,
                                 "Clear mask",
                                 "Remove the active model's mask.",
+                            ),
+                            (
+                                Action::InvertVisibility,
+                                "Invert visibility",
+                                "Swap visible and hidden faces on the active model.",
                             ),
                             (
                                 Action::ShowAllFaces,
@@ -705,16 +714,15 @@ impl UiState {
                                 "Clear visibility hiding: show all faces of the active model.",
                             ),
                         ] {
+                            let unavailable = self.action_unavailable(&operation, document);
                             if ui
-                                .add_enabled(
-                                    self.action_enabled(&clear, document),
-                                    egui::Button::new(label),
-                                )
+                                .add_enabled(unavailable.is_none(), egui::Button::new(label))
                                 .on_hover_text(hint)
-                                .customize(clear.clone())
+                                .on_disabled_hover_text(unavailable.unwrap_or_default())
+                                .customize(operation.clone())
                                 .clicked()
                             {
-                                action = Some(clear);
+                                action = Some(operation);
                             }
                         }
                     });
@@ -834,7 +842,9 @@ impl UiState {
                     | Action::Transform
                     | Action::LineTransform
                     | Action::RespectMask
+                    | Action::InvertMask
                     | Action::ClearMask
+                    | Action::InvertVisibility
                     | Action::ShowAllFaces
             )
         );

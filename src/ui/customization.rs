@@ -777,9 +777,18 @@ impl UiState {
             let chose_action = commands[before..]
                 .iter()
                 .any(|c| !matches!(c, Command::UpdateBrush(..)));
-            let outside = response.is_some_and(|r| r.response.clicked_elsewhere())
-                && !egui::Popup::is_any_open(ctx)
-                && before == commands.len();
+            // Use the press, since a pen tap or a drag starting outside may not
+            // produce a click on release. Keep nested popups interactive.
+            let outside = !egui::Popup::is_any_open(ctx)
+                && response.is_some_and(|window| {
+                    ctx.input(|input| {
+                        input.pointer.any_pressed()
+                            && input
+                                .pointer
+                                .interact_pos()
+                                .is_some_and(|pos| !window.response.rect.contains(pos))
+                    })
+                });
             if !open || chose_action || outside {
                 self.customization.popup_menu = None;
             }
