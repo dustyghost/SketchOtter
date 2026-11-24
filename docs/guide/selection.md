@@ -30,7 +30,7 @@ Slice cuts through all depths and uses the existing [Slice rules](modeling.md#sl
 
 The operation strip names the temporary mode, shape and Add/Erase or Hide/Isolate operation while the selection hold is active. Releasing the hold returns its feedback to the previous tool. Your normal brush selection stays intact.
 
-Both tabs share a **Clear** section at the top: **Clear mask** removes the active model’s mask, and **Show all** restores its hidden faces. The popup stays open after either action.
+Both tabs put **Invert mask**, **Clear mask**, **Invert visibility** and **Show all** at the top. **Show all** restores the active model’s hidden faces. The popup stays open after each action.
 
 Change **Hold for selection (Mask / visibility)** in **Settings → Key settings** to rebind the shared hold. The optional **Dedicated mask hold** remains available for existing custom bindings.
 The **Mask → Hold to mask** section exposes the same choices and a Mask brush preset selector. Surface brushing uses that preset’s pressure, strength, alpha, spacing and stroke settings independently of the ordinary sculpt brush. Surface brushing respects brush symmetry; all shapes protect explicitly hidden geometry. Rectangle, Lasso and Line do not repeat with brush symmetry. These regions work when the gesture begins in empty space and use the chosen depth setting. Existing Lasso/Line presets default to Through mesh.
