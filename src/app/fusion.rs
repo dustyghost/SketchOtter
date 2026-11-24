@@ -88,6 +88,11 @@ pub(super) struct FusionState {
     prepared: Option<(Arc<Mesh>, u64, [usize; 2])>,
     draft: Option<Draft>,
 }
+impl FusionState {
+    pub(super) fn has_worker(&self) -> bool {
+        self.worker.is_some()
+    }
+}
 #[cfg(test)]
 impl FusionState {
     pub(super) fn preview_mesh(&self) -> &Mesh {

@@ -141,6 +141,7 @@ pub(crate) struct Recovery {
     results: Receiver<(bool, Result<bool, String>)>,
     worker: Option<JoinHandle<()>>,
     pub busy: bool,
+    pending: usize,
     last_attempt: Instant,
 }
 impl Recovery {
@@ -195,14 +196,23 @@ impl Recovery {
             results,
             worker: Some(worker),
             busy: false,
+            pending: 0,
             last_attempt: Instant::now(),
         })
     }
     pub fn due(&self, settings: &Settings) -> bool {
-        settings.enabled
-            && !self.busy
-            && self.last_attempt.elapsed()
-                >= Duration::from_secs(u64::from(settings.interval_minutes) * 60)
+        self.time_until_due(settings, Instant::now())
+            .is_some_and(|remaining| remaining.is_zero())
+    }
+    pub fn time_until_due(&self, settings: &Settings, now: Instant) -> Option<Duration> {
+        if !settings.enabled || self.busy {
+            return None;
+        }
+        let interval = Duration::from_secs(u64::from(settings.interval_minutes) * 60);
+        Some(interval.saturating_sub(now.saturating_duration_since(self.last_attempt)))
+    }
+    pub fn needs_poll(&self) -> bool {
+        self.pending > 0
     }
     pub fn save(
         &mut self,
@@ -227,11 +237,13 @@ impl Recovery {
             })
             .map_err(|_| "Recovery writer stopped".to_string())?;
         self.busy = true;
+        self.pending += 1;
         Ok(())
     }
     pub fn poll(&mut self) -> Vec<Completion> {
         let mut output = Vec::new();
         while let Ok((writing, result)) = self.results.try_recv() {
+            self.pending = self.pending.saturating_sub(1);
             if writing {
                 self.busy = false;
             }
@@ -244,9 +256,13 @@ impl Recovery {
     }
     pub fn retire(&mut self) {
         let sender = self.sender.as_ref().unwrap();
-        let _ = sender.send(Job::Retire(self.session.clone()));
+        if sender.send(Job::Retire(self.session.clone())).is_ok() {
+            self.pending += 1;
+        }
         if let Some(session) = self.recovered_session.take() {
-            let _ = sender.send(Job::Retire(session));
+            if sender.send(Job::Retire(session)).is_ok() {
+                self.pending += 1;
+            }
         }
         self.last_attempt = Instant::now();
     }
@@ -255,12 +271,16 @@ impl Recovery {
         // even when restoring one of its versions repeatedly.
         let sender = self.sender.as_ref().unwrap();
         if self.session != entry.session {
-            let _ = sender.send(Job::Retire(self.session.clone()));
+            if sender.send(Job::Retire(self.session.clone())).is_ok() {
+                self.pending += 1;
+            }
         }
         if let Some(previous) = self.recovered_session.take()
             && previous != entry.session
         {
-            let _ = sender.send(Job::Retire(previous));
+            if sender.send(Job::Retire(previous)).is_ok() {
+                self.pending += 1;
+            }
         }
         self.recovered_session = (self.session != entry.session).then(|| entry.session.clone());
         self.last_attempt = Instant::now();

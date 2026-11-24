@@ -166,6 +166,7 @@ fn failed_worker_write_reports_error_and_can_retry_without_blocking() {
     let mut worker = Recovery::new(blocked.clone()).unwrap();
     let project = document().project();
     worker.save(project.clone(), "source".into(), 2).unwrap();
+    assert!(worker.needs_poll());
     let wait = |worker: &mut Recovery| {
         let start = Instant::now();
         loop {
@@ -179,9 +180,12 @@ fn failed_worker_write_reports_error_and_can_retry_without_blocking() {
     };
     assert!(wait(&mut worker)[0].result.is_err());
     assert!(!worker.busy);
+    assert!(!worker.needs_poll());
     std::fs::remove_file(blocked).unwrap();
     worker.save(project, "source".into(), 2).unwrap();
+    assert!(worker.needs_poll());
     assert!(wait(&mut worker)[0].result.is_ok());
+    assert!(!worker.needs_poll());
     assert_eq!(entries(&worker.directory).unwrap().len(), 1);
 }
 #[test]
@@ -190,14 +194,43 @@ fn interval_and_legacy_preferences_are_validated() {
     let mut worker = Recovery::new(directory.0.clone()).unwrap();
     let mut settings = Settings::default();
     assert!(!worker.due(&settings));
+    let now = Instant::now();
+    worker.last_attempt = now - Duration::from_secs(30);
+    assert_eq!(
+        worker.time_until_due(&settings, now),
+        Some(Duration::from_secs(
+            u64::from(settings.interval_minutes) * 60 - 30
+        ))
+    );
     worker.last_attempt -= Duration::from_secs(121);
     assert!(worker.due(&settings));
     settings.enabled = false;
     assert!(!worker.due(&settings));
+    assert_eq!(worker.time_until_due(&settings, now), None);
     settings.interval_minutes = 0;
     assert!(settings.validate().is_err());
     let prefs: crate::preferences::Preferences = serde_json::from_str("{}").unwrap();
     assert_eq!(prefs.recovery, Settings::default());
+}
+
+#[test]
+fn queued_retirement_stays_pollable_until_completion() {
+    let directory = Directory::new();
+    let mut worker = Recovery::new(directory.0.clone()).unwrap();
+    worker.retire();
+    assert!(worker.needs_poll());
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let completions = worker.poll();
+        if !worker.needs_poll() {
+            assert_eq!(completions.len(), 1);
+            assert!(!completions[0].written);
+            assert!(completions[0].result.is_ok());
+            break;
+        }
+        assert!(Instant::now() < deadline, "retirement completion timed out");
+        std::thread::sleep(Duration::from_millis(2));
+    }
 }
 
 #[test]

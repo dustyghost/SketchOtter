@@ -13,6 +13,11 @@ pub(super) struct State {
     job: Option<BackgroundJob<Mesh>>,
     mesh: Option<Mesh>,
 }
+impl State {
+    pub(super) fn has_worker(&self) -> bool {
+        self.job.is_some()
+    }
+}
 #[cfg(test)]
 impl State {
     pub(super) fn result(&self) -> Option<&Mesh> {
