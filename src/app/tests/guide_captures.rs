@@ -1220,9 +1220,104 @@ fn project_file_offscreen_review() {
     if let Ok(zoom) = std::env::var("CLAY_REVIEW_ZOOM") {
         g.app.camera.zoom = zoom.parse().expect("CLAY_REVIEW_ZOOM must be a number");
     }
+    if let Ok(pan) = std::env::var("CLAY_REVIEW_PAN") {
+        let pan: Vec<f32> = pan
+            .split(',')
+            .map(|value| value.parse().expect("Invalid review pan"))
+            .collect();
+        assert_eq!(pan.len(), 2, "Review pan must be x,y");
+        g.app.camera.pan = Vec2::new(pan[0], pan[1]);
+    }
     g.save("project-review");
     g.app.ui.wire = false;
     g.save("project-shaded");
+    if let Ok(center) = std::env::var("CLAY_REVIEW_SMOOTH_CENTER") {
+        use crate::sculpt::{Brush, Dab, Kind, Mesh, Vec3};
+        let components = |mesh: &Mesh| {
+            let mut edges = std::collections::HashMap::<(usize, usize), Vec<usize>>::new();
+            for (fi, &[a, b, c]) in mesh.triangles.iter().enumerate() {
+                for (a, b) in [(a, b), (b, c), (c, a)] {
+                    edges.entry((a.min(b), a.max(b))).or_default().push(fi);
+                }
+            }
+            let mut neighbors = vec![Vec::new(); mesh.triangles.len()];
+            for faces in edges.values() {
+                for &a in faces {
+                    neighbors[a].extend(faces.iter().copied().filter(|&b| b != a));
+                }
+            }
+            let mut seen = vec![false; neighbors.len()];
+            let mut count = 0;
+            for root in 0..seen.len() {
+                if seen[root] {
+                    continue;
+                }
+                count += 1;
+                seen[root] = true;
+                let mut pending = vec![root];
+                while let Some(face) = pending.pop() {
+                    for &next in &neighbors[face] {
+                        if !seen[next] {
+                            seen[next] = true;
+                            pending.push(next);
+                        }
+                    }
+                }
+            }
+            count
+        };
+        let center: Vec<f32> = center
+            .split(',')
+            .map(|value| value.parse().expect("Invalid Smooth review center"))
+            .collect();
+        assert_eq!(center.len(), 3, "Smooth review center must be x,y,z");
+        let repeats = std::env::var("CLAY_REVIEW_SMOOTH_REPEATS").map_or(1, |value| {
+            value.parse().expect("Invalid Smooth review repeats")
+        });
+        let before = g.app.document.geometry_snapshot();
+        let mut brush = Brush::new(Kind::Smooth);
+        brush.radius = 60.;
+        for stroke in 0..repeats {
+            let started = std::time::Instant::now();
+            g.app.document.apply_dab(
+                &brush,
+                Dab {
+                    center: Vec3(center[0], center[1], center[2]),
+                    normal: Vec3(0., 0., 1.),
+                    right: Vec3(1., 0., 0.),
+                    up: Vec3(0., 1., 0.),
+                    radius: 0.5,
+                    pressure: 1.,
+                    delta: Vec3::default(),
+                    invert: false,
+                },
+            );
+            g.app.document.end_stroke();
+            eprintln!(
+                "Adaptive Smooth review stroke {}/{}: {:?}",
+                stroke + 1,
+                repeats,
+                started.elapsed()
+            );
+        }
+        let after = g.app.document.geometry_snapshot();
+        eprintln!(
+            "Adaptive Smooth review: {} -> {} vertices; closed: {:?}",
+            before.mesh.vertices.len(),
+            after.mesh.vertices.len(),
+            after.mesh.validate_closed()
+        );
+        eprintln!(
+            "Adaptive Smooth review: {} -> {} edge-connected components",
+            components(&before.mesh),
+            components(&after.mesh)
+        );
+        after.mesh.validate_closed().unwrap();
+        if let Ok(expected) = std::env::var("CLAY_REVIEW_EXPECT_COMPONENTS") {
+            assert_eq!(components(&after.mesh), expected.parse::<usize>().unwrap());
+        }
+        g.save("project-adaptive-smooth-topology");
+    }
 }
 
 #[test]
@@ -1336,9 +1431,11 @@ fn smooth_decimate_offscreen_review() {
         g.app.camera.yaw = 0.45;
         g.app.camera.pitch = -0.25;
     }
+    if let Ok(zoom) = std::env::var("CLAY_REVIEW_ZOOM") {
+        g.app.camera.zoom = zoom.parse().expect("CLAY_REVIEW_ZOOM must be a number");
+    }
     let mut settings = g.app.document.mesh_settings().adaptive.clone();
     settings.enabled = true;
-    settings.simplify = false; // Dedicated Decimate must work independently.
     g.app.document.set_adaptive(settings).unwrap();
     let before = g.app.document.geometry_snapshot();
     g.save("cleanup-before");
@@ -1352,15 +1449,47 @@ fn smooth_decimate_offscreen_review() {
                 .try_into()
                 .expect("CLAY_REVIEW_SWEEP needs x,y_start,y_end")
         });
+    let review_center = std::env::var("CLAY_REVIEW_CENTER").ok().map(|value| {
+        let values: Vec<_> = value
+            .split(',')
+            .map(|v| v.parse::<f32>().unwrap())
+            .collect();
+        Vec3(values[0], values[1], values[2])
+    });
+    let review_normals = review_center
+        .as_ref()
+        .map(|_| g.app.document.mesh().normals());
+    let review_radius = std::env::var("CLAY_REVIEW_RADIUS")
+        .map_or(0.18, |value| value.parse().expect("invalid review radius"));
     let dabs: Vec<_> = (0..36)
         .map(|i| {
-            let (center, normal, radius) = if exported.is_some() {
+            let (center, normal, radius, right, up) = if let Some(center) = review_center {
+                let (index, _) = g
+                    .app
+                    .document
+                    .mesh()
+                    .vertices
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| (i, (*p - center).len()))
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                    .unwrap();
+                let normal = review_normals.as_ref().unwrap()[index];
+                let axis = if normal.2.abs() < 0.9 {
+                    Vec3(0., 0., 1.)
+                } else {
+                    Vec3(0., 1., 0.)
+                };
+                let right = axis.cross(normal).norm();
+                let up = normal.cross(right).norm();
+                (center, normal, review_radius, right, up)
+            } else if exported.is_some() {
                 let x = sweep[0];
                 let y = sweep[1] + (i % 12) as f32 / 11. * (sweep[2] - sweep[1]);
                 let p = right * x + up * y + view * (1. - x * x - y * y).sqrt();
-                (p, view, 0.24)
+                (p, view, 0.24, right, up)
             } else {
-                (Vec3(0., 0., 1.), Vec3(0., 0., 1.), 0.65)
+                (Vec3(0., 0., 1.), Vec3(0., 0., 1.), 0.65, right, up)
             };
             Dab {
                 center,
@@ -1390,6 +1519,7 @@ fn smooth_decimate_offscreen_review() {
         count
     };
     let mut previous_folds = opposed(g.app.document.mesh());
+    let mut decimate_changed_geometry = false;
     let quality = |[a, b, c]: [Vec3; 3]| {
         let ab = b - a;
         let ac = c - a;
@@ -1403,6 +1533,7 @@ fn smooth_decimate_offscreen_review() {
         .map(|t| quality(t.map(|i| before.mesh.vertices[i])))
         .collect();
     for kind in [Kind::Smooth, Kind::Decimate] {
+        let before_operation = g.app.document.geometry_snapshot();
         let mut brush = Brush::new(kind);
         brush.radius = if exported.is_some() { 84. } else { 100. };
         if let Ok(strength) = std::env::var("CLAY_REVIEW_STRENGTH") {
@@ -1431,6 +1562,9 @@ fn smooth_decimate_offscreen_review() {
         )
         .unwrap();
         g.app.document.mesh().validate_closed().unwrap();
+        if kind == Kind::Decimate {
+            decimate_changed_geometry = g.app.document.geometry_snapshot() != before_operation;
+        }
         let folds = opposed(g.app.document.mesh());
         eprintln!("{kind:?}: opposed neighbors {previous_folds} -> {folds}");
         assert!(
@@ -1439,19 +1573,31 @@ fn smooth_decimate_offscreen_review() {
         );
         previous_folds = folds;
         if kind == Kind::Smooth {
-            assert_eq!(g.app.document.mesh().triangles, before.mesh.triangles);
+            assert!(g.app.document.mesh().triangles.len() <= before.mesh.triangles.len());
+            assert!(g.app.document.mesh().vertices.len() <= before.mesh.vertices.len());
             assert_ne!(g.app.document.mesh().vertices, before.mesh.vertices);
-            for (t, q) in g.app.document.mesh().triangles.iter().zip(&before_quality) {
-                assert!(
-                    quality(t.map(|i| g.app.document.mesh().vertices[i])) >= q.min(0.02) * 0.999,
-                    "Smooth must respect the collapse floor and protect existing degeneracies"
-                );
+            if exported.is_none() {
+                assert!(g.app.document.mesh().vertices.len() < before.mesh.vertices.len());
+            }
+            if g.app.document.mesh().triangles == before.mesh.triangles {
+                for (t, q) in g.app.document.mesh().triangles.iter().zip(&before_quality) {
+                    assert!(
+                        quality(t.map(|i| g.app.document.mesh().vertices[i]))
+                            >= q.min(0.02) * 0.999,
+                        "Smooth must respect the collapse floor and protect existing degeneracies"
+                    );
+                }
             }
         } else {
-            assert!(g.app.document.mesh().vertices.len() < before.mesh.vertices.len());
+            assert!(g.app.document.mesh().vertices.len() <= before.mesh.vertices.len());
+            if exported.is_none() {
+                assert!(g.app.document.mesh().vertices.len() < before.mesh.vertices.len());
+            }
         }
     }
-    g.app.document.undo();
+    if decimate_changed_geometry {
+        g.app.document.undo();
+    }
     g.app.document.undo();
     assert_eq!(g.app.document.geometry_snapshot(), before);
     // Inspect the actual controls, including a legacy project's missing preset.

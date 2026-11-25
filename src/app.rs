@@ -62,7 +62,75 @@ pub struct App {
     saved_preferences: Preferences,
     preferences_changed: Option<std::time::Instant>,
     open_settings_windows: [bool; 3],
+    frame_trace: Option<FrameTrace>,
 }
+
+struct FrameTrace {
+    started: std::time::Instant,
+    last_report: std::time::Instant,
+    updates: u64,
+    input_frames: u64,
+    total_updates: u64,
+    total_input_frames: u64,
+    last_egui_frame: u64,
+}
+
+impl FrameTrace {
+    fn new() -> Self {
+        let started = std::time::Instant::now();
+        Self {
+            started,
+            last_report: started,
+            updates: 0,
+            input_frames: 0,
+            total_updates: 0,
+            total_input_frames: 0,
+            last_egui_frame: 0,
+        }
+    }
+
+    fn record(&mut self, ctx: &egui::Context) {
+        self.updates += 1;
+        self.total_updates += 1;
+        self.last_egui_frame = ctx.cumulative_frame_nr();
+        if ctx.input(|input| !input.events.is_empty()) {
+            self.input_frames += 1;
+            self.total_input_frames += 1;
+        }
+        let elapsed = self.last_report.elapsed();
+        if elapsed < std::time::Duration::from_secs(2) {
+            return;
+        }
+        eprintln!(
+            "CLAY_IDLE_FRAME_TRACE interval_ms={} app_updates={} input_frames={} egui_frame={}",
+            elapsed.as_millis(),
+            self.updates,
+            self.input_frames,
+            ctx.cumulative_frame_nr()
+        );
+        self.last_report = std::time::Instant::now();
+        self.updates = 0;
+        self.input_frames = 0;
+    }
+
+    fn finish(&self) {
+        eprintln!(
+            "CLAY_IDLE_FRAME_TRACE_TOTAL elapsed_ms={} app_updates={} input_frames={} egui_frame={}",
+            self.started.elapsed().as_millis(),
+            self.total_updates,
+            self.total_input_frames,
+            self.last_egui_frame
+        );
+    }
+}
+
+const BACKGROUND_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(33);
+const PREFERENCE_SAVE_DELAY: std::time::Duration = std::time::Duration::from_millis(750);
+
+fn include_repaint_delay(current: &mut Option<std::time::Duration>, delay: std::time::Duration) {
+    *current = Some(current.map_or(delay, |current| current.min(delay)));
+}
+
 impl Default for App {
     fn default() -> Self {
         Self {
@@ -90,6 +158,7 @@ impl Default for App {
             saved_preferences: Preferences::default(),
             preferences_changed: None,
             open_settings_windows: [false; 3],
+            frame_trace: std::env::var_os("CLAY_IDLE_FRAME_TRACE").map(|_| FrameTrace::new()),
         }
     }
 }
@@ -118,6 +187,12 @@ impl App {
         let mut app = Self::new();
         app.viewport.initialize_renderer(state)?;
         let info = state.adapter.get_info();
+        if app.frame_trace.is_some() {
+            eprintln!(
+                "CLAY_IDLE_FRAME_TRACE_ADAPTER backend={:?} adapter={} driver={} {}",
+                info.backend, info.name, info.driver, info.driver_info
+            );
+        }
         app.diagnostic_environment.renderer = Some("wgpu".into());
         app.diagnostic_environment.backend = Some(format!("{:?}", info.backend));
         app.diagnostic_environment.gpu = Some(info.name);
@@ -200,6 +275,49 @@ impl App {
                     self.preferences_changed = Some(std::time::Instant::now());
                 }
             }
+        }
+    }
+    fn background_work_pending(&self) -> bool {
+        self.mesh_job.is_some()
+            || self.export_job.is_some()
+            || self.texture_exchange.is_some()
+            || self.projection.has_worker()
+            || self.fusion.has_worker()
+            || self.boolean.has_worker()
+            || self.paths.busy()
+    }
+    fn repaint_delay_for_pending_work(
+        &self,
+        ctx: &egui::Context,
+        now: std::time::Instant,
+    ) -> Option<std::time::Duration> {
+        let mut delay = None;
+        if self.background_work_pending()
+            || self
+                .recovery
+                .as_ref()
+                .is_some_and(crate::recovery::Recovery::needs_poll)
+        {
+            include_repaint_delay(&mut delay, BACKGROUND_POLL_INTERVAL);
+        }
+        if let Some(changed) = self.preferences_changed {
+            include_repaint_delay(
+                &mut delay,
+                PREFERENCE_SAVE_DELAY.saturating_sub(now.saturating_duration_since(changed)),
+            );
+        }
+        if !self.ui.recovery_open
+            && self.recovery_ready(ctx)
+            && let Some(recovery) = &self.recovery
+            && let Some(until_due) = recovery.time_until_due(&self.ui.preferences.recovery, now)
+        {
+            include_repaint_delay(&mut delay, until_due);
+        }
+        delay
+    }
+    fn request_repaint_for_pending_work(&self, ctx: &egui::Context, now: std::time::Instant) {
+        if let Some(delay) = self.repaint_delay_for_pending_work(ctx, now) {
+            ctx.request_repaint_after(delay);
         }
     }
     fn shortcuts(&mut self, ctx: &egui::Context) {
@@ -1197,6 +1315,9 @@ impl eframe::App for App {
     }
 
     fn on_exit(&mut self) {
+        if let Some(trace) = &self.frame_trace {
+            trace.finish();
+        }
         self.save_preferences();
         if self.closing || !self.document.is_dirty() {
             self.retire_recovery();
@@ -1204,6 +1325,9 @@ impl eframe::App for App {
         self.viewport.destroy_renderer();
     }
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        if let Some(trace) = &mut self.frame_trace {
+            trace.record(ctx);
+        }
         if self.show_startup_notice(ctx) {
             return;
         }
@@ -1261,7 +1385,7 @@ impl eframe::App for App {
             let since = self
                 .preferences_changed
                 .get_or_insert_with(std::time::Instant::now);
-            if since.elapsed() >= std::time::Duration::from_millis(750) {
+            if since.elapsed() >= PREFERENCE_SAVE_DELAY {
                 self.save_preferences();
             }
         } else {
@@ -1269,7 +1393,7 @@ impl eframe::App for App {
         }
         self.finish_parameter_input(ctx);
         self.tick_recovery(ctx);
-        ctx.request_repaint_after(std::time::Duration::from_millis(33));
+        self.request_repaint_for_pending_work(ctx, std::time::Instant::now());
     }
 }
 
@@ -1286,6 +1410,9 @@ mod parameter_tests;
 
 #[cfg(all(test, not(feature = "focused-retopology")))]
 mod recovery_tests;
+
+#[cfg(all(test, not(feature = "focused-retopology")))]
+mod scheduling_tests;
 
 #[cfg(test)]
 mod mixed_invariant_tests;

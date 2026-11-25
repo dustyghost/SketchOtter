@@ -76,7 +76,7 @@ For the manifold safety principle, see [CGAL's edge-collapse reference](https://
 
 ### Smooth and Decimate
 
-Smooth and temporary Shift smoothing always keep topology fixed. They relax the surface while preserving the edit protections below.
+Smooth and temporary Shift smoothing relax the surface while preserving the edit protections below. With Adaptive sculpt and automatic simplification enabled, they may collapse short edges after the position update; they never refine the mesh. In triangle mode, Smooth may also compact a locally short edge loop. A loop contraction is tested transactionally and accepted only if the result stays closed and consistently oriented. A disconnected vertex fan is split into separate closed surfaces. A detached component is discarded only when its area is below one detail-cell area and every face is visible, unmasked and inside the brush region. Masks, hidden faces and creases remain protected, and ordinary edge contractions use surface-error, triangle-quality and fold checks. With simplification off, Smooth remains fixed-topology.
 
 `sculpt/smooth.rs` uses local implicit surface fairing: it solves for a smoother surface over the brush area while keeping neighbouring boundary vertices fixed. The numerical contract is:
 

@@ -255,7 +255,7 @@ Smooth can gradually soften a pulled-out bump back into the surrounding surface.
 | --- | --- |
 | ![A short round protrusion pulled from a sphere](../images/smooth-pull-before.png) | ![The protrusion smoothed back into the surrounding sphere](../images/smooth-pull-after.png) |
 
-*Smooth changes the shape while keeping the same triangles. Decimate afterward if the area no longer needs its extra density.*
+*Smooth relaxes the shape first. In Adaptive sculpt's triangle mode with Simplify enabled, it can collapse redundant short edges and compact short-edge loops. A pinched loop may separate closed surface components; a detached fragment with less than one detail-cell area is removed only when the brush fully covers it.*
 
 ### Add detail where you sculpt
 
@@ -269,7 +269,7 @@ Adaptive sculpting requires a closed, consistently oriented surface. Mask stroke
 
 For **Quads**, start with an all-quad mesh, such as the starting sphere or a **Dynamic mesh → Quads** remesh. A triangle or mixed mesh shows an explanation instead of converting silently.
 
-Local quad refinement can create irregular junctions. It does not promise a regular grid or guided edge flow. Sharp folds, protected boundaries and per-frame work limits can prevent the requested edge size from being reached. **Smooth** and **Relax** keep topology fixed in either mode.
+Local quad refinement can create irregular junctions. It does not promise a regular grid or guided edge flow. Sharp folds, protected boundaries and per-frame work limits can prevent the requested edge size from being reached. **Smooth** never refines the mesh; with **Simplify while sculpting** enabled, it may collapse short edges in either topology mode. In triangle mode it can also compact local loops after relaxing the surface. These topology events are accepted only when the affected result remains closed. **Relax** keeps topology fixed.
 
 Use **Adapt only unmasked areas** when masked faces must keep their existing connections. It freezes every face touching a nonzero mask weight, including soft masks and boundary faces.
 
@@ -286,7 +286,7 @@ Unmasked regions can still refine or simplify, but operations crossing the prote
 | Adapt only unmasked areas | Protect the connectivity of faces touching any mask weight; independent of topology choice |
 | Detail relative to brush size | Interpret size as a percentage of brush radius |
 | Refine | Split long edges near the brush |
-| Simplify while sculpting | Automatically collapse short edges during deformation strokes; Smooth keeps topology fixed |
+| Simplify while sculpting | Collapse short edges during deformation strokes and after Smooth; Smooth may also compact local loops after relaxing, but never refines |
 | Simplify ratio | Threshold for collapsing edges relative to the target |
 
 Adaptive sculpting only changes the area around a supported brush stroke. Use [whole-surface remeshing](modeling.md#remesh-a-whole-surface) when you need to rebuild or fuse the complete surface.
@@ -319,12 +319,12 @@ Relax uses freehand strokes and has no subtract operation. Release commits one u
 
 ### Smooth first, then reduce triangles
 
-1. Use **Smooth**, or hold **Shift**, to remove noise or soften the shape. Smooth keeps the same vertices and triangles, including in Adaptive sculpt mode.
-2. In **Mesh → Adaptive sculpt**, choose **Decimate brush**, then paint over the smoothed region. This selects your existing Decimate preset or adds one to older projects.
-3. Increase **Edge size** or **Simplify ratio** for more reduction. Brush strength, pen pressure and falloff control the local reduction threshold. The status bar reports removed vertices and faces.
-4. Inspect the surface with wireframe on and off. Each stroke has its own Undo step, so you can undo decimation while keeping the smoothing.
+1. Use **Smooth**, or hold **Shift**, to relax the shape. With **Adaptive sculpt → Simplify while sculpting** enabled, short edges can collapse after each Smooth dab; a pulled-out form can flatten while its redundant density is reduced.
+2. Increase **Edge size** or **Simplify ratio** for more reduction. Smooth uses conservative surface-error and fold checks, so sharp details and unsafe collapses are left alone.
+3. For direct reduction without smoothing first, choose **Decimate brush** and paint over the region. It also works when **Simplify while sculpting** is off.
+4. Inspect the surface with wireframe on and off. Each stroke has its own Undo step.
 
-Decimate works even when **Simplify while sculpting** is off. It removes short edges without applying a smoothing pass or adding vertices. Masks, hidden faces, sharp features and local shape checks can limit reduction. It does not have a reverse operation; use Undo to restore removed triangles.
+Decimate removes short edges without applying a smoothing pass or adding vertices. Masks, hidden faces, sharp features and local shape checks can limit reduction. It does not have a reverse operation; use Undo to restore removed triangles.
 
 Adaptive sculpting does not fuse overlapping parts. Use [voxel remeshing](modeling.md#mesh-management) for fusion.
 

@@ -31,6 +31,11 @@ pub(super) struct ProjectionState {
     pub density_display: Option<(u64, Arc<Mesh>)>,
     pub last_retopology_settings: Option<serde_json::Value>,
 }
+impl ProjectionState {
+    pub(super) fn has_worker(&self) -> bool {
+        self.worker.is_some()
+    }
+}
 impl App {
     pub(super) fn open_projection(&mut self) -> Result<(), String> {
         self.document.require_projection_target()?;
