@@ -141,8 +141,11 @@ impl Mesh {
         debug_assert_eq!(settings.topology, Topology::Quads);
         let target = settings.edge_length(brush, region.dabs[0]);
         let cleanup = brush.kind == Kind::Decimate;
+        let smoothing = brush.kind == Kind::Smooth;
         let mut changed = false;
-        if collapse && (settings.simplify || cleanup) && budget.collapses > 0 {
+        // Smooth only coarsens after its position update, never before it.
+        let collapse_now = if smoothing { !collapse } else { collapse };
+        if collapse_now && (settings.simplify || cleanup) && budget.collapses > 0 {
             let count = self.collapse_quads(
                 brush,
                 region,
@@ -153,7 +156,7 @@ impl Mesh {
             budget.collapses = 0;
             changed |= count > 0;
         }
-        if settings.refine && !cleanup {
+        if settings.refine && !cleanup && !smoothing {
             for _ in 0..4 {
                 if budget.splits == 0 || budget.passes == 0 {
                     break;

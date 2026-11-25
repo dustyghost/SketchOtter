@@ -1658,7 +1658,7 @@ impl UiState {
                 search::setting_response(ui.add(egui::Slider::new(&mut adaptive.collapse_ratio,0.1..=0.8).text("Simplify ratio")), "Simplify ratio");
                 if adaptive!=settings.adaptive { commands.push(Command::SetAdaptive(adaptive.clone())); }
                 ui.label("Smaller edge sizes add detail. Masks are preserved; Mask brush keeps topology fixed.");
-                ui.label("Smooth changes shape without changing topology.");
+                ui.label("Smooth relaxes the surface first; with simplification on, safe short edges may collapse afterward.");
                 let unit = if adaptive.relative { "% of brush radius" } else { "px" };
                 ui.label(format!("Decimate removes edges up to {:.1} {unit}, preserving surface features.", adaptive.detail * adaptive.collapse_fraction(Kind::Decimate)));
                 let decimate = document.brushes().iter().position(|b| b.kind == Kind::Decimate);
@@ -1670,7 +1670,7 @@ impl UiState {
                         commands.push(Command::AddBrush(Kind::Decimate));
                     }
                 }
-                ui.weak("Smooth first, then paint with Decimate to reduce faces. Increase Edge size for more reduction. Decimate also works with automatic simplification off.");
+                ui.weak("Simplify while sculpting also reduces redundant edges after Smooth. Decimate reduces faces directly, without smoothing, and works when automatic simplification is off.");
                 ui.label("Local adaptation preserves separate parts; use voxel remeshing to fuse them.");
             } else if settings.dynamic {
                 ui.label("Voxel remeshing replaces topology and clears masks. Small details below the voxel size may be lost.");

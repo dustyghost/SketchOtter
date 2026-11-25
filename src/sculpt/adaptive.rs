@@ -55,7 +55,7 @@ impl AdaptiveSettings {
         Ok(())
     }
     pub(crate) fn collapse_fraction(&self, kind: Kind) -> f32 {
-        if kind == Kind::Decimate {
+        if matches!(kind, Kind::Decimate | Kind::Smooth) {
             (self.collapse_ratio * 2.).min(0.95)
         } else {
             self.collapse_ratio
@@ -85,6 +85,7 @@ struct SplitOptions {
 pub(crate) struct Budget {
     pub splits: usize,
     pub collapses: usize,
+    fan_splits: usize,
     passes: usize,
     flips: usize,
     flip_passes: usize,
@@ -95,6 +96,7 @@ impl Default for Budget {
         Self {
             splits: 256,
             collapses: 256,
+            fan_splits: 8,
             passes: 8,
             flips: 128,
             flip_passes: 2,
@@ -255,7 +257,7 @@ impl Mesh {
             let flips = if relief {
                 // Reconnect on the undeformed surface so quality improvement
                 // cannot flatten the relief or interpolate its heights afterwards.
-                self.improve_edges(brush, dabs, stencils, 512, settings.unmasked_only)
+                self.improve_edges(brush, dabs, stencils, 512, settings.unmasked_only, false)
             } else {
                 0
             };
@@ -298,10 +300,7 @@ impl Mesh {
         let Region { dabs, stencils } = region;
         if !self.creases.is_empty()
             || !settings.enabled
-            || matches!(
-                brush.kind,
-                Kind::Mask | Kind::Paint | Kind::Smooth | Kind::Relax
-            )
+            || matches!(brush.kind, Kind::Mask | Kind::Paint | Kind::Relax)
             || brush.strength <= 0.
             || dabs.is_empty()
             || matches!(&brush.alpha,Alpha::Image { pixels,.. } if pixels.iter().all(|&p|p==0.))
@@ -316,8 +315,30 @@ impl Mesh {
             return self.adapt_quads(brush, region, settings, budget, collapse);
         }
         let cleanup = brush.kind == Kind::Decimate;
+        let smoothing = brush.kind == Kind::Smooth;
         let mut changed = false;
-        if collapse && (settings.simplify || cleanup) && budget.collapses > 0 {
+        let mut topology_changed = false;
+        // Smooth must relax the surface before considering any contractions.
+        // Collapsing first can remove the very geometry that needs to move.
+        let collapse_now = if smoothing { !collapse } else { collapse };
+        if smoothing && !collapse && settings.simplify && budget.fan_splits > 0 {
+            let count = self.collapse_short_detail_cycles(
+                brush,
+                dabs,
+                stencils,
+                target * settings.collapse_fraction(brush.kind),
+                budget.fan_splits,
+                settings.unmasked_only,
+            );
+            budget.fan_splits -= count;
+            topology_changed = count > 0;
+            changed |= count > 0;
+        }
+        if collapse_now
+            && !topology_changed
+            && (settings.simplify || cleanup)
+            && budget.collapses > 0
+        {
             let count = self.collapse_local(
                 brush,
                 dabs,
@@ -331,11 +352,12 @@ impl Mesh {
                 // scan. Deformation brushes retain their smaller allowance.
                 budget.collapses.min(if cleanup { 256 } else { 32 }),
                 settings.unmasked_only,
+                cleanup || smoothing,
             );
             budget.collapses = 0;
             changed |= count > 0;
         }
-        if settings.refine && !cleanup && budget.splits > 0 {
+        if settings.refine && !cleanup && !smoothing && budget.splits > 0 {
             for _ in 0..4 {
                 if budget.passes == 0 {
                     break;
@@ -356,7 +378,11 @@ impl Mesh {
                 }
             }
         }
-        if !cleanup && settings.refine && budget.flips > 0 && budget.flip_passes > 0 {
+        let smooth_remesh = smoothing && !collapse && settings.simplify;
+        if ((!cleanup && !smoothing && settings.refine) || smooth_remesh)
+            && budget.flips > 0
+            && budget.flip_passes > 0
+        {
             budget.flip_passes -= 1;
             let count = self.improve_edges(
                 brush,
@@ -364,22 +390,659 @@ impl Mesh {
                 stencils,
                 budget.flips.min(64),
                 settings.unmasked_only,
+                smooth_remesh,
             );
             budget.flips -= count;
             changed |= count > 0;
         }
-        if matches!(brush.kind, Kind::Snake | Kind::Detail)
+        let smooth_rebalance = smooth_remesh && budget.relax;
+        let deformation_relax = matches!(brush.kind, Kind::Snake | Kind::Detail)
             && !collapse
             && settings.refine
-            && budget.relax
-        {
+            && budget.relax;
+        if smooth_rebalance || deformation_relax {
             budget.relax = false;
             changed |= self.relax_surface(brush, dabs, stencils, target, settings.unmasked_only);
         }
         changed
     }
-    // Redistribute vertices compressed by dragging or pinching. Snake retains
-    // its depth; Detail also damps small normal ripples between fresh triangles.
+    /// Separate closed face fans that have become pinched together at one
+    /// vertex. This is a local topology event: unlike an edge collapse it
+    /// repairs a disconnected vertex link without opening either surface.
+    #[cfg(test)]
+    fn split_disconnected_fans(
+        &mut self,
+        brush: &Brush,
+        dabs: &[Dab],
+        stencils: &[Projection],
+        limit: usize,
+        unmasked_only: bool,
+    ) -> usize {
+        if limit == 0 || self.triangles.is_empty() {
+            return 0;
+        }
+        let protected = self.adaptive_protected_vertices(unmasked_only);
+        let nearby_faces = self.patch_candidates(brush, dabs);
+        let mut in_region = vec![false; self.triangles.len()];
+        let mut candidates = vec![false; self.vertices.len()];
+        for (fi, &face) in self.triangles.iter().enumerate() {
+            if nearby_faces[fi]
+                && self.face_visible(fi)
+                && self.topology_face_in_region(fi, face, brush, dabs, stencils)
+            {
+                in_region[fi] = true;
+                for v in face {
+                    candidates[v] = true;
+                }
+            }
+        }
+
+        let mut incident = vec![Vec::new(); self.vertices.len()];
+        for (fi, face) in self.triangles.iter().enumerate() {
+            for &v in face {
+                if candidates[v] {
+                    incident[v].push(fi);
+                }
+            }
+        }
+        let mut splits = Vec::<(usize, Vec<Vec<usize>>)>::new();
+        let mut split_count = 0;
+        for vertex in 0..self.vertices.len() {
+            if !candidates[vertex] || protected[vertex] || split_count >= limit {
+                continue;
+            }
+            let star = &incident[vertex];
+            if star.len() < 4 || star.iter().any(|&fi| !in_region[fi]) {
+                continue;
+            }
+
+            // Faces in one fan are adjacent across an edge incident to this
+            // vertex. A closed fan has exactly two faces on each such edge.
+            let mut radial = BTreeMap::<usize, Vec<usize>>::new();
+            for &fi in star {
+                for &other in &self.triangles[fi] {
+                    if other != vertex {
+                        radial.entry(other).or_default().push(fi);
+                    }
+                }
+            }
+            if radial.values().any(|faces| faces.len() != 2) {
+                continue;
+            }
+            let mut adjacency = HashMap::<usize, Vec<usize>>::new();
+            for faces in radial.values() {
+                adjacency.entry(faces[0]).or_default().push(faces[1]);
+                adjacency.entry(faces[1]).or_default().push(faces[0]);
+            }
+            let mut unseen: HashSet<_> = star.iter().copied().collect();
+            let mut fans = Vec::<Vec<usize>>::new();
+            while let Some(&root) = unseen.iter().min() {
+                unseen.remove(&root);
+                let mut fan = vec![root];
+                let mut pending = vec![root];
+                while let Some(face) = pending.pop() {
+                    let mut neighbors = adjacency.get(&face).cloned().unwrap_or_default();
+                    neighbors.sort_unstable();
+                    for next in neighbors {
+                        if unseen.remove(&next) {
+                            fan.push(next);
+                            pending.push(next);
+                        }
+                    }
+                }
+                fan.sort_unstable();
+                fans.push(fan);
+            }
+            if fans.len() < 2 {
+                continue;
+            }
+            fans.sort_by_key(|fan| fan[0]);
+            let duplicates = fans.len().saturating_sub(1).min(limit - split_count);
+            split_count += duplicates;
+            splits.push((vertex, fans.into_iter().skip(1).take(duplicates).collect()));
+        }
+        if split_count == 0 {
+            return 0;
+        }
+
+        // Clone only after a disconnected fan has actually been found. Ordinary
+        // Smooth dabs otherwise avoid copying the complete mesh for this check.
+        let mut trial = self.clone();
+        let mut face_replacements = HashMap::<(usize, usize), usize>::new();
+        for (vertex, fans) in splits {
+            for fan in fans {
+                let duplicate = trial.vertices.len();
+                trial.vertices.push(trial.vertices[vertex]);
+                trial.mask.push(trial.mask[vertex]);
+                if !trial.materials.is_empty() {
+                    trial.materials.push(trial.material(vertex));
+                }
+                for group in &mut trial.vertex_groups {
+                    group.weights.push(group.weights[vertex]);
+                }
+                for &fi in &fan {
+                    face_replacements.insert((fi, vertex), duplicate);
+                    for corner in &mut trial.triangles[fi] {
+                        if *corner == vertex {
+                            *corner = duplicate;
+                        }
+                    }
+                }
+            }
+        }
+
+        // UVs are face-corner data, so their values remain attached to their
+        // faces. Retarget seam edges onto each newly separated copy.
+        if trial.uv.current(self) {
+            let old_seams = trial.uv.seams.clone();
+            let mut seams = Vec::new();
+            for seam in old_seams {
+                let mut mapped = Vec::new();
+                for (fi, face) in self.triangles.iter().enumerate() {
+                    if seam.iter().all(|v| face.contains(v)) {
+                        let edge =
+                            seam.map(|v| face_replacements.get(&(fi, v)).copied().unwrap_or(v));
+                        mapped.push(super::uv::edge(edge[0], edge[1]));
+                    }
+                }
+                if mapped.is_empty() {
+                    seams.push(seam);
+                } else {
+                    seams.extend(mapped);
+                }
+            }
+            seams.sort_unstable();
+            seams.dedup();
+            trial.uv.seams = seams;
+            trial.uv.topology = trial.triangles.clone();
+        }
+        trial.shading_seams = None;
+        trial.retain_adaptive_quads();
+        if trial.validate().is_err() {
+            return 0;
+        }
+        *self = trial;
+        split_count
+    }
+    /// Split a collapsed loop's vertex without building adjacency for the
+    /// rest of the mesh. The caller already works on a disposable trial mesh.
+    fn split_vertex_fan_at(
+        &mut self,
+        vertex: usize,
+        brush: &Brush,
+        dabs: &[Dab],
+        stencils: &[Projection],
+        limit: usize,
+        unmasked_only: bool,
+    ) -> usize {
+        if vertex >= self.vertices.len() || limit == 0 {
+            return 0;
+        }
+        let star: Vec<_> = self
+            .triangles
+            .iter()
+            .enumerate()
+            .filter(|(fi, face)| {
+                face.contains(&vertex)
+                    && self.face_visible(*fi)
+                    && self.topology_face_in_region(*fi, **face, brush, dabs, stencils)
+                    && (!unmasked_only || face.iter().all(|&v| self.mask[v] == 0.))
+            })
+            .map(|(fi, _)| fi)
+            .collect();
+        let complete_star = self
+            .triangles
+            .iter()
+            .filter(|face| face.contains(&vertex))
+            .count();
+        if star.len() < 4 || star.len() != complete_star {
+            return 0;
+        }
+        let mut radial = BTreeMap::<usize, Vec<usize>>::new();
+        for &fi in &star {
+            for &other in &self.triangles[fi] {
+                if other != vertex {
+                    radial.entry(other).or_default().push(fi);
+                }
+            }
+        }
+        if radial.values().any(|faces| faces.len() != 2) {
+            return 0;
+        }
+        let mut adjacency = HashMap::<usize, Vec<usize>>::new();
+        for faces in radial.values() {
+            adjacency.entry(faces[0]).or_default().push(faces[1]);
+            adjacency.entry(faces[1]).or_default().push(faces[0]);
+        }
+        let mut unseen: HashSet<_> = star.iter().copied().collect();
+        let mut fans = Vec::<Vec<usize>>::new();
+        while let Some(&root) = unseen.iter().min() {
+            unseen.remove(&root);
+            let mut fan = vec![root];
+            let mut pending = vec![root];
+            while let Some(face) = pending.pop() {
+                for &next in adjacency.get(&face).into_iter().flatten() {
+                    if unseen.remove(&next) {
+                        fan.push(next);
+                        pending.push(next);
+                    }
+                }
+            }
+            fan.sort_unstable();
+            fans.push(fan);
+        }
+        if fans.len() < 2 {
+            return 0;
+        }
+        fans.sort_by_key(|fan| fan[0]);
+
+        let uv_current = self.uv.current(self);
+        let old_seams = self.uv.seams.clone();
+        let mut replacements = HashMap::<(usize, usize), usize>::new();
+        let mut split_count = 0;
+        for fan in fans.iter().skip(1).take(limit) {
+            let duplicate = self.vertices.len();
+            self.vertices.push(self.vertices[vertex]);
+            self.mask.push(self.mask[vertex]);
+            if !self.materials.is_empty() {
+                self.materials.push(self.material(vertex));
+            }
+            for group in &mut self.vertex_groups {
+                group.weights.push(group.weights[vertex]);
+            }
+            for &fi in fan {
+                replacements.insert((fi, vertex), duplicate);
+            }
+            split_count += 1;
+        }
+        if uv_current {
+            let mut seams = Vec::new();
+            for seam in old_seams {
+                let mut mapped = Vec::new();
+                for (fi, face) in self.triangles.iter().enumerate() {
+                    if seam.iter().all(|v| face.contains(v)) {
+                        let edge = seam.map(|v| replacements.get(&(fi, v)).copied().unwrap_or(v));
+                        mapped.push(super::uv::edge(edge[0], edge[1]));
+                    }
+                }
+                if mapped.is_empty() {
+                    seams.push(seam);
+                } else {
+                    seams.extend(mapped);
+                }
+            }
+            seams.sort_unstable();
+            seams.dedup();
+            self.uv.seams = seams;
+        }
+        for (&(fi, old_vertex), &new_vertex) in &replacements {
+            for corner in &mut self.triangles[fi] {
+                if *corner == old_vertex {
+                    *corner = new_vertex;
+                }
+            }
+        }
+        if uv_current {
+            self.uv.topology = self.triangles.clone();
+        }
+        self.shading_seams = None;
+        self.retain_adaptive_quads();
+        split_count
+    }
+    /// Find a compact loop of sub-detail edges and contract it as one event.
+    /// A pinched neck separates into closed fans; a terminal fan collapses
+    /// into the adjacent surface. Trials must remain closed and non-branching.
+    fn collapse_short_detail_cycles(
+        &mut self,
+        brush: &Brush,
+        dabs: &[Dab],
+        stencils: &[Projection],
+        threshold: f32,
+        limit: usize,
+        unmasked_only: bool,
+    ) -> usize {
+        if limit == 0 || !threshold.is_finite() || threshold <= 1e-7 {
+            return 0;
+        }
+        let nearby_faces = self.patch_candidates(brush, dabs);
+        let mut edge_faces = HashMap::<(usize, usize), Vec<usize>>::new();
+        for (fi, &face) in self.triangles.iter().enumerate() {
+            if !nearby_faces[fi]
+                || !self.face_visible(fi)
+                || !self.topology_face_in_region(fi, face, brush, dabs, stencils)
+            {
+                continue;
+            }
+            let [a, b, c] = face;
+            for (u, v) in [(a, b), (b, c), (c, a)] {
+                edge_faces.entry(edge(u, v)).or_default().push(fi);
+            }
+        }
+        if edge_faces.is_empty() {
+            return 0;
+        }
+        let mut vertex_edges = vec![Vec::<f32>::new(); self.vertices.len()];
+        for &(a, b) in edge_faces.keys() {
+            let length = (self.vertices[a] - self.vertices[b]).len();
+            vertex_edges[a].push(length);
+            vertex_edges[b].push(length);
+        }
+        let local_scale: Vec<_> = vertex_edges
+            .iter()
+            .map(|edges| {
+                let mut lengths = edges.clone();
+                lengths.sort_by(f32::total_cmp);
+                lengths
+                    .get(lengths.len() / 2)
+                    .copied()
+                    .unwrap_or(f32::INFINITY)
+            })
+            .collect();
+        let influenced_in_same_dab = |a: usize, b: usize| {
+            dabs.iter().any(|dab| {
+                let pressure = if brush.pressure {
+                    dab.pressure.powf(brush.pressure_curve)
+                } else {
+                    1.
+                };
+                [a, b].into_iter().all(|i| {
+                    let offset = self.vertices[i] - dab.center;
+                    offset.len() <= dab.radius
+                        && brush.weight(
+                            offset.dot(dab.right) / dab.radius,
+                            offset.dot(dab.up) / dab.radius,
+                        ) * pressure
+                            * (1. - self.mask[i])
+                            > 0.001
+                })
+            })
+        };
+        let mut adjacency = BTreeMap::<usize, Vec<usize>>::new();
+        for (&(a, b), faces) in &edge_faces {
+            let length = (self.vertices[a] - self.vertices[b]).len();
+            if faces.len() != 2
+                || self.mask[a] > 0.95
+                || self.mask[b] > 0.95
+                || (self.mask[a] - self.mask[b]).abs() > 0.05
+                || (unmasked_only && (self.mask[a] > 0. || self.mask[b] > 0.))
+                || length >= threshold
+                // A contact loop is made from locally collapsed edges, not
+                // merely from an ordinarily dense patch below target size.
+                || length * 2. >= local_scale[a]
+                || length * 2. >= local_scale[b]
+                || !influenced_in_same_dab(a, b)
+            {
+                continue;
+            }
+            if !self.polygroups.is_empty() && self.polygroups[faces[0]] != self.polygroups[faces[1]]
+            {
+                continue;
+            }
+            if !stencils.is_empty() {
+                let points: Vec<_> = faces
+                    .iter()
+                    .flat_map(|&fi| self.triangles[fi].map(|v| self.vertices[v]))
+                    .collect();
+                if !(Region { dabs, stencils }).permits_reconnection(brush, &points) {
+                    continue;
+                }
+            }
+            adjacency.entry(a).or_default().push(b);
+            adjacency.entry(b).or_default().push(a);
+        }
+        for neighbors in adjacency.values_mut() {
+            neighbors.sort_unstable();
+        }
+        let mut unseen: HashSet<_> = adjacency.keys().copied().collect();
+        let mut cycles = Vec::<Vec<usize>>::new();
+        while let Some(&root) = unseen.iter().min() {
+            unseen.remove(&root);
+            let mut component = vec![root];
+            let mut pending = vec![root];
+            while let Some(v) = pending.pop() {
+                for &next in &adjacency[&v] {
+                    if unseen.remove(&next) {
+                        component.push(next);
+                        pending.push(next);
+                    }
+                }
+            }
+            if component.len() < 4 || component.iter().any(|v| adjacency[v].len() != 2) {
+                continue;
+            }
+            let start = *component.iter().min().unwrap();
+            let mut cycle = vec![start];
+            let mut previous = start;
+            let mut current = adjacency[&start][0];
+            while current != start && cycle.len() <= component.len() {
+                cycle.push(current);
+                let [a, b] = adjacency[&current].as_slice() else {
+                    break;
+                };
+                let next = if *a == previous { *b } else { *a };
+                previous = current;
+                current = next;
+            }
+            if current != start || cycle.len() != component.len() {
+                continue;
+            }
+            let diameter = cycle
+                .iter()
+                .flat_map(|&a| cycle.iter().map(move |&b| (a, b)))
+                .map(|(a, b)| (self.vertices[a] - self.vertices[b]).len())
+                .fold(0_f32, f32::max);
+            if diameter <= threshold * 2. {
+                cycles.push(cycle);
+            }
+        }
+        let stroke_distance = |cycle: &[usize]| {
+            let center = cycle
+                .iter()
+                .map(|&v| self.vertices[v])
+                .fold(Vec3::default(), |sum, p| sum + p)
+                * (1. / cycle.len() as f32);
+            dabs.iter()
+                .map(|dab| (center - dab.center).len())
+                .fold(f32::INFINITY, f32::min)
+        };
+        cycles.sort_by(|a, b| {
+            stroke_distance(a)
+                .total_cmp(&stroke_distance(b))
+                .then(a.len().cmp(&b.len()))
+                .then(a.cmp(b))
+        });
+        if cycles.is_empty() {
+            return 0;
+        }
+        let protected = self.adaptive_protected_vertices(unmasked_only);
+        cycles.retain(|cycle| cycle.iter().all(|&vertex| !protected[vertex]));
+        if cycles.is_empty() {
+            return 0;
+        }
+
+        // A failed transactional trial still needs mesh validation. Keep that
+        // expensive fallback to the nearest candidate for each dab.
+        for cycle in cycles.into_iter().take(1) {
+            let mut trial = self.clone();
+            let Some((pinch_position, pinch_vertex)) = trial.contract_short_cycle(&cycle) else {
+                continue;
+            };
+            let split = trial.split_vertex_fan_at(
+                pinch_vertex,
+                brush,
+                dabs,
+                stencils,
+                limit,
+                unmasked_only,
+            );
+            if split == 0 {
+                trial = super::fusion::compact(trial);
+            }
+            let closed = if split > 0 {
+                if trial.remove_sub_detail_pinched_component(
+                    pinch_position,
+                    threshold,
+                    brush,
+                    dabs,
+                    stencils,
+                ) {
+                    true
+                } else {
+                    trial.validate_closed().is_ok()
+                }
+            } else {
+                trial.validate_closed().is_ok()
+            };
+            if !closed {
+                continue;
+            }
+            *self = trial;
+            return 1;
+        }
+        0
+    }
+    #[cfg(test)]
+    fn edge_connected_face_components(&self) -> usize {
+        self.edge_connected_face_groups().len()
+    }
+    fn edge_connected_face_groups(&self) -> Vec<Vec<usize>> {
+        let mut edge_faces = HashMap::<(usize, usize), Vec<usize>>::new();
+        for (fi, &[a, b, c]) in self.triangles.iter().enumerate() {
+            for (u, v) in [(a, b), (b, c), (c, a)] {
+                edge_faces.entry(edge(u, v)).or_default().push(fi);
+            }
+        }
+        let mut neighbors = vec![Vec::new(); self.triangles.len()];
+        for faces in edge_faces.values() {
+            for &a in faces {
+                neighbors[a].extend(faces.iter().copied().filter(|&b| b != a));
+            }
+        }
+        let mut visited = vec![false; self.triangles.len()];
+        let mut components = Vec::new();
+        for root in 0..visited.len() {
+            if visited[root] {
+                continue;
+            }
+            visited[root] = true;
+            let mut pending = vec![root];
+            let mut component = Vec::new();
+            while let Some(face) = pending.pop() {
+                component.push(face);
+                for &next in &neighbors[face] {
+                    if !visited[next] {
+                        visited[next] = true;
+                        pending.push(next);
+                    }
+                }
+            }
+            component.sort_unstable();
+            components.push(component);
+        }
+        components
+    }
+    /// Remove a detached fragment only when its entire surface is below one
+    /// adaptive detail cell and the stroke covers every face it would delete.
+    fn remove_sub_detail_pinched_component(
+        &mut self,
+        pinch: Vec3,
+        threshold: f32,
+        brush: &Brush,
+        dabs: &[Dab],
+        stencils: &[Projection],
+    ) -> bool {
+        let groups = self.edge_connected_face_groups();
+        if groups.len() < 2 {
+            return false;
+        }
+        let areas: Vec<_> = groups
+            .iter()
+            .map(|faces| {
+                faces
+                    .iter()
+                    .map(|&fi| {
+                        let [a, b, c] = self.triangles[fi].map(|v| self.vertices[v]);
+                        (b - a).cross(c - a).len() * 0.5
+                    })
+                    .sum::<f32>()
+            })
+            .collect();
+        let candidate = groups
+            .iter()
+            .enumerate()
+            .filter(|(i, faces)| {
+                areas[*i] <= threshold * threshold
+                    && faces.iter().any(|&fi| {
+                        self.triangles[fi]
+                            .iter()
+                            .any(|&v| self.vertices[v] == pinch)
+                    })
+                    && faces.iter().all(|&fi| {
+                        self.topology_face_in_region(fi, self.triangles[fi], brush, dabs, stencils)
+                            && self.triangles[fi].iter().all(|&v| self.mask[v] <= 0.001)
+                    })
+            })
+            .min_by(|(a, _), (b, _)| areas[*a].total_cmp(&areas[*b]))
+            .map(|(i, _)| i);
+        let Some(candidate) = candidate else {
+            return false;
+        };
+        if areas
+            .iter()
+            .enumerate()
+            .any(|(i, area)| i != candidate && *area <= areas[candidate])
+        {
+            return false;
+        }
+
+        let removed: HashSet<_> = groups[candidate].iter().copied().collect();
+        let kept: Vec<_> = (0..self.triangles.len())
+            .filter(|fi| !removed.contains(fi))
+            .collect();
+        let mut trial = self.clone();
+        let uv_current = trial.uv.current(self);
+        trial.triangles = kept.iter().map(|&fi| trial.triangles[fi]).collect();
+        if !trial.polygroups.is_empty() {
+            trial.polygroups = kept.iter().map(|&fi| trial.polygroups[fi]).collect();
+        }
+        if !trial.hidden_faces.is_empty() {
+            trial.hidden_faces = kept.iter().map(|&fi| trial.hidden_faces[fi]).collect();
+        }
+        if uv_current {
+            trial.uv.corners = kept.iter().map(|&fi| trial.uv.corners[fi]).collect();
+            if !trial.uv.masks.is_empty() {
+                trial.uv.masks = kept.iter().map(|&fi| trial.uv.masks[fi]).collect();
+            }
+            if !trial.uv.removed.is_empty() {
+                trial.uv.removed = kept.iter().map(|&fi| trial.uv.removed[fi]).collect();
+            }
+            trial.uv.topology = trial.triangles.clone();
+        }
+        trial.shading_seams = None;
+        trial.retain_adaptive_quads();
+        trial = super::fusion::compact(trial);
+        if trial.validate_closed().is_err() {
+            return false;
+        }
+        *self = trial;
+        true
+    }
+    fn topology_face_in_region(
+        &self,
+        face: usize,
+        triangle: [usize; 3],
+        brush: &Brush,
+        dabs: &[Dab],
+        stencils: &[Projection],
+    ) -> bool {
+        let points = triangle.map(|v| self.vertices[v]);
+        (Region { dabs, stencils }).permits_reconnection(brush, &points)
+            && self.face_visible(face)
+            && triangle.iter().all(|&v| self.mask[v] < 0.999)
+    }
+    // Redistribute dense sampling tangentially after smoothing, or vertices
+    // compressed by dragging/pinching. Snake retains its depth; Detail also
+    // damps small normal ripples between fresh triangles.
     fn relax_surface(
         &mut self,
         brush: &Brush,
@@ -401,7 +1064,8 @@ impl Mesh {
                     }
                 }
             }
-            let (normals, sums, counts) = self.relaxation_neighborhood(&active);
+            let (normals, sums, counts) =
+                self.relaxation_neighborhood(&active, brush.kind == Kind::Smooth);
             let mut moves = vec![Vec3::default(); self.vertices.len()];
             for i in 0..moves.len() {
                 if !sculptable[i]
@@ -422,13 +1086,18 @@ impl Mesh {
                     .iter()
                     .map(|dab| {
                         let offset = self.vertices[i] - dab.center;
-                        if brush.kind == Kind::Snake {
+                        let weight = if brush.kind == Kind::Snake {
                             brush.snake_weight(*dab, offset)
                         } else {
                             brush.weight(
                                 offset.dot(dab.right) / dab.radius,
                                 offset.dot(dab.up) / dab.radius,
                             )
+                        };
+                        if brush.kind == Kind::Smooth {
+                            weight * brush.dab_pressure(dab) * brush.strength * (1. - self.mask[i])
+                        } else {
+                            weight
                         }
                     })
                     .fold(0f32, f32::max);
@@ -439,7 +1108,12 @@ impl Mesh {
                 } else {
                     tangent
                 };
-                moves[i] = motion * (0.5 * influence * (1. - self.mask[i]));
+                moves[i] = motion
+                    * if brush.kind == Kind::Smooth {
+                        0.5 * influence
+                    } else {
+                        0.5 * influence * (1. - self.mask[i])
+                    };
                 let length = moves[i].len();
                 if length > target * 0.5 {
                     moves[i] = moves[i] * (target * 0.5 / length);
@@ -453,10 +1127,26 @@ impl Mesh {
         }
         changed
     }
-    fn relaxation_neighborhood(&self, active: &[bool]) -> (Vec<Vec3>, Vec<Vec3>, Vec<f32>) {
+    fn relaxation_neighborhood(
+        &self,
+        active: &[bool],
+        area_weighted: bool,
+    ) -> (Vec<Vec3>, Vec<Vec3>, Vec<f32>) {
         let mut normals = vec![Vec3::default(); self.vertices.len()];
         let mut sums = vec![Vec3::default(); self.vertices.len()];
         let mut counts = vec![0.; self.vertices.len()];
+        let mut areas = area_weighted.then(|| vec![0.; self.vertices.len()]);
+        if let Some(areas) = &mut areas {
+            for &[a, b, c] in &self.triangles {
+                let area = (self.vertices[b] - self.vertices[a])
+                    .cross(self.vertices[c] - self.vertices[a])
+                    .len()
+                    / 6.;
+                areas[a] += area;
+                areas[b] += area;
+                areas[c] += area;
+            }
+        }
         // Include all incident faces, even outside the brush. Retain the exact
         // face/addition order used by Mesh::normals and the full neighbor scan.
         for &[a, b, c] in &self.triangles {
@@ -468,8 +1158,14 @@ impl Mesh {
             for (i, j, k) in [(a, b, c), (b, c, a), (c, a, b)] {
                 if active[i] {
                     normals[i] = normals[i] + normal;
-                    sums[i] = sums[i] + self.vertices[j] + self.vertices[k];
-                    counts[i] += 2.;
+                    if let Some(areas) = &areas {
+                        sums[i] =
+                            sums[i] + self.vertices[j] * areas[j] + self.vertices[k] * areas[k];
+                        counts[i] += areas[j] + areas[k];
+                    } else {
+                        sums[i] = sums[i] + self.vertices[j] + self.vertices[k];
+                        counts[i] += 2.;
+                    }
                 }
             }
         }
@@ -525,8 +1221,16 @@ impl Mesh {
         stencils: &[Projection],
         limit: usize,
         unmasked_only: bool,
+        optimize_valence: bool,
     ) -> usize {
-        self.improve_edges_impl::<true>(brush, dabs, stencils, limit, unmasked_only)
+        self.improve_edges_impl::<true>(
+            brush,
+            dabs,
+            stencils,
+            limit,
+            unmasked_only,
+            optimize_valence,
+        )
     }
     fn improve_edges_impl<const FLAT: bool>(
         &mut self,
@@ -535,12 +1239,19 @@ impl Mesh {
         stencils: &[Projection],
         limit: usize,
         unmasked_only: bool,
+        optimize_valence: bool,
     ) -> usize {
         let protected = self.adaptive_protected_vertices(unmasked_only);
         let mut edges: Vec<((usize, usize), OrientedFaceEdge)> = Vec::new();
         let mut local_vertices = vec![false; self.vertices.len()];
+        let mut valences = optimize_valence.then(|| vec![0; self.vertices.len()]);
         let nearby_faces = self.patch_candidates(brush, dabs);
         for (i, &[a, b, c]) in self.triangles.iter().enumerate() {
+            if let Some(valences) = &mut valences {
+                for v in [a, b, c] {
+                    valences[v] += 1;
+                }
+            }
             if !nearby_faces[i] || !self.in_patch(i, [a, b, c], brush, dabs, stencils) {
                 continue;
             }
@@ -609,10 +1320,23 @@ impl Mesh {
             let old = [self.triangles[*i], self.triangles[*j]];
             let new = [[*c, *d, *b], [*d, *c, *a]];
             let n = normal(old[0]);
+            let old_quality = quality(old[0]).min(quality(old[1]));
+            let new_quality = quality(new[0]).min(quality(new[1]));
+            let shape_improves = new_quality > old_quality + 0.03;
+            let quad = [*a, *b, *c, *d];
+            let valence_improves = optimize_valence
+                && valences
+                    .as_ref()
+                    .is_some_and(|valences| valence_flip_improves(valences, quad));
+            let objective_improves = if optimize_valence {
+                valence_improves
+            } else {
+                shape_improves
+            };
             if n.dot(normal(old[1])) < 0.85
                 || new.iter().any(|&t| normal(t).dot(n) < 0.85)
-                || quality(new[0]).min(quality(new[1]))
-                    <= quality(old[0]).min(quality(old[1])) + 0.03
+                || (optimize_valence && (new_quality < old_quality * 0.8 || new_quality < 0.02))
+                || !objective_improves
             {
                 continue;
             }
@@ -855,6 +1579,7 @@ impl Mesh {
         threshold: f32,
         limit: usize,
         unmasked_only: bool,
+        preserve_surface: bool,
     ) -> usize {
         let protected = self.adaptive_protected_vertices(unmasked_only);
         let mut candidates = BTreeMap::new();
@@ -878,7 +1603,7 @@ impl Mesh {
             relevant[a] = true;
             relevant[b] = true;
         }
-        if brush.kind == Kind::Decimate {
+        if preserve_surface {
             let endpoints = relevant.clone();
             for t in &self.triangles {
                 if t.iter().any(|&i| endpoints[i]) {
@@ -915,7 +1640,32 @@ impl Mesh {
             {
                 continue;
             }
-            if brush.kind == Kind::Decimate {
+            if brush.kind == Kind::Smooth {
+                // Smooth uses edge size to decide coarsening, not the amount
+                // of positional motion. Require both endpoints to be inside
+                // the brush's influenced area, then retain the surface-error
+                // and fold guards below.
+                let influenced = dabs.iter().any(|dab| {
+                    let pressure = if brush.pressure {
+                        dab.pressure.powf(brush.pressure_curve)
+                    } else {
+                        1.
+                    };
+                    [a, b].into_iter().all(|i| {
+                        let offset = self.vertices[i] - dab.center;
+                        offset.len() <= dab.radius
+                            && brush.weight(
+                                offset.dot(dab.right) / dab.radius,
+                                offset.dot(dab.up) / dab.radius,
+                            ) * pressure
+                                * (1. - self.mask[i])
+                                > 0.001
+                    })
+                });
+                if !influenced || (self.vertices[a] - self.vertices[b]).len() >= threshold {
+                    continue;
+                }
+            } else if brush.kind == Kind::Decimate {
                 // Both endpoints must be inside the same brush copy. A tiny
                 // falloff/pressure must not remove full-size edges at the rim.
                 let influence = dabs
@@ -975,18 +1725,24 @@ impl Mesh {
                     continue;
                 }
             }
+            let minimum_quality = if brush.kind == Kind::Smooth {
+                0.02
+            } else {
+                0.2
+            };
             if !self.safe_edge_collapse(
                 [a, b],
                 &neighbors,
                 &incident,
                 threshold,
-                brush.kind == Kind::Decimate,
+                preserve_surface,
+                minimum_quality,
             ) {
                 continue;
             }
             blocked.extend(neighbors[a].iter().copied());
             blocked.extend(neighbors[b].iter().copied());
-            if brush.kind == Kind::Decimate {
+            if preserve_surface {
                 // Adjacent changed faces must not pass the fold guard against
                 // each other's old positions and then fold in combination.
                 for &i in neighbors[a].iter().chain(&neighbors[b]) {
@@ -1015,6 +1771,9 @@ impl Mesh {
                 g.weights[a] = (g.weights[a] + g.weights[b]) * 0.5;
             }
         }
+        self.compact_vertex_merges(merged);
+    }
+    fn compact_vertex_merges(&mut self, merged: &HashMap<usize, usize>) {
         let mut indices = vec![0; self.vertices.len()];
         let mut vertices = Vec::with_capacity(self.vertices.len() - merged.len());
         let mut mask = Vec::with_capacity(vertices.capacity());
@@ -1038,10 +1797,31 @@ impl Mesh {
             })
             .map(|(i, _)| i)
             .collect();
-        let triangles = old_faces
+        let triangles: Vec<[usize; 3]> = old_faces
             .iter()
             .map(|&i| self.triangles[i].map(|v| indices[v]))
             .collect();
+        let uv_current = self.uv.current(self);
+        if uv_current {
+            self.uv.corners = old_faces.iter().map(|&i| self.uv.corners[i]).collect();
+            if !self.uv.masks.is_empty() {
+                self.uv.masks = old_faces.iter().map(|&i| self.uv.masks[i]).collect();
+            }
+            if !self.uv.removed.is_empty() {
+                self.uv.removed = old_faces.iter().map(|&i| self.uv.removed[i]).collect();
+            }
+            self.uv.topology = triangles.clone();
+            self.uv.seams = self
+                .uv
+                .seams
+                .iter()
+                .map(|&e| e.map(|v| indices[v]))
+                .filter(|e| e[0] != e[1])
+                .map(|e| super::uv::edge(e[0], e[1]))
+                .collect();
+            self.uv.seams.sort_unstable();
+            self.uv.seams.dedup();
+        }
         if !self.polygroups.is_empty() {
             self.polygroups = old_faces.iter().map(|&i| self.polygroups[i]).collect();
         }
@@ -1076,7 +1856,47 @@ impl Mesh {
         }
         self.loose_edges.sort_unstable();
         self.triangles = triangles;
+        self.shading_seams = None;
         self.retain_adaptive_quads();
+    }
+    /// Contract a short closed edge loop as one event. The subsequent vertex
+    /// fan split turns the resulting pinch into separate closed components.
+    fn contract_short_cycle(&mut self, cycle: &[usize]) -> Option<(Vec3, usize)> {
+        if cycle.len() < 4 {
+            return None;
+        }
+        let mut vertices = cycle.to_vec();
+        vertices.sort_unstable();
+        vertices.dedup();
+        if vertices.len() != cycle.len() {
+            return None;
+        }
+        let representative = vertices[0];
+        let count = vertices.len() as f32;
+        let position = vertices
+            .iter()
+            .map(|&v| self.vertices[v])
+            .fold(Vec3::default(), |sum, p| sum + p)
+            * (1. / count);
+        let mask = vertices.iter().map(|&v| self.mask[v]).sum::<f32>() / count;
+        self.vertices[representative] = position;
+        self.mask[representative] = mask;
+        if !self.materials.is_empty() {
+            self.materials[representative] =
+                super::Material::blend(vertices.iter().map(|&v| (self.material(v), 1. / count)));
+        }
+        for group in &mut self.vertex_groups {
+            group.weights[representative] =
+                vertices.iter().map(|&v| group.weights[v]).sum::<f32>() / count;
+        }
+        let merged: HashMap<_, _> = vertices
+            .iter()
+            .copied()
+            .filter(|&v| v != representative)
+            .map(|v| (v, representative))
+            .collect();
+        self.compact_vertex_merges(&merged);
+        Some((position, representative))
     }
     pub(super) fn safe_edge_collapse(
         &self,
@@ -1084,7 +1904,8 @@ impl Mesh {
         neighbors: &[Vec<usize>],
         incident: &[Vec<usize>],
         threshold: f32,
-        decimate: bool,
+        preserve_surface: bool,
+        minimum_quality: f32,
     ) -> bool {
         let shared: Vec<_> = incident[a]
             .iter()
@@ -1130,7 +1951,7 @@ impl Mesh {
         affected.dedup();
         for index in affected {
             let old = self.triangles[index];
-            if decimate
+            if preserve_surface
                 && (position - self.vertices[old[0]]).dot(normal(old)).abs() > threshold * 0.08
             {
                 // Local plane-error guard: short edges on a ridge can still
@@ -1148,13 +1969,13 @@ impl Mesh {
             }
             let [x, y, z] = new.map(|i| if i == a { position } else { self.vertices[i] });
             let cross = (y - x).cross(z - x);
-            if decimate {
+            if preserve_surface {
                 let quality = |x: Vec3, y: Vec3, z: Vec3| {
                     let sum = (y - x).dot(y - x) + (z - y).dot(z - y) + (x - z).dot(x - z);
                     2. * 3f32.sqrt() * (y - x).cross(z - x).len() / sum.max(1e-20)
                 };
                 let [u, v, w] = old.map(|i| self.vertices[i]);
-                let minimum = (quality(u, v, w) * 0.8).clamp(0.2, 0.35);
+                let minimum = (quality(u, v, w) * 0.8).clamp(minimum_quality, 0.35);
                 if quality(x, y, z) < minimum {
                     return false;
                 }
@@ -1163,7 +1984,7 @@ impl Mesh {
                 return false;
             }
         }
-        !decimate || self.collapse_preserves_folds(a, b, position, neighbors, incident)
+        !preserve_surface || self.collapse_preserves_folds(a, b, position, neighbors, incident)
     }
     fn collapse_preserves_folds(
         &self,
@@ -1373,6 +2194,15 @@ fn retain_split_candidates(candidates: &mut Vec<((usize, usize), f32)>, capacity
 }
 fn edge(a: usize, b: usize) -> (usize, usize) {
     (a.min(b), a.max(b))
+}
+fn valence_flip_improves(valences: &[usize], [a, b, c, d]: [usize; 4]) -> bool {
+    let error = |valence: usize| (valence as isize - 6).pow(2) as usize;
+    let before = error(valences[a]) + error(valences[b]) + error(valences[c]) + error(valences[d]);
+    let after = error(valences[a].saturating_sub(1))
+        + error(valences[b].saturating_sub(1))
+        + error(valences[c] + 1)
+        + error(valences[d] + 1);
+    after < before
 }
 
 #[cfg(all(test, not(feature = "focused-retopology")))]
@@ -1726,7 +2556,8 @@ mod tests {
         }
         for divisor in [1, 7, 23] {
             let active: Vec<_> = (0..mesh.vertices.len()).map(|i| i % divisor == 0).collect();
-            let (local_normals, local_sums, local_counts) = mesh.relaxation_neighborhood(&active);
+            let (local_normals, local_sums, local_counts) =
+                mesh.relaxation_neighborhood(&active, false);
             for i in 0..active.len() {
                 if active[i] {
                     assert_eq!(local_normals[i], normals[i]);
@@ -1738,6 +2569,80 @@ mod tests {
                     assert_eq!(local_counts[i], 0.);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn valence_flip_objective_moves_toward_regular_triangle_valence() {
+        assert!(valence_flip_improves(&[7, 7, 5, 5], [0, 1, 2, 3]));
+        assert!(!valence_flip_improves(&[5, 5, 7, 7], [0, 1, 2, 3]));
+        assert!(!valence_flip_improves(&[6, 6, 6, 6], [0, 1, 2, 3]));
+    }
+
+    #[test]
+    fn smooth_tangential_rebalance_reduces_uneven_vertex_area() {
+        let n = 24;
+        let mut mesh = Mesh::default();
+        for y in 0..=n {
+            for x in 0..=n {
+                let u = (x as f32 / n as f32).powf(1.6) * 2. - 1.;
+                let v = y as f32 / n as f32 * 2. - 1.;
+                mesh.vertices.push(Vec3(u, v, 1.));
+                mesh.mask.push(0.);
+            }
+        }
+        for y in 0..n {
+            for x in 0..n {
+                let a = y * (n + 1) + x;
+                mesh.triangles
+                    .extend([[a, a + 1, a + n + 2], [a, a + n + 2, a + n + 1]]);
+            }
+        }
+        let dab = Dab {
+            center: Vec3(0., 0., 1.),
+            normal: Vec3(0., 0., 1.),
+            right: Vec3(1., 0., 0.),
+            up: Vec3(0., 1., 0.),
+            radius: 0.8,
+            ..dab()
+        };
+        let brush = Brush::new(Kind::Smooth);
+        let center = Vec3(0., 0., 1.);
+        let local_areas = |mesh: &Mesh| {
+            let mut areas = vec![0.; mesh.vertices.len()];
+            for &[a, b, c] in &mesh.triangles {
+                let area = (mesh.vertices[b] - mesh.vertices[a])
+                    .cross(mesh.vertices[c] - mesh.vertices[a])
+                    .len()
+                    / 6.;
+                for i in [a, b, c] {
+                    areas[i] += area;
+                }
+            }
+            areas
+                .into_iter()
+                .zip(&mesh.vertices)
+                .filter(|(_, p)| (**p - center).len() < 0.3)
+                .map(|(area, _)| area)
+                .collect::<Vec<_>>()
+        };
+        let variance = |values: &[f32]| {
+            let mean = values.iter().sum::<f32>() / values.len() as f32;
+            values.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / values.len() as f32
+        };
+        let before = local_areas(&mesh);
+        let original_positions = mesh.vertices.clone();
+        assert!(mesh.relax_surface(&brush, &[dab], &[], 0.1, false));
+        let after = local_areas(&mesh);
+        assert!(
+            variance(&after) < variance(&before),
+            "area-weighted tangential redistribution should reduce clustering"
+        );
+        for (before, after) in original_positions.iter().zip(&mesh.vertices) {
+            assert_eq!(
+                before.2, after.2,
+                "tangential relaxation must keep a plane flat"
+            );
         }
     }
 
@@ -1793,10 +2698,10 @@ mod tests {
         };
         let mut actual = original.clone();
         let mut expected = original.clone();
-        let count = actual.improve_edges_impl::<true>(&brush, &[d], &[], 64, false);
+        let count = actual.improve_edges_impl::<true>(&brush, &[d], &[], 64, false, false);
         assert_eq!(
             count,
-            expected.improve_edges_impl::<false>(&brush, &[d], &[], 64, false)
+            expected.improve_edges_impl::<false>(&brush, &[d], &[], 64, false, false)
         );
         assert_eq!(
             count, 1,
@@ -1814,8 +2719,15 @@ mod tests {
             let mut expected = actual.clone();
             for limit in [1, 16, 64] {
                 assert_eq!(
-                    actual.improve_edges_impl::<true>(&brush, &[dab()], &[], limit, false),
-                    expected.improve_edges_impl::<false>(&brush, &[dab()], &[], limit, false)
+                    actual.improve_edges_impl::<true>(&brush, &[dab()], &[], limit, false, false),
+                    expected.improve_edges_impl::<false>(
+                        &brush,
+                        &[dab()],
+                        &[],
+                        limit,
+                        false,
+                        false
+                    )
                 );
                 assert_eq!(actual, expected);
             }
@@ -2078,24 +2990,32 @@ mod tests {
         );
     }
     #[test]
-    fn smooth_keeps_topology_fixed_and_decimation_never_refines() {
-        let original = Mesh::sphere();
+    fn adaptive_smooth_collapses_only_after_smoothing_and_never_refines() {
+        let original = Mesh::sphere().subdivide().unwrap();
         for simplify in [false, true] {
             let settings = AdaptiveSettings {
                 enabled: true,
-                detail: 2.,
+                detail: 16.,
                 simplify,
                 ..Default::default()
             };
             let mut mesh = original.clone();
-            mesh.adapt(
-                &Brush::new(Kind::Smooth),
-                &[dab()],
-                &settings,
-                &mut Budget::default(),
-                true,
-            );
-            assert_eq!(mesh, original);
+            let brush = Brush::new(Kind::Smooth);
+            mesh.adapt(&brush, &[dab()], &settings, &mut Budget::default(), true);
+            assert_eq!(mesh, original, "Smooth must not collapse before relaxing");
+            mesh.stamp(&brush, dab());
+            let relaxed = mesh.clone();
+            let changed = mesh.adapt(&brush, &[dab()], &settings, &mut Budget::default(), false);
+            if simplify {
+                assert!(changed);
+                assert!(mesh.vertices.len() < relaxed.vertices.len());
+            } else {
+                assert!(!changed);
+                assert_eq!(mesh, relaxed);
+            }
+            assert!(mesh.vertices.len() <= relaxed.vertices.len());
+            mesh.validate_closed().unwrap();
+
             mesh.adapt(
                 &Brush::new(Kind::Decimate),
                 &[dab()],
@@ -2106,6 +3026,238 @@ mod tests {
             assert!(mesh.vertices.len() <= original.vertices.len());
             mesh.validate_closed().unwrap();
         }
+    }
+    #[test]
+    fn adaptive_smooth_splits_a_pinched_vertex_into_closed_fans() {
+        let mut first = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Icosphere);
+        first.subdivisions = 1;
+        let mut mesh = first.mesh().unwrap();
+        let shared = 0;
+        let offset = mesh.vertices.len();
+        let mut second = mesh.clone();
+        for face in &mut second.triangles {
+            *face = face.map(|v| if v == shared { shared } else { v + offset });
+        }
+        mesh.vertices.extend(second.vertices.iter().copied());
+        mesh.mask.extend(second.mask.iter().copied());
+        mesh.triangles.extend(second.triangles);
+        mesh.polygroups.clear();
+        mesh.hidden_faces.clear();
+        let before_vertices = mesh.vertices.len();
+        mesh.validate_closed().unwrap();
+
+        let normal = mesh.normals()[shared];
+        let dab = Dab {
+            center: mesh.vertices[shared],
+            normal,
+            right: Vec3(1., 0., 0.),
+            up: Vec3(0., 1., 0.),
+            radius: 0.35,
+            pressure: 1.,
+            delta: Vec3::default(),
+            invert: false,
+        };
+        let brush = Brush::new(Kind::Smooth);
+        assert_eq!(
+            mesh.split_disconnected_fans(&brush, &[dab], &[], 4, false),
+            1
+        );
+        assert_eq!(mesh.vertices.len(), before_vertices + 1);
+        assert_eq!(mesh.vertices[before_vertices], mesh.vertices[shared]);
+        mesh.validate_closed().unwrap();
+
+        let duplicate = before_vertices;
+        let first_star: Vec<_> = mesh
+            .triangles
+            .iter()
+            .filter(|face| face.contains(&shared))
+            .collect();
+        let second_star: Vec<_> = mesh
+            .triangles
+            .iter()
+            .filter(|face| face.contains(&duplicate))
+            .collect();
+        assert!(!first_star.is_empty());
+        assert!(!second_star.is_empty());
+        assert!(first_star.iter().all(|face| !face.contains(&duplicate)));
+        assert!(second_star.iter().all(|face| !face.contains(&shared)));
+    }
+    #[test]
+    fn adaptive_smooth_splits_a_closed_neck_at_the_detail_scale() {
+        let around = 8;
+        let levels = [(-2., 1.), (-1., 1.), (0., 0.03), (1., 1.), (2., 1.)];
+        let mut mesh = Mesh::default();
+        for (z, radius) in levels {
+            for i in 0..around {
+                let angle = std::f32::consts::TAU * i as f32 / around as f32;
+                mesh.vertices
+                    .push(Vec3(radius * angle.cos(), radius * angle.sin(), z));
+            }
+        }
+        for level in 0..levels.len() - 1 {
+            for i in 0..around {
+                let next = (i + 1) % around;
+                let a = level * around + i;
+                let b = level * around + next;
+                let c = (level + 1) * around + next;
+                let d = (level + 1) * around + i;
+                mesh.triangles.extend([[a, b, c], [a, c, d]]);
+            }
+        }
+        let bottom = mesh.vertices.len();
+        mesh.vertices.push(Vec3(0., 0., -3.));
+        let top = mesh.vertices.len();
+        mesh.vertices.push(Vec3(0., 0., 3.));
+        for i in 0..around {
+            let next = (i + 1) % around;
+            mesh.triangles.push([bottom, next, i]);
+            let upper = (levels.len() - 1) * around;
+            mesh.triangles.push([upper + i, upper + next, top]);
+        }
+        mesh.mask = vec![0.; mesh.vertices.len()];
+        mesh.validate_closed().unwrap();
+
+        let dab = Dab {
+            center: Vec3::default(),
+            normal: Vec3(0., 0., 1.),
+            right: Vec3(1., 0., 0.),
+            up: Vec3(0., 1., 0.),
+            radius: 1.1,
+            pressure: 1.,
+            delta: Vec3::default(),
+            invert: false,
+        };
+        let brush = Brush::new(Kind::Smooth);
+        assert_eq!(mesh.edge_connected_face_components(), 1);
+        let mut adapted = mesh.clone();
+        let settings = AdaptiveSettings {
+            enabled: true,
+            detail: 32.,
+            refine: false,
+            ..Default::default()
+        };
+        let mut brush = brush;
+        brush.radius = 50.;
+        assert!(adapted.adapt(&brush, &[dab], &settings, &mut Budget::default(), false));
+        assert_eq!(adapted.edge_connected_face_components(), 2);
+        adapted.validate_closed().unwrap();
+
+        assert_eq!(
+            mesh.collapse_short_detail_cycles(&brush, &[dab], &[], 0.1, 1, false),
+            1
+        );
+        assert_eq!(mesh.edge_connected_face_components(), 2);
+        mesh.validate_closed().unwrap();
+    }
+    #[test]
+    fn adaptive_smooth_collapses_a_sub_detail_terminal_loop_without_opening_surface() {
+        let around = 8;
+        let levels = [(-2., 1.), (-1., 1.), (0., 1.), (1., 1.), (2., 0.03)];
+        let mut mesh = Mesh::default();
+        for (z, radius) in levels {
+            for i in 0..around {
+                let angle = std::f32::consts::TAU * i as f32 / around as f32;
+                mesh.vertices
+                    .push(Vec3(radius * angle.cos(), radius * angle.sin(), z));
+            }
+        }
+        for level in 0..levels.len() - 1 {
+            for i in 0..around {
+                let next = (i + 1) % around;
+                let a = level * around + i;
+                let b = level * around + next;
+                let c = (level + 1) * around + next;
+                let d = (level + 1) * around + i;
+                mesh.triangles.extend([[a, b, c], [a, c, d]]);
+            }
+        }
+        let bottom = mesh.vertices.len();
+        mesh.vertices.push(Vec3(0., 0., -3.));
+        let top = mesh.vertices.len();
+        mesh.vertices.push(Vec3(0., 0., 3.));
+        for i in 0..around {
+            let next = (i + 1) % around;
+            mesh.triangles.push([bottom, next, i]);
+            let upper = (levels.len() - 1) * around;
+            mesh.triangles.push([upper + i, upper + next, top]);
+        }
+        mesh.mask = vec![0.; mesh.vertices.len()];
+        mesh.validate_closed().unwrap();
+        let before_vertices = mesh.vertices.len();
+
+        let dab = Dab {
+            center: Vec3(0., 0., 2.5),
+            normal: Vec3(0., 0., 1.),
+            right: Vec3(1., 0., 0.),
+            up: Vec3(0., 1., 0.),
+            radius: 1.1,
+            pressure: 1.,
+            delta: Vec3::default(),
+            invert: false,
+        };
+        assert_eq!(mesh.edge_connected_face_components(), 1);
+        assert_eq!(
+            mesh.collapse_short_detail_cycles(
+                &Brush::new(Kind::Smooth),
+                &[dab],
+                &[],
+                0.1,
+                1,
+                false
+            ),
+            1
+        );
+        assert!(mesh.vertices.len() < before_vertices);
+        assert_eq!(mesh.edge_connected_face_components(), 1);
+        mesh.validate_closed().unwrap();
+    }
+    #[test]
+    fn adaptive_smooth_removes_only_a_fully_covered_sub_detail_component() {
+        let mut primitive =
+            crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Icosphere);
+        primitive.subdivisions = 1;
+        let mut small = primitive.mesh().unwrap();
+        for point in &mut small.vertices {
+            *point = *point * 0.01;
+        }
+        let pinch = small.vertices[0];
+        let mut large = primitive.mesh().unwrap();
+        let offset = small.vertices.len();
+        for point in &mut large.vertices {
+            *point = *point + Vec3(10., 0., 0.);
+        }
+        small.vertices.extend(large.vertices);
+        small.mask.extend(large.mask);
+        small.triangles.extend(
+            large
+                .triangles
+                .into_iter()
+                .map(|face| face.map(|v| v + offset)),
+        );
+        let mut mesh = small;
+        mesh.validate_closed().unwrap();
+        assert_eq!(mesh.edge_connected_face_components(), 2);
+
+        let dab = Dab {
+            center: Vec3(5., 0., 0.),
+            normal: Vec3(0., 0., 1.),
+            right: Vec3(1., 0., 0.),
+            up: Vec3(0., 1., 0.),
+            radius: 20.,
+            pressure: 1.,
+            delta: Vec3::default(),
+            invert: false,
+        };
+        let brush = Brush::new(Kind::Smooth);
+        let before = mesh.clone();
+        assert!(!mesh.remove_sub_detail_pinched_component(pinch, 0.001, &brush, &[dab], &[],));
+        assert_eq!(
+            mesh, before,
+            "sub-detail pruning must follow the detail scale"
+        );
+        assert!(mesh.remove_sub_detail_pinched_component(pinch, 0.1, &brush, &[dab], &[],));
+        assert_eq!(mesh.edge_connected_face_components(), 1);
+        mesh.validate_closed().unwrap();
     }
     #[test]
     fn protected_zero_alpha_and_mask_brush_leave_topology_unchanged() {
@@ -2217,7 +3369,7 @@ mod group_tests {
         assert!(m.split_local(&brush, &[dab], &[], 0.02, 16, false) > 0);
         m.validate_closed().unwrap();
         assert!(m.hidden_face_count() > 0);
-        m.collapse_local(&brush, &[dab], &[], 0.3, 16, false);
+        m.collapse_local(&brush, &[dab], &[], 0.3, 16, false, false);
         m.validate_closed().unwrap();
         assert!(m.hidden_face_count() > 0);
         for p in hidden_points {
@@ -2245,7 +3397,7 @@ mod group_tests {
         m.validate_closed().unwrap();
         assert_eq!(m.polygroups, vec![1; m.triangles.len()]);
         assert!(m.vertex_groups[0].weights.iter().all(|&w| w == 1.));
-        let count = m.collapse_local(&brush, &[dab], &[], 3., 16, false);
+        let count = m.collapse_local(&brush, &[dab], &[], 3., 16, false, false);
         assert!(count > 0);
         m.validate_closed().unwrap();
         assert_eq!(m.polygroups, vec![1; m.triangles.len()]);
