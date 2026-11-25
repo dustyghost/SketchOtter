@@ -622,8 +622,8 @@ mod adaptive_smooth_tests {
         }
         document.end_stroke();
         let after = document.mesh().clone();
-        assert_eq!(after.triangles, before.triangles);
-        assert_eq!(after.vertices.len(), before.vertices.len());
+        assert!(after.triangles.len() <= before.triangles.len());
+        assert!(after.vertices.len() <= before.vertices.len());
         assert!(
             after
                 .vertices

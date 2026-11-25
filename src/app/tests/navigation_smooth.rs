@@ -273,7 +273,7 @@ fn switching_to_smooth_discards_pending_stamp_and_keeps_one_undo_step() {
 }
 
 #[test]
-fn adaptive_shift_smooth_keeps_topology_and_decimate_reports_reduction() {
+fn adaptive_shift_smooth_can_reduce_dense_topology_and_decimate_never_refines() {
     let mut app = App::default();
     let ctx = egui::Context::default();
     app.document
@@ -308,7 +308,8 @@ fn adaptive_shift_smooth_keeps_topology_and_decimate_reports_reduction() {
         egui::Modifiers::SHIFT,
         vec![primary_event(center + Vec2::new(45., 0.), false)],
     );
-    assert_eq!(app.document.mesh().triangles, before.mesh.triangles);
+    assert!(app.document.mesh().triangles.len() <= before.mesh.triangles.len());
+    assert!(app.document.mesh().vertices.len() <= before.mesh.vertices.len());
     assert_ne!(app.document.mesh().vertices, before.mesh.vertices);
     app.dispatch(Command::Undo, &ctx);
     assert_eq!(app.document.geometry_snapshot(), before);
