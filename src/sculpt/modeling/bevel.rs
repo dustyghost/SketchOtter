@@ -1,6 +1,16 @@
 //! Bounded edge strips and vertex corner patches on closed surface fans.
 use super::*;
 
+/// Sample the quadratic corner profile used by rounded component bevels.
+///
+/// Keeping this curve independent of topology lets other modeling tools,
+/// including generated panel borders, sample the same rounded profile.
+pub(crate) fn rounded_bevel_profile(start: Vec3, corner: Vec3, end: Vec3, t: f32) -> Vec3 {
+    let t = t.clamp(0., 1.);
+    let u = 1. - t;
+    start * (u * u) + corner * (2. * u * t) + end * (t * t)
+}
+
 impl Mesh {
     /// One segment is a flat chamfer; additional segments round the cut.
     pub(crate) fn bevel_components(
@@ -233,7 +243,11 @@ impl Mesh {
             for i in 0..segments as usize {
                 out.push_polygon(
                     &[bb[i], aa[i], aa[i + 1], bb[i + 1]],
-                    polygons[f].group,
+                    if polygons[f].group == polygons[g].group {
+                        polygons[f].group
+                    } else {
+                        0
+                    },
                     false,
                 );
             }
@@ -360,9 +374,8 @@ fn rounded_path(
     let mut path = vec![a];
     for i in 1..segments {
         let t = i as f32 / segments as f32;
-        let position = out.vertices[a] * ((1. - t) * (1. - t))
-            + source.vertices[v] * (2. * t * (1. - t))
-            + out.vertices[b] * (t * t);
+        let position =
+            rounded_bevel_profile(out.vertices[a], source.vertices[v], out.vertices[b], t);
         let id = out.append_blend(source, &[(v, 1.)], position);
         owners.insert(id, v);
         path.push(id);
@@ -578,5 +591,159 @@ mod tests {
         open.quads.clear();
         open.uv = Default::default();
         assert!(open.bevel_components(&[], &[0], 0.1, 3, &sym).is_err());
+    }
+
+    #[test]
+    fn rounded_bevel_profile_uses_clamped_quadratic_samples() {
+        let a = Vec3(0., 0., 0.);
+        let corner = Vec3(0., 1., 0.);
+        let b = Vec3(1., 1., 0.);
+        assert_eq!(rounded_bevel_profile(a, corner, b, 0.), a);
+        assert_eq!(rounded_bevel_profile(a, corner, b, 1.), b);
+        assert_eq!(
+            rounded_bevel_profile(a, corner, b, 0.5),
+            Vec3(0.25, 0.75, 0.)
+        );
+        assert_eq!(rounded_bevel_profile(a, corner, b, -1.), a);
+        assert_eq!(rounded_bevel_profile(a, corner, b, 2.), b);
+    }
+
+    #[test]
+    fn interior_edge_bevel_uses_neutral_group_at_mixed_group_junctions() {
+        let mut mesh = cube();
+        let polygons = mesh.polygons();
+        let selected = polygons[0].edges().next().unwrap();
+        let adjacent: Vec<_> = polygons
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| {
+                p.edges()
+                    .any(|(a, b)| edge(a, b) == edge(selected.0, selected.1))
+            })
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(adjacent.len(), 2);
+
+        let mut groups = vec![1; mesh.triangles.len()];
+        for (face, polygon) in polygons.iter().enumerate() {
+            let group = if face == adjacent[0] {
+                1
+            } else if face == adjacent[1] {
+                2
+            } else {
+                1
+            };
+            for (i, triangle) in mesh.triangles.iter().enumerate() {
+                if triangle.iter().all(|v| polygon.vertices.contains(v)) {
+                    groups[i] = group;
+                }
+            }
+        }
+        mesh.polygroups = groups;
+        mesh.vertex_groups = (1..=2)
+            .map(|id| crate::sculpt::VertexGroup {
+                purpose: crate::sculpt::GroupPurpose::Selection,
+                visible: true,
+                name: format!("group {id}"),
+                weights: vec![0.; mesh.vertices.len()],
+            })
+            .collect();
+        let untouched_face = polygons
+            .iter()
+            .find(|p| {
+                !p.vertices
+                    .iter()
+                    .any(|v| [selected.0, selected.1].contains(v))
+            })
+            .unwrap();
+        let other_crease = untouched_face
+            .edges()
+            .map(|(a, b)| edge(a, b))
+            .next()
+            .unwrap();
+        mesh.creases = vec![edge(selected.0, selected.1), other_crease];
+        mesh.creases.sort_unstable();
+
+        let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+        let out = mesh
+            .bevel_components(&[edge(selected.0, selected.1)], &[], 0.1, 3, &symmetry)
+            .unwrap();
+        assert!(
+            out.polygroups.contains(&0),
+            "mixed-group bevel strip is neutral"
+        );
+        assert!(
+            out.polygroups.contains(&1) && out.polygroups.contains(&2),
+            "edited source faces retain their original group labels"
+        );
+        let crease_connects = |mesh: &Mesh, a: Vec3, b: Vec3| {
+            mesh.creases.iter().any(|&[u, v]| {
+                (mesh.vertices[u] == a && mesh.vertices[v] == b)
+                    || (mesh.vertices[u] == b && mesh.vertices[v] == a)
+            })
+        };
+        let other_points = other_crease.map(|v| mesh.vertices[v]);
+        let selected_points = [mesh.vertices[selected.0], mesh.vertices[selected.1]];
+        assert!(crease_connects(&out, other_points[0], other_points[1]));
+        assert!(!crease_connects(
+            &out,
+            selected_points[0],
+            selected_points[1]
+        ));
+    }
+
+    #[test]
+    fn vertex_bevel_handles_an_irregular_valence_fan() {
+        let mut mesh = Mesh {
+            vertices: vec![Vec3(0., 1., 0.), Vec3(0., -1., 0.)],
+            ..Default::default()
+        };
+        let sides = 5;
+        for i in 0..sides {
+            let angle = std::f32::consts::TAU * i as f32 / sides as f32;
+            mesh.vertices.push(Vec3(angle.cos(), 0., angle.sin()));
+        }
+        for i in 0..sides {
+            let a = 2 + i;
+            let b = 2 + (i + 1) % sides;
+            mesh.triangles.extend([[0, b, a], [1, a, b]]);
+        }
+        mesh.mask.resize(mesh.vertices.len(), 0.);
+        let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+        let out = mesh.bevel_components(&[], &[0], 0.1, 3, &symmetry).unwrap();
+        out.validate_closed().unwrap();
+    }
+
+    #[test]
+    fn vertex_bevel_rejects_a_concave_face_corner() {
+        let mut mesh = cube();
+        let polygon = mesh
+            .polygons()
+            .into_iter()
+            .find(|p| p.vertices.len() == 4)
+            .unwrap();
+        let v = polygon.vertices[0];
+        let a = polygon.vertices[polygon.vertices.len() - 1];
+        let b = polygon.vertices[1];
+        let n = normal(&mesh, &polygon);
+        let midpoint = (mesh.vertices[a] + mesh.vertices[b]) * 0.5;
+        let direction = (mesh.vertices[b] - mesh.vertices[a]).cross(n).norm();
+        let offset = (mesh.vertices[b] - mesh.vertices[a]).len() * 0.1;
+        let concave = [1., -1.]
+            .into_iter()
+            .map(|sign| midpoint + direction * (offset * sign))
+            .find(|candidate| {
+                let da = mesh.vertices[a] - *candidate;
+                let db = mesh.vertices[b] - *candidate;
+                db.cross(da).dot(n) < -1e-5
+            })
+            .unwrap();
+        mesh.vertices[v] = concave;
+
+        let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+        let error = mesh
+            .bevel_components(&[], &[v], 0.1, 3, &symmetry)
+            .unwrap_err();
+        assert!(error.contains("convex face corners"), "{error}");
     }
 }
