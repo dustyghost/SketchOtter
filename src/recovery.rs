@@ -259,10 +259,10 @@ impl Recovery {
         if sender.send(Job::Retire(self.session.clone())).is_ok() {
             self.pending += 1;
         }
-        if let Some(session) = self.recovered_session.take() {
-            if sender.send(Job::Retire(session)).is_ok() {
-                self.pending += 1;
-            }
+        if let Some(session) = self.recovered_session.take()
+            && sender.send(Job::Retire(session)).is_ok()
+        {
+            self.pending += 1;
         }
         self.last_attempt = Instant::now();
     }
@@ -270,17 +270,14 @@ impl Recovery {
         // Keep the chosen session on disk until a manual save or deliberate discard,
         // even when restoring one of its versions repeatedly.
         let sender = self.sender.as_ref().unwrap();
-        if self.session != entry.session {
-            if sender.send(Job::Retire(self.session.clone())).is_ok() {
-                self.pending += 1;
-            }
+        if self.session != entry.session && sender.send(Job::Retire(self.session.clone())).is_ok() {
+            self.pending += 1;
         }
         if let Some(previous) = self.recovered_session.take()
             && previous != entry.session
+            && sender.send(Job::Retire(previous)).is_ok()
         {
-            if sender.send(Job::Retire(previous)).is_ok() {
-                self.pending += 1;
-            }
+            self.pending += 1;
         }
         self.recovered_session = (self.session != entry.session).then(|| entry.session.clone());
         self.last_attempt = Instant::now();

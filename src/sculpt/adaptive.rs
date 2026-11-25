@@ -80,6 +80,13 @@ struct SplitOptions {
     relief: bool,
     unmasked_only: bool,
 }
+#[derive(Clone, Copy)]
+struct CollapseOptions {
+    threshold: f32,
+    limit: usize,
+    unmasked_only: bool,
+    preserve_surface: bool,
+}
 
 /// Bound topology work per rendered input frame, shared by all interpolated dabs.
 pub(crate) struct Budget {
@@ -343,16 +350,18 @@ impl Mesh {
                 brush,
                 dabs,
                 stencils,
-                (if brush.kind == Kind::Detail {
-                    target.min(dabs[0].radius * super::detail::CORE_EDGE_FRACTION)
-                } else {
-                    target
-                }) * settings.collapse_fraction(brush.kind),
-                // Cleanup can remove more independent edges in the same mesh
-                // scan. Deformation brushes retain their smaller allowance.
-                budget.collapses.min(if cleanup { 256 } else { 32 }),
-                settings.unmasked_only,
-                cleanup || smoothing,
+                CollapseOptions {
+                    threshold: (if brush.kind == Kind::Detail {
+                        target.min(dabs[0].radius * super::detail::CORE_EDGE_FRACTION)
+                    } else {
+                        target
+                    }) * settings.collapse_fraction(brush.kind),
+                    // Cleanup can remove more independent edges in the same mesh
+                    // scan. Deformation brushes retain their smaller allowance.
+                    limit: budget.collapses.min(if cleanup { 256 } else { 32 }),
+                    unmasked_only: settings.unmasked_only,
+                    preserve_surface: cleanup || smoothing,
+                },
             );
             budget.collapses = 0;
             changed |= count > 0;
@@ -1576,11 +1585,14 @@ impl Mesh {
         brush: &Brush,
         dabs: &[Dab],
         stencils: &[Projection],
-        threshold: f32,
-        limit: usize,
-        unmasked_only: bool,
-        preserve_surface: bool,
+        options: CollapseOptions,
     ) -> usize {
+        let CollapseOptions {
+            threshold,
+            limit,
+            unmasked_only,
+            preserve_surface,
+        } = options;
         let protected = self.adaptive_protected_vertices(unmasked_only);
         let mut candidates = BTreeMap::new();
         let nearby_faces = self.patch_candidates(brush, dabs);
@@ -3369,7 +3381,17 @@ mod group_tests {
         assert!(m.split_local(&brush, &[dab], &[], 0.02, 16, false) > 0);
         m.validate_closed().unwrap();
         assert!(m.hidden_face_count() > 0);
-        m.collapse_local(&brush, &[dab], &[], 0.3, 16, false, false);
+        m.collapse_local(
+            &brush,
+            &[dab],
+            &[],
+            CollapseOptions {
+                threshold: 0.3,
+                limit: 16,
+                unmasked_only: false,
+                preserve_surface: false,
+            },
+        );
         m.validate_closed().unwrap();
         assert!(m.hidden_face_count() > 0);
         for p in hidden_points {
@@ -3397,7 +3419,17 @@ mod group_tests {
         m.validate_closed().unwrap();
         assert_eq!(m.polygroups, vec![1; m.triangles.len()]);
         assert!(m.vertex_groups[0].weights.iter().all(|&w| w == 1.));
-        let count = m.collapse_local(&brush, &[dab], &[], 3., 16, false, false);
+        let count = m.collapse_local(
+            &brush,
+            &[dab],
+            &[],
+            CollapseOptions {
+                threshold: 3.,
+                limit: 16,
+                unmasked_only: false,
+                preserve_surface: false,
+            },
+        );
         assert!(count > 0);
         m.validate_closed().unwrap();
         assert_eq!(m.polygroups, vec![1; m.triangles.len()]);
