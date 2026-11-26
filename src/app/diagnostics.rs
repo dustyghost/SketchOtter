@@ -40,6 +40,8 @@ impl App {
         }
         let mut open = true;
         let mut export = false;
+        let mut destination = std::path::absolute(self.ui.diagnostic_path.trim())
+            .unwrap_or_else(|_| std::path::PathBuf::from(self.ui.diagnostic_path.trim()));
         let before = self.ui.preferences.history_retention;
         egui::Window::new("Export diagnostic bundle").open(&mut open).default_width(520.).max_height((ctx.content_rect().height() - 80.).max(160.)).vscroll(true).show(ctx, |ui| {
             ui.label("A local folder containing a readable summary, versioned manifest, and current/undo/redo projects.");
@@ -57,10 +59,13 @@ impl App {
             ui.separator();
             ui.label("New destination folder (existing folders are never replaced)");
             ui.text_edit_singleline(&mut self.ui.diagnostic_path);
+            destination = std::path::absolute(self.ui.diagnostic_path.trim())
+                .unwrap_or_else(|_| std::path::PathBuf::from(self.ui.diagnostic_path.trim()));
+            ui.add(egui::Label::new(format!("Destination folder: {}", destination.display())).wrap().selectable(true));
             let ready = self.mesh_job.is_none() && !self.document.edit_in_progress();
             if !ready { ui.label("Finish the current edit or mesh operation before exporting."); }
             export = ui.add_enabled(ready, egui::Button::new("Export locally")).clicked();
-            ui.label(&self.ui.status);
+            ui.add(egui::Label::new(&self.ui.status).wrap().selectable(true));
         });
         self.ui.diagnostics_open = open;
         if before != self.ui.preferences.history_retention {
@@ -84,8 +89,16 @@ impl App {
             if self.recovery_error.is_some() {
                 environment.warnings.push("Recovery reported an error; details omitted because they may contain personal paths".into());
             }
-            match self.document.export_diagnostics(std::path::Path::new(self.ui.diagnostic_path.trim()), environment) {
-                Ok(()) => self.ui.status = "Diagnostic bundle exported. Open README.txt first; use Open to inspect a stage.".into(),
+            match self.document.export_diagnostics(
+                std::path::Path::new(self.ui.diagnostic_path.trim()),
+                environment,
+            ) {
+                Ok(()) => {
+                    self.ui.status = format!(
+                        "Diagnostic bundle exported to {}. Open README.txt first; use Open to inspect a stage.",
+                        destination.display()
+                    )
+                }
                 Err(error) => self.ui.status = format!("Diagnostic export failed: {error}"),
             }
         }
@@ -95,6 +108,47 @@ impl App {
 #[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
+    #[test]
+    fn diagnostic_export_screen_lists_absolute_destination_folder() {
+        fn has_destination(shape: &egui::Shape, expected: &str) -> bool {
+            match shape {
+                egui::Shape::Text(text) => text.galley.job.text == expected,
+                egui::Shape::Vec(shapes) => shapes.iter().any(|s| has_destination(s, expected)),
+                _ => false,
+            }
+        }
+        let mut app = App::default();
+        app.ui.diagnostics_open = true;
+        app.ui.diagnostic_path = "diagnostic folder with spaces".into();
+        let expected = format!(
+            "Destination folder: {}",
+            std::path::absolute(&app.ui.diagnostic_path)
+                .unwrap()
+                .display()
+        );
+        let ctx = egui::Context::default();
+        for _ in 0..3 {
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1200., 850.),
+                    )),
+                    ..Default::default()
+                },
+                |ctx| app.show_diagnostics(ctx),
+            );
+            if output
+                .shapes
+                .iter()
+                .any(|s| has_destination(&s.shape, &expected))
+            {
+                return;
+            }
+        }
+        panic!("export screen must show its absolute destination: {expected}");
+    }
+
     #[test]
     fn diagnostics_keep_rejected_retopology_settings_and_current_guide_selection() {
         let mut app = App::default();

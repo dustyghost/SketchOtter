@@ -405,6 +405,7 @@ impl UiState {
                 ModelTool::EdgeBevel,
                 ModelTool::VertexChamfer,
                 ModelTool::VertexBevel,
+                ModelTool::FaceChamfer,
                 ModelTool::FacePoint,
                 ModelTool::FaceSplit,
                 ModelTool::Delete,

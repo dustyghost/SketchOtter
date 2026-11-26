@@ -1,6 +1,7 @@
 //! Shared preview/commit path for measured component operations.
 use super::*;
 use crate::sculpt::ComponentTransform;
+use std::collections::BTreeMap;
 pub(super) struct EditOutcome {
     pub mesh: Mesh,
     pub amount: f32,
@@ -102,6 +103,60 @@ impl ModelTool {
             )
     }
 }
+
+fn selected_face_bevel_edges(mesh: &Mesh, faces: &[usize]) -> Vec<[usize; 2]> {
+    let polygons = mesh.polygons();
+    let selected: BTreeSet<_> = faces.iter().copied().collect();
+    let normals: Vec<_> = polygons
+        .iter()
+        .map(|polygon| {
+            let a = mesh.vertices[polygon.vertices[0]];
+            (mesh.vertices[polygon.vertices[1]] - a)
+                .cross(mesh.vertices[polygon.vertices[2]] - a)
+                .norm()
+        })
+        .collect();
+    let mut incident = BTreeMap::<[usize; 2], Vec<usize>>::new();
+    for (face, polygon) in polygons.iter().enumerate() {
+        for (a, b) in polygon.edges() {
+            incident.entry([a.min(b), a.max(b)]).or_default().push(face);
+        }
+    }
+    let boundary: BTreeSet<_> = incident
+        .iter()
+        .filter_map(|(&edge, adjacent)| {
+            let selected_faces: Vec<_> = adjacent
+                .iter()
+                .filter(|face| selected.contains(face))
+                .copied()
+                .collect();
+            let selection_boundary = !selected_faces.is_empty()
+                && (selected_faces.len() < adjacent.len() || adjacent.len() == 1);
+            let planar_region_boundary = selected_faces.len() > 1
+                && selected_faces.iter().enumerate().any(|(i, &a)| {
+                    selected_faces[i + 1..]
+                        .iter()
+                        .any(|&b| normals[a].dot(normals[b]) < 0.9999)
+                });
+            (selection_boundary || planar_region_boundary).then_some(edge)
+        })
+        .collect();
+    if !boundary.is_empty() {
+        return boundary.into_iter().collect();
+    }
+
+    // If a fully selected closed component has no region boundary at all,
+    // treat all of its selected edges as the perimeter.
+    selected
+        .into_iter()
+        .filter_map(|face| polygons.get(face))
+        .flat_map(|polygon| polygon.edges())
+        .map(|(a, b)| [a.min(b), a.max(b)])
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 impl ModelingState {
     fn cut_cell(
         components: &BTreeSet<Component>,
@@ -316,6 +371,7 @@ impl ModelingState {
         }
         if options.tool.is_component_bevel()
             || (options.tool == ModelTool::Bevel && options.span == SelectionSpan::Flat)
+            || (options.tool == ModelTool::Bevel && options.span == SelectionSpan::Group)
         {
             let mut edges: Vec<_> = components
                 .iter()
@@ -347,7 +403,12 @@ impl ModelingState {
                     }
                 })
                 .collect();
-            if options.tool == ModelTool::Bevel && options.span == SelectionSpan::Flat {
+            if options.tool == ModelTool::FaceChamfer
+                || (options.tool == ModelTool::Bevel && options.span == SelectionSpan::Group)
+            {
+                edges = selected_face_bevel_edges(mesh, &faces);
+                points.clear();
+            } else if options.tool == ModelTool::Bevel && options.span == SelectionSpan::Flat {
                 edges = mesh.expand_flat_island_components(&edges, &points, &faces)?;
                 points.clear();
             } else if options.bevel_follow_edge_loop {
@@ -357,7 +418,9 @@ impl ModelingState {
                 &edges,
                 &points,
                 amount,
-                if options.tool.rounded_bevel() || options.tool == ModelTool::Bevel {
+                if options.tool != ModelTool::FaceChamfer
+                    && (options.tool.rounded_bevel() || options.tool == ModelTool::Bevel)
+                {
                     options.bevel_segments
                 } else {
                     1

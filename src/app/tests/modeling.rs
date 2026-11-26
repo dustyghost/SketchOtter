@@ -972,6 +972,51 @@ fn flat_island_target_face_bevel_uses_the_selected_faces_coplanar_perimeter() {
 }
 
 #[test]
+fn face_group_bevel_boundary_works_on_default_divided_cube() {
+    let (mut app, ctx, rect) = setup();
+    app.dispatch(
+        Command::Action(Action::ModelTarget(crate::viewport::SelectionSpan::Group)),
+        &ctx,
+    );
+    tap(&mut app, &ctx, rect.center());
+    assert_eq!(app.ui.modeling.span, crate::viewport::SelectionSpan::Group);
+    assert!(!app.viewport.modeling.selected.is_empty());
+    app.dispatch(Command::Action(Action::ModelTool(ModelTool::Bevel)), &ctx);
+    app.ui.modeling.amount = 0.05;
+    let before = app.document.mesh().clone();
+
+    app.dispatch(Command::ModelApply, &ctx);
+
+    assert_ne!(app.document.mesh(), &before, "{}", app.ui.status);
+    app.document.mesh().validate_closed().unwrap();
+}
+
+#[test]
+fn face_mode_offers_flat_chamfer_boundary() {
+    let (mut app, ctx, rect) = setup();
+    let entries = app.ui.viewport_menu_entries(
+        crate::ui::context_menu::ViewportMenuContext::Modeling,
+        &app.document,
+    );
+    assert!(entries.iter().any(|entry| {
+        entry.action == Action::ModelTool(ModelTool::FaceChamfer)
+            && entry.label == "Chamfer boundary"
+    }));
+
+    tap(&mut app, &ctx, rect.center());
+    app.dispatch(
+        Command::Action(Action::ModelTool(ModelTool::FaceChamfer)),
+        &ctx,
+    );
+    app.ui.modeling.amount = 0.05;
+    let before = app.document.mesh().clone();
+    app.dispatch(Command::ModelApply, &ctx);
+
+    assert_ne!(app.document.mesh(), &before, "{}", app.ui.status);
+    app.document.mesh().validate_closed().unwrap();
+}
+
+#[test]
 fn modeling_topology_commands_are_atomic_and_undoable() {
     use crate::sculpt::TopologyEdit;
     let (mut app, ctx, rect) = setup();

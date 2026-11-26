@@ -481,6 +481,7 @@ impl Action {
         Self::ModelTool(crate::viewport::ModelTool::EdgeBevel),
         Self::ModelTool(crate::viewport::ModelTool::VertexChamfer),
         Self::ModelTool(crate::viewport::ModelTool::VertexBevel),
+        Self::ModelTool(crate::viewport::ModelTool::FaceChamfer),
         Self::ModelTool(crate::viewport::ModelTool::FacePoint),
         Self::ModelTool(crate::viewport::ModelTool::FaceSplit),
         Self::ModelTool(crate::viewport::ModelTool::Delete),

@@ -151,14 +151,16 @@ impl UiState {
         if self.modeling.tool.rounded_bevel() {
             self.bevel_segments_control(ui);
         }
-        search::setting_response(
-            design::checkbox(
-                ui,
-                self.modeling.bevel_follow_edge_loop.get_or_insert(true),
+        if self.modeling.mode != ComponentMode::Face {
+            search::setting_response(
+                design::checkbox(
+                    ui,
+                    self.modeling.bevel_follow_edge_loop.get_or_insert(true),
+                    "Follow edge loop",
+                ),
                 "Follow edge loop",
-            ),
-            "Follow edge loop",
-        );
+            );
+        }
         ui.weak("Drag up to widen · release applies · Esc cancels");
         ui.weak("Closed surface corners. Reduce width if cuts overlap. Edited faces need unwrapping for texture painting.");
         ui.add_enabled(self.modeling.count > 0, egui::Button::new("Apply amount"))
@@ -333,7 +335,8 @@ impl UiState {
             ModelTool::EdgeChamfer
             | ModelTool::EdgeBevel
             | ModelTool::VertexChamfer
-            | ModelTool::VertexBevel => {
+            | ModelTool::VertexBevel
+            | ModelTool::FaceChamfer => {
                 if self.bevel_controls(ui) {
                     commands.push(Command::ModelApply);
                 }
@@ -608,7 +611,10 @@ impl UiState {
                     "Modeling amount",
                 );
                 if self.modeling.tool == ModelTool::Bevel
-                    && self.modeling.span == SelectionSpan::Flat
+                    && matches!(
+                        self.modeling.span,
+                        SelectionSpan::Flat | SelectionSpan::Group
+                    )
                 {
                     self.bevel_segments_control(ui);
                 }

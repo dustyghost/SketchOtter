@@ -540,12 +540,40 @@ fn bevel_corner_grid(
         return false;
     }
 
+    let mut center_position = mean;
+    if face_valence == 3 {
+        let corners: Vec<_> = anchors.iter().map(|&i| out.vertices[boundary[i]]).collect();
+        let origin = (corners[0] + corners[1] + corners[2]) * (1. / 3.);
+        let normal = (corners[1] - corners[0])
+            .cross(corners[2] - corners[0])
+            .norm();
+        let radius_squared = corners
+            .iter()
+            .map(|&p| (p - origin).dot(p - origin))
+            .sum::<f32>()
+            / 3.;
+        let (numerator, denominator) = boundary.iter().fold((0., 0.), |(sum, weight), &v| {
+            let delta = out.vertices[v] - origin;
+            let height = delta.dot(normal);
+            (
+                sum + height * (delta.dot(delta) - radius_squared),
+                weight + 2. * height * height,
+            )
+        });
+        if denominator > radius_squared * 1e-6 {
+            // Fit the curvature of the actual strip samples. Their arithmetic
+            // mean lies inside the rounded surface and dents the junction.
+            let height = numerator / denominator;
+            let radius = (radius_squared + height * height).sqrt();
+            center_position = origin + normal * (height + radius);
+        }
+    }
     let weights: Vec<_> = polygon
         .vertices
         .iter()
         .map(|&vertex| (vertex, 1. / polygon.vertices.len() as f32))
         .collect();
-    let center = out.append_blend(source, &weights, mean);
+    let center = out.append_blend(source, &weights, center_position);
     for &anchor in &anchors {
         let previous = (anchor + boundary.len() - 1) % boundary.len();
         let next = (anchor + 1) % boundary.len();
@@ -1006,6 +1034,50 @@ mod tests {
                     .unwrap();
                 manifold(&out).unwrap();
                 assert!(!out.vertices.contains(&mesh.vertices[0]));
+            }
+        }
+    }
+
+    #[test]
+    fn three_bevel_junction_has_no_inward_dent() {
+        for divisions in [1, 3] {
+            let mut primitive =
+                crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Cube);
+            primitive.divisions = [divisions; 3];
+            let mesh = primitive.mesh().unwrap();
+            let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+            let faces = (0..mesh.polygons().len()).collect::<Vec<_>>();
+            let edges = mesh
+                .expand_flat_island_components(&[], &[], &faces)
+                .unwrap();
+            let width = 0.149_792_2;
+            let out = mesh
+                .bevel_components(&edges, &[], width, 3, &symmetry)
+                .unwrap();
+            out.validate_closed().unwrap();
+            for corner in mesh.vertices.iter().filter(|p| {
+                [p.0, p.1, p.2]
+                    .iter()
+                    .all(|coordinate| coordinate.abs() > 0.99)
+            }) {
+                let mut checked = 0;
+                for triangle in &out.triangles {
+                    let [a, b, c] = triangle.map(|v| out.vertices[v]);
+                    if [a, b, c].iter().all(|p| (*p - *corner).len() < width * 2.) {
+                        checked += 1;
+                        let normal = (b - a).cross(c - a).norm();
+                        let outside = out
+                            .vertices
+                            .iter()
+                            .map(|&p| (p - a).dot(normal))
+                            .fold(0_f32, f32::max);
+                        assert!(
+                            outside < 1e-5,
+                            "junction triangle at {corner:?} has an inward dent: supporting-plane violation {outside}"
+                        );
+                    }
+                }
+                assert!(checked > 0, "must test corner triangles");
             }
         }
     }
