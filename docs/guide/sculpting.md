@@ -239,6 +239,8 @@ Enable **Radial symmetry** for 2–16 repeats around an axis. Mirrors and radial
 
 Guides show X in red, Y in green, Z in blue, and other radial boundaries in gold. Adjust guide visibility/opacity in the same controls. Symmetry saves with the project; overlapping copies do not multiply stroke strength at the seam.
 
+For Standard and Clay with the Soft alpha, closely overlapping mirrored footprints blend through the centre instead of leaving a falloff groove. Separated strokes stay separate; texture alphas keep their own pattern.
+
 ## Snake brush and adaptive sculpting
 
 ### Pull a tapered form

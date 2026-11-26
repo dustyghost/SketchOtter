@@ -443,6 +443,149 @@ fn modeling_lost_pointer_discards_draft_and_shortcut_keeps_mode_through_undo() {
 }
 
 #[test]
+fn slide_loop_drag_tracks_the_grabbed_surface_rail_and_reverses_without_a_jump() {
+    use crate::viewport::SelectionSpan;
+    for dx in [-24., 24.] {
+        let (mut app, ctx, rect) = setup();
+        app.ui.modeling.mode = ComponentMode::Edge;
+        app.ui.modeling.span = SelectionSpan::Loop;
+        app.ui.modeling.set_tool(ModelTool::Slide);
+        let scale = rect.width().min(rect.height()) * 0.35;
+        let start = rect.center() + Vec2::new(scale / 3., 15.);
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        navigation_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), primary_event(start, true)],
+        );
+        for travel in [dx, -dx, dx] {
+            navigation_frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start + Vec2::new(travel, 0.))],
+            );
+            let preview = app.viewport.modeling.preview().expect("slide preview");
+            let moved: Vec<_> = before
+                .mesh
+                .vertices
+                .iter()
+                .zip(&preview.vertices)
+                .filter(|(a, b)| a != b)
+                .collect();
+            assert!(!moved.is_empty(), "horizontal drag must slide the loop");
+            for (a, b) in moved {
+                assert!(
+                    (b.0 - a.0) * travel > 0.,
+                    "rail should follow the horizontal drag"
+                );
+                assert!((b.1 - a.1).abs() < 1e-6 && (b.2 - a.2).abs() < 1e-6);
+            }
+            assert_eq!(preview.triangles, before.mesh.triangles);
+            assert_eq!(app.document.geometry_snapshot(), before);
+        }
+        let preview = app.viewport.modeling.preview().unwrap().clone();
+        navigation_frame(
+            &mut app,
+            &ctx,
+            vec![primary_event(start + Vec2::new(dx, 0.), false)],
+        );
+        assert_eq!(*app.document.mesh(), preview);
+        assert_eq!(app.document.history_counts().0, history.0 + 1);
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.dispatch(Command::Redo, &ctx);
+        assert_eq!(*app.document.mesh(), preview);
+    }
+}
+
+#[test]
+fn slide_loop_drag_follows_tapered_rails_from_oblique_and_reversed_views_with_symmetry() {
+    use crate::viewport::SelectionSpan;
+    for yaw in [0.65, std::f32::consts::PI - 0.65] {
+        let (mut app, ctx, _) = setup();
+        let mut primitive = Primitive::for_kind(PrimitiveKind::Grid);
+        primitive.divisions = [5, 5, 1];
+        let mut mesh = primitive.mesh().unwrap();
+        for p in &mut mesh.vertices {
+            p.1 *= 1. + 0.2 * p.0 * p.0;
+            p.2 = 0.2 * p.0 * p.0;
+        }
+        // Face both cameras toward the front of the same open surface.
+        if yaw > std::f32::consts::FRAC_PI_2 {
+            for t in &mut mesh.triangles {
+                t.swap(1, 2);
+            }
+            for q in &mut mesh.quads {
+                q.reverse();
+            }
+        }
+        app.document.replace_geometry(Geometry::new(mesh)).unwrap();
+        app.document
+            .set_symmetry(crate::sculpt::Symmetry {
+                enabled: true,
+                ..Default::default()
+            })
+            .unwrap();
+        app.camera.yaw = yaw;
+        let rect = navigation_frame(&mut app, &ctx, vec![]);
+        let scale = rect.width().min(rect.height()) * 0.35;
+        let (right, up, _) = app.camera.basis();
+        let source = Vec3(0.6, 0., 0.2 * 0.6 * 0.6);
+        let start = rect.center() + Vec2::new(source.dot(right), -source.dot(up)) * scale;
+        app.ui.modeling.mode = ComponentMode::Edge;
+        app.ui.modeling.span = SelectionSpan::Loop;
+        app.ui.modeling.set_tool(ModelTool::Slide);
+        let before = app.document.geometry_snapshot();
+        navigation_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), primary_event(start, true)],
+        );
+        let end = start + Vec2::new(20., 0.);
+        navigation_frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        let preview = app
+            .viewport
+            .modeling
+            .preview()
+            .expect("tapered rail preview");
+        assert_ne!(preview.vertices, before.mesh.vertices);
+        for (v, (&a, &b)) in before
+            .mesh
+            .vertices
+            .iter()
+            .zip(&preview.vertices)
+            .enumerate()
+        {
+            if a == b {
+                continue;
+            }
+            let d = b - a;
+            assert!(
+                before.mesh.polygon_edges().iter().any(|e| {
+                    if !e.contains(&v) {
+                        return false;
+                    }
+                    let w = if e[0] == v { e[1] } else { e[0] };
+                    let rail = before.mesh.vertices[w] - a;
+                    d.cross(rail).len() < 1e-5 && d.dot(rail) > 0. && d.len() < rail.len()
+                }),
+                "vertex left its original surface rail"
+            );
+            if a.0 > 0. {
+                assert!(d.dot(right) > 0., "grabbed side must follow the pointer");
+            }
+        }
+        crate::sculpt::ModelingSymmetry::new(preview, app.document.symmetry()).unwrap();
+        let expected = preview.clone();
+        navigation_frame(&mut app, &ctx, vec![primary_event(end, false)]);
+        assert_eq!(*app.document.mesh(), expected);
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+    }
+}
+
+#[test]
 fn modeling_loop_drag_slides_counts_cancels_and_commits_once() {
     let (mut app, ctx, rect) = setup();
     app.dispatch(Command::Action(Action::ModelLoopCut), &ctx);
@@ -1797,6 +1940,90 @@ fn modeling_group_reassignment_compacts_indices_and_keeps_the_target_selected() 
     app.dispatch(Command::Undo, &ctx);
     app.dispatch(Command::Undo, &ctx);
     assert_eq!(app.document.geometry_snapshot(), before);
+}
+
+#[test]
+fn symmetric_fuse_drag_and_single_tap_commit_the_midpoint_preview_once() {
+    let (mut app, ctx, _) = setup();
+    let mut primitive = Primitive::for_kind(PrimitiveKind::Cube);
+    primitive.divisions = [1; 3];
+    let mut mesh = primitive.mesh().unwrap();
+    let mut other = mesh.clone();
+    for p in &mut mesh.vertices {
+        p.0 -= 2.;
+    }
+    for p in &mut other.vertices {
+        p.0 += 2.;
+    }
+    let offset = mesh.vertices.len();
+    mesh.vertices.extend(other.vertices);
+    mesh.triangles
+        .extend(other.triangles.iter().map(|t| t.map(|v| v + offset)));
+    mesh.quads
+        .extend(other.quads.iter().map(|q| q.map(|v| v + offset)));
+    mesh.mask.resize(mesh.vertices.len(), 0.);
+    app.document.replace_geometry(Geometry::new(mesh)).unwrap();
+    app.document
+        .set_symmetry(crate::sculpt::Symmetry {
+            enabled: true,
+            ..Default::default()
+        })
+        .unwrap();
+    app.camera.yaw = 0.7;
+    app.camera.zoom = 0.5;
+    let rect = navigation_frame(&mut app, &ctx, vec![]);
+    let scale = rect.width().min(rect.height()) * 0.35 * app.camera.zoom;
+    let (right, up, _) = app.camera.basis();
+    let source = Vec3(-1., 0., 0.);
+    let start = rect.center() + Vec2::new(source.dot(right), -source.dot(up)) * scale;
+    tap(&mut app, &ctx, start);
+    assert!(
+        !app.viewport.modeling.selected.is_empty(),
+        "select the inward-facing cap"
+    );
+    app.ui.modeling.set_tool(ModelTool::Fuse);
+    app.ui.modeling.join = true;
+    app.ui.modeling.tap_repeat = true;
+    app.ui.modeling.amount = 1.;
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts();
+    app.dispatch(Command::ModelPreviewFuse, &ctx);
+    let expected = app
+        .viewport
+        .modeling
+        .preview()
+        .expect("midpoint preview")
+        .clone();
+    assert_ne!(expected, before.mesh);
+    for click in [false, true] {
+        navigation_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), primary_event(start, true)],
+        );
+        let end = if click {
+            start
+        } else {
+            start + Vec2::new(0., -1.1 * scale)
+        };
+        if !click {
+            navigation_frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert_eq!(app.viewport.modeling.preview(), Some(&expected));
+            assert_eq!(app.document.geometry_snapshot(), before);
+        }
+        navigation_frame(&mut app, &ctx, vec![primary_event(end, false)]);
+        assert_eq!(*app.document.mesh(), expected, "{}", app.ui.status);
+        assert_eq!(app.document.history_counts().0, history.0 + 1);
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.dispatch(Command::Redo, &ctx);
+        assert_eq!(*app.document.mesh(), expected);
+        app.dispatch(Command::Undo, &ctx);
+        app.ui.modeling.tool = ModelTool::Select;
+        tap(&mut app, &ctx, start);
+        app.ui.modeling.tool = ModelTool::Fuse;
+        app.ui.modeling.amount = 1.;
+    }
 }
 
 #[test]

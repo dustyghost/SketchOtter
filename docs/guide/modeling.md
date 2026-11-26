@@ -365,6 +365,8 @@ Drag to preview a fuse, or select faces, enter **Distance**, and click **Preview
 
 Each region must be flat and separate regions must not share vertices. **Individual faces** applies to ordinary Extrude, not Extrude and fuse. Regions can snap at different depths; in that case Distance retains the requested travel. If only some regions find contact, the tool reports that the others are still extruding freely. Every region and symmetry copy commits together in one Undo step. A mask, hidden face, or interfering edit that prevents any region from completing cancels the whole operation; Escape cancels its preview.
 
+With symmetry and **Join matching faces** enabled, two matching mirrored caps facing each other across an empty gap can meet and fuse at the mirror plane. Drag either cap toward the plane once, then release the fused preview. Incompatible cap layouts are not welded automatically.
+
 ![Two adjacent faces fused into one open tunnel, with the distance snapped to the opposite cap](../images/modeling-region-fuse-result.png)
 
 ![Two nonadjacent faces fused into separate tunnels in one edit](../images/modeling-separate-fuse-result.png)
@@ -604,7 +606,7 @@ All three operations respect hidden geometry, **Protect mask** and exact symmetr
 
 Choose **Slide components** to drag individual faces, edges or vertices along their original neighbouring surface. A numeric distance and axis are also available. The movement stops at the local surface boundary and rejects collapsed or flipped faces. Masked and hidden vertices remain fixed. One release is one Undo step.
 
-Use **Edge → Select → Loop**, then **Slide loop**. Drag to preview, or enter a fraction between -1 and 1 and choose **Apply amount**. The chosen axis determines the positive rail on the reference side; symmetry mirrors that movement. Sliding keeps the same topology and selection. It requires a complete interior quad loop with unambiguous rails; selected loops must not share a face.
+Use **Edge → Select → Loop**, then **Slide loop**. Drag along the neighbouring surface rails to preview; the grabbed edge follows the rail's direction in the current view. Reverse the drag to slide back. On a tapered surface, following the rails can legitimately change the loop's circumference; this is not a scale operation. Alternatively, enter a fraction between -1 and 1 and choose **Apply amount**. For numeric sliding, the chosen axis determines the positive rail on the reference side; symmetry mirrors that movement. Sliding keeps the same topology and selection. It requires a complete interior quad loop with unambiguous rails; selected loops must not share a face.
 
 Expand **Topology** for operations on the current selection:
 
