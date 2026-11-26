@@ -238,3 +238,49 @@ the newly isolated grazing-angle failure; the dedicated regression covers
 the latter.
 
 The export and analysis remain local; original pen samples are unavailable.
+
+## Final-commit CI follow-up: adaptive quad corner degeneracy
+
+CI on `6ebbe48` failed `mixed_adaptive_sculpt_remesh_sequences` at seed 28,
+step 3: a Standard dab after adaptive quad refinement returned no edit.
+The same seed and step reproduced locally, including through its saved
+replay. The other 1,340 routine tests and all six native packages passed.
+
+The both-diagonals safety guard encountered adaptive quads with three
+effectively collinear boundary corners. Their normal render triangles have
+healthy quality (approximately 0.86 for the first rejected quad), but the
+alternate diagonal creates a virtual triangle with quality approximately
+`6.86e-7`. Midpoint rounding gives that triangle a tiny nonzero normal;
+roundoff during a valid dab makes its relative-area/quality checks unstable,
+eventually rejecting the whole dab.
+
+The follow-up treats quad-corner triangles with dimensionless quality at
+most `8 * f32::EPSILON` as numerically degenerate. Both diagonals still
+contribute every meaningful triangle, and logical-quad reductions remain
+shared across all corners. Triangle-only safety checks are unchanged.
+A synthetic regression exercises the nearly collinear corner at three scales,
+under reflection and either render diagonal.
+
+That correction passed seed 28 but exposed the next failure at seed 50,
+step 3. Its remaining rejected corner is meaningful (quality approximately
+0.01833), not numerically degenerate: after repeated halvings, f32 rounding
+still lowers its quality enough to reject the whole dab. Do not widen the
+degeneracy threshold to bypass this valid safety check.
+
+Quad brush deformation now uses the existing local-rejection strategy used
+by smoothing: halve failed proposals, then pin repeatedly rejected logical
+faces and recheck neighbours. This retains both-diagonal safety on meaningful
+triangles without cancelling unrelated safe proposals. Triangle-only brush
+reduction behaviour remains unchanged. A separate two-quad regression checks
+that an unsafe sliver is restored exactly, a valid disconnected patch retains
+its proposal, the observer receives every reduction, and all final meaningful
+triangles pass the original guard.
+
+The final focused run passed **39 tests**, zero failures, five opt-in tests
+ignored. All nine mixed-operation seeds pass, including 28 and 50, with
+refinement, simplification, sculpt, remesh, rejection and persistence coverage
+retained. The two new guard regressions, frozen triangle-only guard oracle,
+grazing Standard symmetry, real viewport/history, Smooth, Clay and overlap
+checks also pass. Standard/Smooth/Clay reflected errors remain below `2e-7`.
+No full local suite or new release build was run; fresh PR CI must pass before
+merge. Local logs: `/tmp/opencode/pipeline-mixed-local-fixed.log`.
