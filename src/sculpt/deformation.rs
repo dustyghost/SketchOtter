@@ -111,11 +111,14 @@ impl Mesh {
             .map(|(a, b)| a != b)
             .collect();
         let active: Vec<_> = self
-            .triangles
-            .iter()
-            .filter(|t| t.iter().any(|&v| changed[v]))
-            .copied()
+            .polygons()
+            .into_iter()
+            .filter(|p| p.vertices.iter().any(|&v| changed[v]))
             .collect();
+        let safe_polygon = |p: &super::edges::Polygon, vertices: &[Vec3]| {
+            p.symmetric_triangles()
+                .all(|(t, _)| safe_face(t.map(|v| before[v]), t.map(|v| vertices[v]), direction))
+        };
         #[cfg(test)]
         super::stamp_profile::mark("guard_active_faces");
         if active.is_empty() {
@@ -157,10 +160,12 @@ impl Mesh {
         let mut pending = Vec::new();
         for pass in 0..if local_rejection { 20 } else { 12 } {
             let mut unsafe_face = false;
-            for &t in &active {
-                if !safe_face(t.map(|v| before[v]), t.map(|v| self.vertices[v]), direction) {
+            for p in &active {
+                if !safe_polygon(p, &self.vertices) {
                     unsafe_face = true;
-                    for v in t {
+                    // A quad is one logical face. Reduce all its corners,
+                    // whichever of its two triangulations rejected the move.
+                    for &v in &p.vertices {
                         if !reduce[v] {
                             reduce[v] = true;
                             pending.push(v);
@@ -209,9 +214,7 @@ impl Mesh {
         super::stamp_profile::mark("guard_last_reduction");
         // Never commit an unchecked last reduction; pinning one vertex can
         // affect its neighbours. Reject a pathological dab without changing positions.
-        if active
-            .iter()
-            .any(|&t| !safe_face(t.map(|v| before[v]), t.map(|v| self.vertices[v]), direction))
+        if active.iter().any(|p| !safe_polygon(p, &self.vertices))
             || pairs.iter().any(|pair| !safe_pair(&self.vertices, pair))
         {
             self.vertices.copy_from_slice(before);
@@ -224,6 +227,42 @@ impl Mesh {
 #[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quad_deformation_reductions_do_not_depend_on_the_render_diagonal() {
+        let mut mesh = Mesh {
+            vertices: vec![
+                Vec3(-1., -1., 0.),
+                Vec3(1., -1., 0.),
+                Vec3(1., 1., 0.),
+                Vec3(-1., 1., 0.),
+            ],
+            mask: vec![0.; 4],
+            quads: vec![[0, 1, 2, 3]],
+            triangles: vec![[0, 1, 2], [0, 2, 3]],
+            ..Default::default()
+        };
+        let before = mesh.vertices.clone();
+        mesh.vertices[0].0 = -0.8;
+        mesh.vertices[1].0 = 0.8;
+        mesh.vertices[2].0 = 0.001;
+        mesh.vertices[3].0 = -0.001;
+        assert!(mesh.limit_brush_deformation(&before, None, &mut |_, _, _| {}));
+        for [a, b] in [[0, 1], [3, 2]] {
+            let p = mesh.vertices[a];
+            assert!(
+                (mesh.vertices[b] - Vec3(-p.0, p.1, p.2)).len() < 1e-6,
+                "a symmetric proposal must receive matching guard reductions"
+            );
+        }
+        for t in &mesh.triangles {
+            assert!(safe_face(
+                t.map(|i| before[i]),
+                t.map(|i| mesh.vertices[i]),
+                None
+            ));
+        }
+    }
 
     #[test]
     fn smoothing_does_not_make_existing_slivers_worse() {

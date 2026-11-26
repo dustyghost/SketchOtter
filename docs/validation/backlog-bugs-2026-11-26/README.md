@@ -110,3 +110,66 @@ within the 3,600 MiB probe limit.
 Full formatting/lint/default-suite/native-solver and configured GPU checks
 belong to PR CI. Physical pen-tablet review is still required; synthetic
 pressure checks do not establish device behaviour.
+
+## Follow-up release testing: remaining drift
+
+The maintainer supplied a second local diagnostic export from release
+`b83c4c3994c7`. This shows that the initial fix is **incomplete**; the passing
+Clay-only synthetic sequence did not cover subtractive Standard followed by
+Smooth. All 15 stages retain identical topology, X symmetry at centre zero,
+and disabled Dynamic Mesh/Adaptive.
+
+| Stage | Outgoing/incoming edit | Maximum reflected-position mismatch |
+| --- | --- | ---: |
+| 0 | Starting geometry | 0.000000124 |
+| 1 | Standard, edit 3 | 0.000000130 |
+| 2 | Standard, edit 4 | 0.000000211 |
+| 3 | Subtractive Standard, edit 5 | 0.007599561 |
+| 5 | Subtractive Standard, edit 7 | 0.007595376 |
+| 6 | Smooth, edit 8 | 0.053243777 |
+| 14 | Smooth, edit 16 | 0.077707566 |
+
+The first substantial drift is edit 5, before any retained Clay stroke.
+Edit 8 adds a maximum reflected-displacement mismatch of 0.049794569.
+Full pointer samples are again unavailable. The diagnostic files remain
+local and unchanged; these measurements compare vertex pairs established
+from the initial geometry, not nearest neighbours after deformation.
+
+Two minimal regressions reproduced independent failures before the follow-up:
+the triangle safety limiter gave reflected corners of a single symmetric
+quad different reductions, and a single mirrored Smooth dab on the synthetic
+sphere introduced 0.002666726 maximum reflected mismatch.
+
+The follow-up checks both quad triangulations and reduces all four corners
+of a failed logical face together. Smooth uses logical-face normals and
+sheet classification, with mass and cotangent contributions averaged over
+both diagonals. Triangle-only safety behaviour retains its frozen-reference
+comparison. No mirror-pair snapping or repair of existing asymmetry is added.
+Both minimal regressions pass with these changes.
+
+The combined follow-up focused run passed **29 tests**, zero failures, with
+three manual captures ignored. It covers the safety limiter, Smooth,
+Clay, overlap blending and Clay application/history tests. The new 96-dab
+synthetic sequence varies pressure and applies subtractive Standard, Smooth,
+then Clay, checking unchanged topology and exact one-stroke Undo/Redo at each
+step. Maximum reflected mismatches were respectively 0.0000001341,
+0.0000001229 and 0.0000001966.
+
+The ignored `mirrored_brush_sequence_offscreen_review` accepts
+`SYMMETRY_REVIEW_SOURCE` and `SYMMETRY_REVIEW_PREVIEW`, runs that same
+sequence on local starting geometry, and saves front-view before/after images
+with the symmetry guide hidden. Use an initially symmetric source such as
+the new bundle's stage 0: this check does not repair already-drifted stages.
+
+That retained stage-0 check passed with the same three maximum errors as the
+synthetic sequence, unchanged topology, closed geometry and exact Undo/Redo.
+Both 900 × 700 front-view captures were visually inspected: no obvious
+one-sided distortion; lighting itself is not reflection-symmetric.
+Captures remain local at
+`/tmp/opencode/symmetry-followup-retained-{before,after}.png`.
+Rendering used software Vulkan/llvmpipe with two worker threads.
+This is a controlled new sequence, **not** the unavailable original pen replay.
+
+The initial `b83c4c3` PR CI run passed formatting, the default/focused suites,
+lint, native solver checks and GPU regressions. That result does **not**
+validate the follow-up changes, which require a fresh CI run.
