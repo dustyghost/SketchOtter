@@ -77,11 +77,7 @@ impl Mesh {
         let polygons = self.polygons();
         let mut normals = vec![super::Vec3::default(); self.vertices.len()];
         for p in &polygons {
-            let origin = self.vertices[p.vertices[0]];
-            let mut normal = super::Vec3::default();
-            for (a, b) in p.edges() {
-                normal = normal + (self.vertices[a] - origin).cross(self.vertices[b] - origin);
-            }
+            let normal = p.area_vector(&self.vertices);
             for &i in &p.vertices {
                 normals[i] = normals[i] + normal;
             }

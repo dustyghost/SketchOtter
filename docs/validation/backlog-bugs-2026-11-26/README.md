@@ -173,3 +173,68 @@ This is a controlled new sequence, **not** the unavailable original pen replay.
 The initial `b83c4c3` PR CI run passed formatting, the default/focused suites,
 lint, native solver checks and GPU regressions. That result does **not**
 validate the follow-up changes, which require a fresh CI run.
+
+## Second release export: additive Standard near the seam
+
+The next local export confirms build `0e4a85a34c80` and retains 14 stages:
+stage 12 is current, stage 13 is redo. The initial geometry is symmetric to
+0.000000124; all stages retain the same topology and X=0 mirror settings.
+
+| Stage | Incoming edit | Maximum reflected-position mismatch |
+| --- | --- | ---: |
+| 1 | Additive Standard, edit 1 | 0.007995771 |
+| 2 | Additive Standard, edit 2 | 0.046795032 |
+| 3 | Smooth, edit 3 | 0.037481000 |
+| 4 | Smooth, edit 4 | 0.037456594 |
+| 5 | Additive Standard, edit 5 | 0.056668728 |
+| 6–9 | Standard, Smooth, Clay, Clay | 0.056668728 |
+| 10 | Smooth, edit 10 | 0.054051772 |
+| 11 | Smooth, edit 11 | 0.044970694 |
+| 12 | Smooth, edit 12 (current) | 0.033146723 |
+| 13 | Clay, edit 13 (redo) | 0.033146723 |
+
+The second stroke moves a vertex originally on X=0 to X=0.023397516.
+The first stroke affects 20 vertices beyond 0.00001 reflected error; the
+second affects 61, including five original centreline vertices.
+The later Clay edits introduce only approximately 0.0000002 or less new
+reflected-displacement mismatch and do not explain the earlier drift.
+Smoothing starts with already-asymmetric input and generally reduces its
+maximum error; its unequal displacements alone do not prove another
+independent smoothing defect.
+
+The remaining isolated failure is the brush-facing cutoff: non-Smooth stamps
+still used rendering-triangle vertex normals for eligibility. On this saved initial
+mesh those normals differ from their reflected partners by up to 0.01790657,
+despite symmetric positions. Near the cutoff that can admit one mirrored
+contribution but reject the other. A new isolated Standard regression failed
+before the fix with 0.008437495 reflected mismatch from one dab. A new real
+viewport multi-stroke regression passed before the fix: that particular pointer
+path does **not** reproduce the reported failure.
+
+The next change uses logical-face area vectors for full and selected sculpt
+normals, while retaining rendering normals for shading. Triangle-only normals
+retain their original accumulation. Full/selected-path equivalence tests now
+compare against full sculpt normals, not rendering normals; the new failing
+regression deliberately derives a grazing dab from rendering normals to test
+that these no longer control brush eligibility. Smooth uses the same logical
+area-vector helper as the sculpt-normal path.
+
+The next focused run passed **37 tests**, zero failures, with four opt-in tests
+ignored. It includes the previously failing grazing Standard regression,
+three real viewport Standard strokes with exact Undo/Redo, full/selected normal
+equivalence across brush kinds, Polish, protection, safety, Smooth, Clay and
+overlap tests. The existing synthetic Standard/Smooth/Clay sequence retains
+the same sub-0.0000002 maximum errors. These checks still do not establish
+physical pen behaviour or replay the actual failing strokes.
+
+The controlled sequence on this latest export's stage 0 also passed, retaining
+those same three reflected-error values, closed geometry, unchanged topology
+and exact Undo/Redo. Both before/after captures were visually inspected with
+the centre guide hidden; no obvious one-sided distortion was visible.
+The images are local at
+`/tmp/opencode/symmetry-facing-retained-{before,after}.png`.
+This rechecks the existing analytic sequence, not the original pen input or
+the newly isolated grazing-angle failure; the dedicated regression covers
+the latter.
+
+The export and analysis remain local; original pen samples are unavailable.

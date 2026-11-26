@@ -175,6 +175,57 @@ fn mirrored_subtractive_standard_smooth_clay_sequence_preserves_symmetry_and_his
     mirrored_brush_sequence(&mut scene(Kind::Standard, false, false));
 }
 
+#[test]
+fn mirrored_standard_viewport_strokes_keep_the_seam_and_pairs_symmetric() {
+    use crate::sculpt::Vec3;
+    let mut app = scene(Kind::Standard, false, false);
+    let ctx = egui::Context::default();
+    app.camera.yaw = 0.;
+    app.camera.pitch = 0.;
+    app.document
+        .set_symmetry(crate::sculpt::Symmetry {
+            enabled: true,
+            ..Default::default()
+        })
+        .unwrap();
+    let initial = app.document.geometry_snapshot();
+    let reflect = |p: Vec3| Vec3(-p.0, p.1, p.2);
+    let pairs: Vec<_> = initial
+        .mesh
+        .vertices
+        .iter()
+        .map(|&p| {
+            initial
+                .mesh
+                .vertices
+                .iter()
+                .position(|&q| (q - reflect(p)).len() < 1e-6)
+                .unwrap()
+        })
+        .collect();
+    for offset in [-12., 0., 12.] {
+        let before = app.document.geometry_snapshot();
+        stroke(&mut app, &ctx, offset);
+        let after = app.document.geometry_snapshot();
+        assert_ne!(before, after);
+        let mismatch = after
+            .mesh
+            .vertices
+            .iter()
+            .zip(&pairs)
+            .map(|(&p, &j)| (after.mesh.vertices[j] - reflect(p)).len())
+            .fold(0_f32, f32::max);
+        assert!(
+            mismatch < 1e-5,
+            "offset {offset}: viewport drift {mismatch}"
+        );
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.dispatch(Command::Redo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), after);
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 #[ignore = "manual local-input symmetry review; requires Vulkan and SYMMETRY_REVIEW_SOURCE/PREVIEW"]
