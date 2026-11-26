@@ -24,6 +24,44 @@ fn preference_save_deadline_only_wakes_when_due() {
 }
 
 #[test]
+fn preference_deadline_frame_saves_without_new_input() {
+    let directory = Directory::new();
+    let path = directory.0.join("preferences.json");
+    let mut app = App {
+        preferences_path: Some(path.clone()),
+        ..App::default()
+    };
+    app.ui.preferences.external_paint_app = "idle-save-test".into();
+    let ctx = egui::Context::default();
+    let mut frame = eframe::Frame::_new_kittest();
+    let first = ctx.run(egui::RawInput::default(), |ctx| {
+        eframe::App::update(&mut app, ctx, &mut frame)
+    });
+    assert!(
+        first
+            .viewport_output
+            .get(&egui::ViewportId::ROOT)
+            .unwrap()
+            .repaint_delay
+            <= PREFERENCE_SAVE_DELAY,
+        "the changed preference must schedule a wakeup"
+    );
+    assert!(app.preferences_changed.is_some());
+    assert!(!path.exists(), "preference should still be debouncing");
+
+    // The scheduled deadline fires with no further input; run the actual app update.
+    app.preferences_changed = Some(std::time::Instant::now() - PREFERENCE_SAVE_DELAY);
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        eframe::App::update(&mut app, ctx, &mut frame)
+    });
+    assert_eq!(
+        preferences::load(&path).unwrap().external_paint_app,
+        "idle-save-test"
+    );
+    assert!(app.preferences_changed.is_none());
+}
+
+#[test]
 fn mesh_worker_uses_bounded_polling_until_completion() {
     let mut app = App::default();
     let ctx = egui::Context::default();

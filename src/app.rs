@@ -1308,7 +1308,8 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn raw_input_hook(&mut self, _: &egui::Context, input: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        self.tablet.observe_repaints(ctx);
         if self.tablet.prepare_input(input) {
             self.reset_touch_for_pen(&input.events);
         }
@@ -1325,6 +1326,7 @@ impl eframe::App for App {
         self.viewport.destroy_renderer();
     }
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        self.tablet.observe_repaints(ctx);
         if let Some(trace) = &mut self.frame_trace {
             trace.record(ctx);
         }

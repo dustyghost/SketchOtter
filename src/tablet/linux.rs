@@ -131,6 +131,31 @@ fn discover(devices: &mut Vec<Device>) -> String {
     }
     status
 }
+fn publish(state: &SharedState, pressure: Option<f32>, status: &str) {
+    let repaint = {
+        let mut shared = state.lock().unwrap();
+        let contact = pressure.is_some();
+        let changed = shared.contact != contact
+            || pressure.is_some_and(|p| !shared.contact || shared.pressure != p)
+            || shared.status != status;
+        shared.contact = contact;
+        if let Some(pressure) = pressure {
+            shared.pressure = pressure;
+            // Holding pressure need not produce further kernel events.
+            shared.updated_at = Instant::now();
+        } else {
+            shared.updated_at = Instant::now() - Duration::from_secs(10);
+        }
+        if shared.status != status {
+            shared.status.clear();
+            shared.status.push_str(status);
+        }
+        changed.then(|| shared.repaint.clone()).flatten()
+    };
+    if let Some(ctx) = repaint {
+        ctx.request_repaint();
+    }
+}
 pub(super) fn spawn(state: SharedState, stop: Arc<AtomicBool>) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let mut devices = Vec::new();
@@ -191,20 +216,12 @@ pub(super) fn spawn(state: SharedState, stop: Arc<AtomicBool>) -> std::thread::J
                 }
                 true
             });
-            let mut shared = state.lock().unwrap();
-            if let Some(device) = devices
+            let pressure = devices
                 .iter()
                 .filter(|d| d.sample.down && !d.dropped)
                 .max_by_key(|d| d.updated)
-            {
-                shared.pressure = device.sample.pressure;
-                // Holding pressure need not produce further kernel events.
-                shared.updated_at = Instant::now();
-            } else {
-                shared.updated_at = Instant::now() - Duration::from_secs(10);
-            }
-            shared.status.clone_from(&status);
-            drop(shared);
+                .map(|device| device.sample.pressure);
+            publish(&state, pressure, &status);
             std::thread::sleep(Duration::from_millis(8));
         }
     })
@@ -212,6 +229,68 @@ pub(super) fn spawn(state: SharedState, stop: Arc<AtomicBool>) -> std::thread::J
 #[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
+    #[test]
+    fn pressure_change_without_pointer_event_wakes_idle_ui() {
+        use std::sync::atomic::AtomicUsize;
+        let wakeups = Arc::new(AtomicUsize::new(0));
+        let ctx = eframe::egui::Context::default();
+        let count = wakeups.clone();
+        ctx.set_request_repaint_callback(move |_| {
+            count.fetch_add(1, Ordering::SeqCst);
+        });
+        let state = Arc::new(std::sync::Mutex::new(super::super::TabletState {
+            pressure: 1.,
+            updated_at: Instant::now() - Duration::from_secs(10),
+            status: String::new(),
+            contact: false,
+            repaint: Some(ctx.clone()),
+        }));
+        // Simulate worker publications with no egui pointer event.
+        let worker_state = state.clone();
+        std::thread::spawn(move || publish(&worker_state, Some(0.25), ""))
+            .join()
+            .unwrap();
+        assert_eq!(wakeups.load(Ordering::SeqCst), 1);
+        publish(&state, Some(0.25), "");
+        assert_eq!(
+            wakeups.load(Ordering::SeqCst),
+            1,
+            "held pressure must not poll UI"
+        );
+        // Egui coalesces repaint requests until a frame has consumed them.
+        for _ in 0..2 {
+            let _ = ctx.run(eframe::egui::RawInput::default(), |_| {});
+        }
+        let before = wakeups.load(Ordering::SeqCst);
+        publish(&state, Some(0.75), "");
+        assert_eq!(wakeups.load(Ordering::SeqCst), before + 1);
+        for _ in 0..2 {
+            let _ = ctx.run(eframe::egui::RawInput::default(), |_| {});
+        }
+        let before = wakeups.load(Ordering::SeqCst);
+        publish(&state, None, "");
+        assert_eq!(
+            wakeups.load(Ordering::SeqCst),
+            before + 1,
+            "release must wake UI"
+        );
+        publish(&state, None, "");
+        assert_eq!(
+            wakeups.load(Ordering::SeqCst),
+            before + 1,
+            "idle must not repaint"
+        );
+        for _ in 0..2 {
+            let _ = ctx.run(eframe::egui::RawInput::default(), |_| {});
+        }
+        let before = wakeups.load(Ordering::SeqCst);
+        publish(&state, None, "Tablet connected");
+        assert_eq!(
+            wakeups.load(Ordering::SeqCst),
+            before + 1,
+            "status change must wake UI"
+        );
+    }
     #[test]
     fn detects_physical_and_virtual_pens_without_selecting_keyboards() {
         assert!(pen_capabilities("d000003", "c03 0 0 0 0 0"));
