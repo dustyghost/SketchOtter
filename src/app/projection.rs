@@ -8,24 +8,34 @@ use std::sync::Arc;
 
 pub(super) struct ProjectionDraft {
     pub mesh: Arc<Mesh>,
+    pub display: Option<crate::viewport::JoinDisplay>,
     pub revision: u64,
     pub settings: crate::diagnostics::EditSettings,
     pub retopology_paths: Vec<SurfacePath>,
+    pub panels: Option<PanelDraft>,
 }
-struct SurfacePreview {
-    mesh: Mesh,
-    report: SurfaceReport,
-    retopology_paths: Vec<SurfacePath>,
+pub(super) struct PanelDraft {
+    pub panels: Vec<crate::sculpt::GeneratedPanel>,
+    pub outlines: Vec<Vec<crate::sculpt::Vec3>>,
+    pub key: crate::ui::PanelKey,
 }
-struct Worker {
-    job: BackgroundJob<SurfacePreview>,
-    revision: u64,
-    settings: crate::diagnostics::EditSettings,
-    progress: Option<Arc<std::sync::Mutex<String>>>,
+pub(super) struct SurfacePreview {
+    pub mesh: Mesh,
+    pub report: SurfaceReport,
+    pub retopology_paths: Vec<SurfacePath>,
+    pub panels: Option<PanelDraft>,
+}
+pub(super) struct Worker {
+    pub job: BackgroundJob<SurfacePreview>,
+    pub revision: u64,
+    pub settings: crate::diagnostics::EditSettings,
+    pub progress: Option<Arc<std::sync::Mutex<String>>>,
+    pub panel_key: Option<crate::ui::PanelKey>,
 }
 #[derive(Default)]
 pub(super) struct ProjectionState {
-    worker: Option<Worker>,
+    pub panel_gate: Arc<std::sync::Mutex<()>>,
+    pub worker: Option<Worker>,
     pub draft: Option<ProjectionDraft>,
     pub reference: Option<(u64, Arc<Mesh>)>,
     pub density_display: Option<(u64, Arc<Mesh>)>,
@@ -63,6 +73,10 @@ impl App {
         self.projection.worker = None;
         self.projection.draft = None;
         self.viewport.session.projection_preview = None;
+        if self.ui.projection.mode == SurfaceMode::Panels {
+            self.viewport.session.join_rims.clear();
+            self.viewport.set_join_preview(None);
+        }
         self.ui.projection.report = None;
         self.ui.projection.busy = false;
         self.ui.projection.progress.clear();
@@ -78,6 +92,9 @@ impl App {
     pub(super) fn start_projection(&mut self) -> Result<(), String> {
         if !self.ui.projection.open || self.mesh_job.is_some() {
             return Err("Open a surface preview when no mesh job is running".into());
+        }
+        if self.ui.projection.mode == SurfaceMode::Panels {
+            return self.start_panels();
         }
         if self.ui.projection.mode == SurfaceMode::Retopology {
             return self.start_retopology();
@@ -104,6 +121,7 @@ impl App {
                     mesh,
                     report: SurfaceReport::Projection(report),
                     retopology_paths: Vec::new(),
+                    panels: None,
                 })
         })?;
         let mut settings = self.document.capture_edit_settings();
@@ -122,6 +140,7 @@ impl App {
         self.projection.worker = Some(Worker {
             job,
             progress: None,
+            panel_key: None,
             revision: self.document.display_revision(),
             settings,
         });
@@ -130,6 +149,10 @@ impl App {
         Ok(())
     }
     pub(super) fn poll_projection(&mut self) {
+        if !self.panels_draft_current() {
+            self.clear_projection_preview();
+            self.ui.status = "Scene or panel settings changed; preview the panels again".into();
+        }
         if let Some(progress) = self
             .projection
             .worker
@@ -143,7 +166,12 @@ impl App {
         if let Some(result) = result {
             let worker = self.projection.worker.take().unwrap();
             self.ui.projection.busy = false;
-            if worker.revision != self.document.display_revision() {
+            if worker.revision != self.document.display_revision()
+                || worker
+                    .panel_key
+                    .as_ref()
+                    .is_some_and(|k| *k != self.ui.projection.panels.key(&self.document))
+            {
                 self.ui.status = "Scene changed; preview the surface edit again".into();
                 return;
             }
@@ -152,14 +180,19 @@ impl App {
                     mesh,
                     report,
                     retopology_paths,
+                    panels,
                 }) => {
                     self.ui.status = report.summary();
                     self.ui.projection.report = Some(report);
                     self.projection.draft = Some(ProjectionDraft {
+                        display: panels.as_ref().map(|_| {
+                            crate::viewport::JoinDisplay::with_active_mesh(&self.document, &mesh)
+                        }),
                         mesh: Arc::new(mesh),
                         revision: worker.revision,
                         settings: worker.settings.clone(),
                         retopology_paths,
+                        panels,
                     });
                 }
                 Err(error) => {
@@ -170,11 +203,31 @@ impl App {
         }
     }
     pub(super) fn apply_projection(&mut self) -> Result<(), String> {
+        if !self.panels_draft_current() {
+            self.clear_projection_preview();
+            return Err(
+                "The scene changed or panel settings changed; preview the panels again".into(),
+            );
+        }
         let draft = self
             .projection
             .draft
             .take()
             .ok_or("Preview the surface edit before applying it")?;
+        if let Some(panels) = draft.panels {
+            if panels.panels.is_empty() {
+                return Err("Preview panels before applying the shell".into());
+            }
+            let result =
+                self.document
+                    .apply_panels(panels.panels, draft.revision, Some(draft.settings));
+            self.cancel_projection();
+            if result.is_ok() {
+                self.ui.status =
+                    "Panels applied. The original source is hidden below them in Submodels.".into();
+            }
+            return result;
+        }
         let path_count = draft.retopology_paths.len();
         let result = if self.ui.projection.mode == SurfaceMode::Retopology {
             self.document.apply_retopology(
@@ -354,6 +407,7 @@ impl App {
                 mesh: layout.mesh,
                 report,
                 retopology_paths,
+                panels: None,
             })
         })?;
         let mut settings = self.document.capture_edit_settings();
@@ -364,6 +418,7 @@ impl App {
         self.projection.worker = Some(Worker {
             job,
             progress: Some(progress),
+            panel_key: None,
             revision: self.document.display_revision(),
             settings,
         });
@@ -395,6 +450,7 @@ impl App {
                     mesh,
                     report: SurfaceReport::Relaxation(report),
                     retopology_paths: Vec::new(),
+                    panels: None,
                 })
         })?;
         let mut settings = self.document.capture_edit_settings();
@@ -405,6 +461,7 @@ impl App {
         self.projection.worker = Some(Worker {
             job,
             progress: None,
+            panel_key: None,
             revision,
             settings,
         });

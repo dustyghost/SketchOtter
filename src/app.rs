@@ -24,6 +24,7 @@ mod fusion;
 mod instances;
 mod jobs;
 mod masking;
+mod panels;
 pub(crate) mod paths;
 pub(crate) mod policy;
 mod projection;
@@ -751,6 +752,10 @@ impl App {
         } else {
             self.projection.density_display = None;
         }
+        if !self.panels_draft_current() {
+            self.clear_projection_preview();
+        }
+        self.sync_panel_outlines();
         self.viewport.session.projection_preview = self
             .paths
             .preview_mesh
@@ -782,7 +787,13 @@ impl App {
                 self.ui.projection.layout.mirror_path_x,
             )
         });
-        self.viewport.set_join_preview(self.fusion.display.clone());
+        self.viewport
+            .set_join_preview(self.fusion.display.clone().or_else(|| {
+                self.projection
+                    .draft
+                    .as_ref()
+                    .and_then(|d| d.display.clone())
+            }));
         self.viewport.session.show_join_patch = self.ui.fusion.show_patch;
         self.viewport.session.show_join_removed = self.ui.fusion.show_removed;
         self.viewport.session.guided.enabled = self.ui.guide_paths

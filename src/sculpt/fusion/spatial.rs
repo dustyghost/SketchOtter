@@ -152,6 +152,43 @@ impl<'a> Index<'a> {
             }
         }
     }
+    fn contacts_bounded(
+        &self,
+        t: [Vec3; 3],
+        budget: &mut usize,
+        cancel: &dyn Fn() -> bool,
+        mut visit: impl FnMut(usize),
+    ) -> Result<(), String> {
+        if self.nodes.is_empty() {
+            return Ok(());
+        }
+        let bounds = Bounds::triangle(t);
+        let mut todo = vec![0];
+        while let Some(id) = todo.pop() {
+            if *budget == 0 {
+                return Err("Panel intersection search budget exceeded; select fewer groups or simplify the source".into());
+            }
+            *budget -= 1;
+            if *budget % 256 == 0 {
+                cancelled(cancel)?;
+            }
+            let n = &self.nodes[id];
+            if !n.bounds.overlaps(bounds) {
+                continue;
+            }
+            if let Some(children) = n.children {
+                todo.extend(children);
+            } else {
+                for &f in &self.faces[n.range.clone()] {
+                    let q = self.mesh.triangles[f].map(|v| self.mesh.vertices[v]);
+                    if Bounds::triangle(q).overlaps(bounds) && intersects(t, q) {
+                        visit(f);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
     pub fn inside(&self, p: Vec3) -> Result<bool, String> {
         let hits = self.ray_crossings(p, |_| true, |hits: &mut usize, _| *hits += 1)?;
         Ok(hits % 2 == 1)
@@ -347,6 +384,35 @@ pub(crate) fn validate_connector(
                 "The connector intersects itself. Adjust the alignment or curvature"
             };
             return Err(reason.into());
+        }
+    }
+    Ok(())
+}
+
+/// Panel generation moves retained faces too, and may visit dense nearby sheets.
+/// Bound the complete query workload and check cancellation inside each traversal.
+pub(crate) fn validate_panel_faces(
+    mesh: &Mesh,
+    first_new: usize,
+    cancel: &dyn Fn() -> bool,
+) -> Result<(), String> {
+    let index = Index::new(mesh, cancel)?;
+    let mut budget = 30_000_000;
+    for i in first_new..mesh.triangles.len() {
+        if i % 128 == 0 {
+            cancelled(cancel)?;
+        }
+        let mut hit = false;
+        index.contacts_bounded(
+            mesh.triangles[i].map(|v| mesh.vertices[v]),
+            &mut budget,
+            cancel,
+            |j| {
+                hit |= j < i;
+            },
+        )?;
+        if hit {
+            return Err("The panel surface contains intersecting faces".into());
         }
     }
     Ok(())

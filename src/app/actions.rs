@@ -468,6 +468,7 @@ impl App {
             }
             Action::ProjectDetails => Some(Command::OpenProjection),
             Action::GuidedRetopology => Some(Command::OpenRetopology),
+            Action::GeneratePanels => Some(Command::OpenPanels),
             Action::JoinMeshes => Some(Command::OpenFusion),
             Action::RelaxMesh => Some(Command::OpenRelaxation),
             Action::KeepProjectionReference => Some(Command::KeepProjectionReference),

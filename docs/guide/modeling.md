@@ -15,6 +15,7 @@ Start with [a primitive](#parametric-primitives) for a brush sculpt, or try [a s
 - [Add mesh detail](#mesh-management)
 - [Redistribute stretched polygons](#relax-stretched-polygons)
 - [Thicken an open surface](#thickness-modifier)
+- [Generate panels from polygon groups](#generate-panels-from-polygon-groups)
 - [Cut the model](#slice)
 - [Combine submodels](#merge-down)
 - [Join meshes locally](#join-meshes-locally)
@@ -840,6 +841,30 @@ Projection follows locally averaged surface directions to keep neighbouring vert
 ### When symmetry cannot match
 
 A fresh, centred 3×3×3 cube supports ordinary X mirror symmetry after conversion to an editable mesh. Exact symmetry still needs matching positions and topology. If it cannot match, Q and the Modeling panel show the reason and a **Turn symmetry off** button. Select remains available so you can inspect the mesh. Check mirror axes, radial settings and centre before trying the edit again.
+
+## Generate panels from polygon groups
+
+Use **Generate panels…** in **Mesh** or the **Submodels → Vertex groups** controls (also available in Search). The active model needs polygon-group face assignments. Select faces with a mouse or pen first to seed the group list, or check groups in the panel window. The initial preview isolates the chosen surfaces and draws their original perimeters in gold, including holes and disconnected islands.
+
+1. Set **Thickness** and **Normal offset**. Thickness is the total front-to-back distance; offset locates its centre along the source normal. **Inward**, **Centred** and **Outward** set that centre once. Subsequent thickness changes do not change the offset.
+2. Set **Gap**. Each panel retreats by half this amount, so two adjacent panels share the requested gap. **Bevel width** controls equal lateral width and depth and must be smaller than half the thickness. Choose **Flat bevel** or **Rounded bevel**, and the number of **Bevel segments**. Zero width produces a straight wall.
+3. Set **Border width**, **Surface border loops** and **Loop spacing**. These are welded strips on the front and back surfaces. Spacing 1 is uniform; higher values concentrate support near the bevel. **Wall support loops** run through the straight wall. Changing loop or segment counts keeps the specified dimensions.
+4. Raise **Outline smoothing** to relax uneven boundary samples on the source surface. **Preserve turns ≥** keeps turns at or above the chosen angle; crease endpoints always stay fixed. Raise the angle deliberately to clean staircase outlines. Keep **Source outlines** visible to judge the change. Changes invalidate the previous shell; choose **Preview panels** again.
+5. Inspect **Wireframe** as well as shading. **Apply panels** adds one editable submodel per selected group, named `Panel · group name`, with all of that group's islands in the same submodel. The original model, subdivision stack, attributes and saved paths remain on a hidden source below the panels. **Cancel**, Escape and closing the window discard the preview. Apply is one **Generate panels** Undo/Redo step; saving and reopening retains the panels and source.
+
+![Curved adjacent panels with thickness and bevel controls](../validation/panels-161/panels-adjacent-shaded.png)
+
+![Surface border and bevel loops around curved adjacent panels](../validation/panels-161/panels-adjacent-wire.png)
+
+The reconstruction moves the original boundary vertices inward and inserts continuous quad strips between that inset ring and the cleaned outline. Original faces incident to those vertices form the inner transition; vertices and connectivity outside this one-ring region stay unchanged before the requested normal offset. Existing interior triangles remain triangles, so a mixed source retains mixed topology at the inner transition. A rectangular quad panel keeps a valence-three corner fan on each cap: these eight poles close the shell, and the support strips separate them from the bevel. This is local perimeter reconstruction, not a whole-model remesh. Inspect a smooth subdivision of the result when sharp corner behavior matters.
+
+Source vertex materials/colour, soft group weights and masks follow their original boundary vertex onto each new ring and wall; retained interior attributes remain exact. New faces inherit the selected polygon-group ID. Retained front UV corners and their masks are copied exactly; back corners use reversed winding. Existing seams and creases survive on retained edges. New border, bevel and wall faces are explicitly **unmapped**, and need a UV layout before texture painting. Texture images remain attached.
+
+**Protect mask** rejects regions touching any masked vertex; hidden selected faces and vertices touching hidden faces are always protected. Enabled modelling symmetry includes matching whole polygon groups on the other sides. If the source topology or group boundaries do not match, fix the groups or disable symmetry explicitly. Convert parametric primitives and make instances/arrays editable first; apply or remove temporary Thickness. Panel output uses the current stored subdivision level and starts with no subdivision stack; the hidden source keeps its stack.
+
+Widths that cross holes, pinch narrow areas, reverse faces, or intersect another panel or unselected source surface are rejected with no scene edit. Reduce gap, border width, smoothing, bevel, thickness or normal offset as indicated. Touching/branching outlines, a group with no open perimeter, and inactive UV layouts are unsupported. Source limits are 250,000 triangles; the combined output is limited to 500,000 triangles/vertices and the configured mesh budget. Intersection searches are bounded and cancellable. The complete scene, including retained sources, must fit the existing 64-submodel limit.
+
+See the [panel visual review](../validation/panels-161/README.md) for holes, concave and narrow regions, islands, irregular boundaries, profile comparisons and subdivision examples.
 
 ## Thickness modifier
 

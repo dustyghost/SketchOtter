@@ -50,7 +50,12 @@ pub use transform::Transform;
 mod primitive;
 pub use primitive::{Primitive, PrimitiveKind};
 
+mod panels;
 mod thickness;
+pub use panels::{
+    GeneratedPanel, PanelBorder, PanelOptions, PanelPreview, PanelProfile, PanelRegion,
+    PanelSelection,
+};
 
 mod groups;
 pub use groups::{GroupPurpose, VertexGroup, mask_selected};

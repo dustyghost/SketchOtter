@@ -794,6 +794,7 @@ impl App {
                 Ok(())
             }
             Command::OpenProjection => self.open_projection(),
+            Command::OpenPanels => self.open_panels(),
             Command::OpenRetopology => self.open_retopology(),
             Command::OpenFusion => self.open_fusion(),
             Command::DiscoverFusion => self.discover_fusion(),
@@ -818,7 +819,13 @@ impl App {
             Command::PreviewProjection => self.start_projection(),
             Command::ClearProjectionPreview => {
                 self.clear_projection_preview();
-                Ok(())
+                if self.ui.projection.open
+                    && self.ui.projection.mode == crate::ui::SurfaceMode::Panels
+                {
+                    self.start_panel_selection()
+                } else {
+                    Ok(())
+                }
             }
             Command::ApplyProjection => self.apply_projection(),
             Command::CancelProjection => {
@@ -892,6 +899,10 @@ impl App {
         }
         if let Err(error) = result {
             self.diagnostic_warning("An application command failed; detailed error text withheld to exclude personal paths");
+            if self.ui.projection.open && self.ui.projection.mode == crate::ui::SurfaceMode::Panels
+            {
+                self.ui.projection.error = Some(error.clone());
+            }
             if self.ui.fusion.open {
                 self.ui.fusion.show_error(error.clone());
             }

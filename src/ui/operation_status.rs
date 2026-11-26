@@ -28,6 +28,7 @@ impl UiState {
         }
         if self.projection.open {
             summary.mode = match self.projection.mode {
+                SurfaceMode::Panels => "Generate panels preview",
                 SurfaceMode::Projection => "Project details preview",
                 SurfaceMode::Relaxation => "Relax mesh preview",
                 SurfaceMode::Retopology => "Guided retopology preview",
