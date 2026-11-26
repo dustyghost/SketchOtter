@@ -12,6 +12,133 @@ pub(crate) fn rounded_bevel_profile(start: Vec3, corner: Vec3, end: Vec3, t: f32
 }
 
 impl Mesh {
+    /// Replace selected faces, edges, or vertices with the perimeter edges of
+    /// their connected, coplanar face islands.
+    pub(crate) fn expand_flat_island_components(
+        &self,
+        selected_edges: &[[usize; 2]],
+        selected_vertices: &[usize],
+        selected_faces: &[usize],
+    ) -> Result<Vec<[usize; 2]>, String> {
+        let polygons = self.polygons();
+        let mut incidence = BTreeMap::<[usize; 2], Vec<usize>>::new();
+        for (face, polygon) in polygons.iter().enumerate() {
+            for (a, b) in polygon.edges() {
+                incidence.entry(edge(a, b)).or_default().push(face);
+            }
+        }
+        let normals: Vec<_> = polygons.iter().map(|p| normal(self, p)).collect();
+        let mut face_neighbors = vec![Vec::new(); polygons.len()];
+        for faces in incidence.values() {
+            if faces.len() != 2 {
+                continue;
+            }
+            let (a, b) = (faces[0], faces[1]);
+            let direction = normals[a];
+            let origin = self.vertices[polygons[a].vertices[0]];
+            let scale = polygons[a]
+                .edges()
+                .chain(polygons[b].edges())
+                .map(|(u, v)| (self.vertices[u] - self.vertices[v]).len())
+                .fold(0_f32, f32::max);
+            let coplanar = direction.dot(normals[b]) >= 0.9999
+                && polygons[b]
+                    .vertices
+                    .iter()
+                    .all(|&v| (self.vertices[v] - origin).dot(direction).abs() <= scale * 1e-4);
+            if coplanar {
+                face_neighbors[a].push(b);
+                face_neighbors[b].push(a);
+            }
+        }
+        let mut seeds: BTreeSet<_> = selected_faces
+            .iter()
+            .copied()
+            .filter(|&face| face < polygons.len())
+            .collect();
+        seeds.extend(selected_edges.iter().flat_map(|e| {
+            incidence
+                .get(&edge(e[0], e[1]))
+                .into_iter()
+                .flatten()
+                .copied()
+        }));
+        let selected_vertices: BTreeSet<_> = selected_vertices.iter().copied().collect();
+        if !selected_vertices.is_empty() {
+            for (face, polygon) in polygons.iter().enumerate() {
+                if polygon
+                    .vertices
+                    .iter()
+                    .any(|vertex| selected_vertices.contains(vertex))
+                {
+                    seeds.insert(face);
+                }
+            }
+        }
+        if seeds.is_empty() {
+            return Err("Select a surface face, edge, or vertex on a flat island".into());
+        }
+        let mut visited = BTreeSet::new();
+        let mut perimeter = BTreeSet::new();
+        for seed in seeds {
+            if !visited.insert(seed) {
+                continue;
+            }
+            let mut island = BTreeSet::from([seed]);
+            let mut stack = vec![seed];
+            while let Some(face) = stack.pop() {
+                for &neighbor in &face_neighbors[face] {
+                    if visited.insert(neighbor) {
+                        island.insert(neighbor);
+                        stack.push(neighbor);
+                    }
+                }
+            }
+            for &face in &island {
+                for (a, b) in polygons[face].edges() {
+                    let e = edge(a, b);
+                    if incidence[&e]
+                        .iter()
+                        .filter(|&&other| island.contains(&other))
+                        .count()
+                        == 1
+                    {
+                        perimeter.insert(e);
+                    }
+                }
+            }
+        }
+        Ok(perimeter.into_iter().collect())
+    }
+
+    /// Follow selected edges along their unambiguous loops. A selected vertex
+    /// loop becomes an edge selection; isolated selected vertices remain corner
+    /// bevels.
+    pub(crate) fn follow_bevel_edge_loops(
+        &self,
+        edges: &[[usize; 2]],
+        vertices: &[usize],
+    ) -> Result<(Vec<[usize; 2]>, Vec<usize>), String> {
+        let mut followed: BTreeSet<_> = self.expand_edge_loop(edges)?.into_iter().collect();
+        let selected_vertices: BTreeSet<_> = vertices.iter().copied().collect();
+        let vertex_edges: Vec<_> = self
+            .model_edges()
+            .into_iter()
+            .filter(|edge| {
+                selected_vertices.contains(&edge[0]) && selected_vertices.contains(&edge[1])
+            })
+            .collect();
+        if !vertex_edges.is_empty() {
+            followed.extend(self.expand_edge_loop(&vertex_edges)?);
+        }
+        let loop_vertices: BTreeSet<_> = followed.iter().flatten().copied().collect();
+        let remaining_vertices = selected_vertices
+            .difference(&loop_vertices)
+            .copied()
+            .collect();
+        Ok((followed.into_iter().collect(), remaining_vertices))
+    }
+
     /// One segment is a flat chamfer; additional segments round the cut.
     pub(crate) fn bevel_components(
         &self,
@@ -321,7 +448,15 @@ impl Mesh {
                         out.push_polygon(&t, source.group, source.hidden);
                     }
                 } else {
-                    self.component_polygon(&mut out, &ring, source, true);
+                    let face_valence = polygons
+                        .iter()
+                        .filter(|polygon| polygon.vertices.contains(&v))
+                        .count();
+                    if segments == 1
+                        || !bevel_corner_grid(self, &mut out, &ring, source, face_valence, segments)
+                    {
+                        self.component_polygon(&mut out, &ring, source, true);
+                    }
                 }
             }
         }
@@ -360,6 +495,79 @@ impl Mesh {
         symmetry.validate_result(&out)?;
         Ok(out)
     }
+}
+
+/// Fill a rounded edge junction with a small structured grid instead of
+/// connecting every boundary sample to one high-valence center pole.
+fn bevel_corner_grid(
+    source: &Mesh,
+    out: &mut Mesh,
+    boundary: &[usize],
+    polygon: &Polygon,
+    face_valence: usize,
+    segments: u32,
+) -> bool {
+    let segments = segments as usize;
+    if face_valence < 3 || segments < 2 || boundary.len() != face_valence * segments {
+        return false;
+    }
+    let mean = boundary.iter().fold(Vec3::default(), |position, &vertex| {
+        position + out.vertices[vertex]
+    }) * (1. / boundary.len() as f32);
+    let radii: Vec<_> = boundary
+        .iter()
+        .map(|&vertex| (out.vertices[vertex] - mean).len())
+        .collect();
+    // Each incident source face contributes one equally segmented arc. Find
+    // the phase where those arcs meet at their outer corner samples.
+    let offset = (0..segments)
+        .max_by(|&a, &b| {
+            let score = |phase: usize| {
+                (0..face_valence)
+                    .map(|side| radii[(phase + side * segments) % boundary.len()])
+                    .sum::<f32>()
+            };
+            score(a).total_cmp(&score(b))
+        })
+        .unwrap_or(0);
+    let anchors: Vec<_> = (0..face_valence)
+        .map(|side| (offset + side * segments) % boundary.len())
+        .collect();
+    if anchors.iter().any(|&anchor| {
+        radii[anchor] <= radii[(anchor + boundary.len() - 1) % boundary.len()]
+            || radii[anchor] <= radii[(anchor + 1) % boundary.len()]
+    }) {
+        return false;
+    }
+
+    let weights: Vec<_> = polygon
+        .vertices
+        .iter()
+        .map(|&vertex| (vertex, 1. / polygon.vertices.len() as f32))
+        .collect();
+    let center = out.append_blend(source, &weights, mean);
+    for &anchor in &anchors {
+        let previous = (anchor + boundary.len() - 1) % boundary.len();
+        let next = (anchor + 1) % boundary.len();
+        out.push_polygon(
+            &[boundary[previous], boundary[anchor], boundary[next]],
+            polygon.group,
+            polygon.hidden,
+        );
+    }
+    let inner: Vec<_> = (0..boundary.len())
+        .filter(|index| !anchors.contains(index))
+        .collect();
+    for i in 0..inner.len() {
+        let a = inner[i];
+        let b = inner[(i + 1) % inner.len()];
+        out.push_polygon(
+            &[boundary[a], boundary[b], center],
+            polygon.group,
+            polygon.hidden,
+        );
+    }
+    true
 }
 
 fn rounded_path(
@@ -436,6 +644,254 @@ fn rounded_cap(
 #[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;
+    #[test]
+    fn flat_island_edge_expands_to_connected_coplanar_patch_perimeter() {
+        let mut primitive = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Grid);
+        primitive.divisions = [4, 4, 1];
+        let mesh = primitive.mesh().unwrap();
+        let polygons = mesh.polygons();
+        let mut incidence = BTreeMap::<[usize; 2], Vec<usize>>::new();
+        for (face, polygon) in polygons.iter().enumerate() {
+            for (a, b) in polygon.edges() {
+                incidence.entry(edge(a, b)).or_default().push(face);
+            }
+        }
+        let seed = incidence
+            .iter()
+            .find(|(_, faces)| faces.len() == 2)
+            .map(|(&e, _)| e)
+            .unwrap();
+        let expected: BTreeSet<_> = incidence
+            .iter()
+            .filter(|(_, faces)| faces.len() == 1)
+            .map(|(&e, _)| e)
+            .collect();
+        assert_eq!(
+            mesh.expand_flat_island_components(&[seed], &[], &[])
+                .unwrap()
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn flat_island_edge_stops_at_sharp_face_boundaries() {
+        let mut primitive = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Cube);
+        primitive.divisions = [3; 3];
+        let mesh = primitive.mesh().unwrap();
+        let polygons = mesh.polygons();
+        let top = mesh
+            .vertices
+            .iter()
+            .map(|v| v.1)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let top_faces: BTreeSet<_> = polygons
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| {
+                p.vertices
+                    .iter()
+                    .all(|&v| (mesh.vertices[v].1 - top).abs() < 1e-6)
+            })
+            .map(|(i, _)| i)
+            .collect();
+        let mut incidence = BTreeMap::<[usize; 2], Vec<usize>>::new();
+        for (face, polygon) in polygons.iter().enumerate() {
+            for (a, b) in polygon.edges() {
+                incidence.entry(edge(a, b)).or_default().push(face);
+            }
+        }
+        let seed = incidence
+            .iter()
+            .find(|(_, faces)| faces.len() == 2 && faces.iter().all(|f| top_faces.contains(f)))
+            .map(|(&e, _)| e)
+            .unwrap();
+        let expected: BTreeSet<_> = incidence
+            .iter()
+            .filter(|(_, faces)| faces.iter().filter(|&&f| top_faces.contains(&f)).count() == 1)
+            .map(|(&e, _)| e)
+            .collect();
+        let expanded: BTreeSet<_> = mesh
+            .expand_flat_island_components(&[seed], &[], &[])
+            .unwrap()
+            .into_iter()
+            .collect();
+        assert_eq!(expanded, expected);
+
+        let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+        mesh.bevel_components(
+            &expanded.into_iter().collect::<Vec<_>>(),
+            &[],
+            0.05,
+            1,
+            &symmetry,
+        )
+        .unwrap()
+        .validate_closed()
+        .unwrap();
+    }
+
+    #[test]
+    fn flat_island_edge_uses_same_perimeter_from_face_edge_or_interior_vertex() {
+        let mut primitive = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Cube);
+        primitive.divisions = [3; 3];
+        let mesh = primitive.mesh().unwrap();
+        let polygons = mesh.polygons();
+        let top = mesh
+            .vertices
+            .iter()
+            .map(|v| v.1)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let top_faces: BTreeSet<_> = polygons
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| {
+                p.vertices
+                    .iter()
+                    .all(|&v| (mesh.vertices[v].1 - top).abs() < 1e-6)
+            })
+            .map(|(i, _)| i)
+            .collect();
+        let mut incidence = BTreeMap::<[usize; 2], Vec<usize>>::new();
+        let mut top_vertex_faces = BTreeMap::<usize, usize>::new();
+        for (face, polygon) in polygons.iter().enumerate() {
+            for (a, b) in polygon.edges() {
+                incidence.entry(edge(a, b)).or_default().push(face);
+            }
+            if top_faces.contains(&face) {
+                for &vertex in &polygon.vertices {
+                    *top_vertex_faces.entry(vertex).or_default() += 1;
+                }
+            }
+        }
+        let face = *top_faces.iter().next().unwrap();
+        let edge = incidence
+            .iter()
+            .find(|(_, faces)| faces.len() == 2 && faces.iter().all(|f| top_faces.contains(f)))
+            .map(|(&e, _)| e)
+            .unwrap();
+        let vertex = top_vertex_faces
+            .iter()
+            .find(|(_, count)| **count == 4)
+            .map(|(&vertex, _)| vertex)
+            .unwrap();
+        let expected: BTreeSet<_> = incidence
+            .iter()
+            .filter(|(_, faces)| faces.iter().filter(|&&f| top_faces.contains(&f)).count() == 1)
+            .map(|(&e, _)| e)
+            .collect();
+
+        let from_edge = mesh
+            .expand_flat_island_components(&[edge], &[], &[])
+            .unwrap();
+        let from_face = mesh
+            .expand_flat_island_components(&[], &[], &[face])
+            .unwrap();
+        let from_vertex = mesh
+            .expand_flat_island_components(&[], &[vertex], &[])
+            .unwrap();
+        let as_set = |edges: Vec<[usize; 2]>| edges.into_iter().collect::<BTreeSet<_>>();
+        assert_eq!(as_set(from_edge.clone()), expected);
+        assert_eq!(as_set(from_face.clone()), expected);
+        assert_eq!(as_set(from_vertex.clone()), expected);
+
+        let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+        let bevel = |edges: &[[usize; 2]]| {
+            mesh.bevel_components(edges, &[], 0.05, 1, &symmetry)
+                .unwrap()
+        };
+        let edge_result = bevel(&from_edge);
+        let face_result = bevel(&from_face);
+        let vertex_result = bevel(&from_vertex);
+        assert_eq!(edge_result.vertices, face_result.vertices);
+        assert_eq!(edge_result.vertices, vertex_result.vertices);
+        assert_eq!(edge_result.triangles, face_result.triangles);
+        assert_eq!(edge_result.triangles, vertex_result.triangles);
+        edge_result.validate_closed().unwrap();
+    }
+
+    #[test]
+    fn follow_edge_loop_connects_vertex_loops_and_keeps_isolated_vertices() {
+        let mut primitive = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Cube);
+        primitive.divisions = [3; 3];
+        let mesh = primitive.mesh().unwrap();
+        let top = mesh
+            .vertices
+            .iter()
+            .map(|v| v.1)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let right = mesh
+            .vertices
+            .iter()
+            .map(|v| v.0)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let front = mesh
+            .vertices
+            .iter()
+            .map(|v| v.2)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let loop_edges: Vec<_> = mesh
+            .polygon_edges()
+            .into_iter()
+            .filter(|e| {
+                e.iter().all(|&v| {
+                    let p = mesh.vertices[v];
+                    (p.1 - top).abs() < 1e-6
+                        && ((p.0.abs() - right).abs() < 1e-6 || (p.2.abs() - front).abs() < 1e-6)
+                })
+            })
+            .collect();
+        assert_eq!(loop_edges.len(), 12);
+        let loop_vertices: Vec<_> = loop_edges.iter().flatten().copied().collect();
+        let (followed, remaining) = mesh.follow_bevel_edge_loops(&[], &loop_vertices).unwrap();
+        assert_eq!(
+            followed.into_iter().collect::<BTreeSet<_>>(),
+            loop_edges.into_iter().collect()
+        );
+        assert!(remaining.is_empty());
+
+        let isolated = mesh.vertices.len() - 1;
+        let (followed, remaining) = mesh.follow_bevel_edge_loops(&[], &[isolated]).unwrap();
+        assert!(followed.is_empty());
+        assert_eq!(remaining, vec![isolated]);
+    }
+
+    #[test]
+    fn follow_edge_loop_expands_selected_edges_and_preserves_manifold_bevels() {
+        let mut primitive = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Cube);
+        primitive.divisions = [3; 3];
+        let mesh = primitive.mesh().unwrap();
+        let top = mesh
+            .vertices
+            .iter()
+            .map(|v| v.1)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let right = mesh
+            .vertices
+            .iter()
+            .map(|v| v.0)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let seed = mesh
+            .polygon_edges()
+            .into_iter()
+            .find(|e| {
+                e.iter().all(|&v| {
+                    let p = mesh.vertices[v];
+                    (p.1 - top).abs() < 1e-6 && (p.0 - right).abs() < 1e-6
+                })
+            })
+            .unwrap();
+        let (followed, points) = mesh.follow_bevel_edge_loops(&[seed], &[]).unwrap();
+        assert!(followed.len() > 1);
+        assert!(points.is_empty());
+        let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+        mesh.bevel_components(&followed, &[], 0.05, 3, &symmetry)
+            .unwrap()
+            .validate_closed()
+            .unwrap();
+    }
+
     #[test]
     fn component_bevel_follows_subdivided_edge_chains_and_loops() {
         let mut primitive = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Cube);
@@ -553,6 +1009,43 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn flat_island_bevel_corner_cap_avoids_a_nine_way_pole() {
+        let mut primitive = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Cube);
+        primitive.divisions = [3; 3];
+        let mesh = primitive.mesh().unwrap();
+        let faces: Vec<_> = (0..mesh.polygons().len()).collect();
+        let edges = mesh
+            .expand_flat_island_components(&[], &[], &faces)
+            .unwrap();
+        let symmetry = ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+        let width = 0.178_076_6;
+        let out = mesh
+            .bevel_components(&edges, &[], width, 3, &symmetry)
+            .unwrap();
+        out.validate_closed().unwrap();
+
+        let mut neighbors = vec![BTreeSet::new(); out.vertices.len()];
+        for [a, b] in out.polygon_edges() {
+            neighbors[a].insert(b);
+            neighbors[b].insert(a);
+        }
+        let source_corner = Vec3(-1., -1., -1.);
+        let local_max_valence = out
+            .vertices
+            .iter()
+            .enumerate()
+            .filter(|(_, position)| (**position - source_corner).len() < width * 2.)
+            .map(|(vertex, _)| neighbors[vertex].len())
+            .max()
+            .unwrap();
+        assert!(
+            local_max_valence <= 6,
+            "corner cap should continue its three boundary loops instead of converging to a nine-way pole; local maximum valence was {local_max_valence}"
+        );
+    }
+
     #[test]
     fn component_bevel_mirrors_corner_and_edge_topology() {
         let mesh = cube();

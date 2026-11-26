@@ -498,7 +498,13 @@ pub(super) const SETTINGS: &[(&str, &str, Destination, &str)] = &[
         "Bevel segments",
         "bevel rounded chamfer edges vertices smooth",
         Destination::Panel(Tool::Mesh),
-        "Set rounded bevel resolution from two to eight segments. Choose Bevel edges or Bevel vertices first.",
+        "Set rounded bevel resolution from two to eight segments. Available for Edge or Vertex bevels and Face Bevel with the Flat island target.",
+    ),
+    (
+        "Follow edge loop",
+        "bevel chamfer vertices edges loop connected component",
+        Destination::Panel(Tool::Mesh),
+        "Extend bevel and chamfer selections along edge loops. Disable to edit only the selected edges or vertices.",
     ),
     (
         "Circularize ring",

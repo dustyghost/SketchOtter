@@ -175,7 +175,7 @@ impl SelectionSpan {
             Self::Connected => "Connected",
             Self::Flat => "Flat island",
             Self::Group => "Face group",
-            Self::Border => "Boundary",
+            Self::Border => "Open boundary",
         }
     }
     pub fn available(self, mode: ComponentMode) -> bool {
@@ -287,6 +287,8 @@ pub(crate) struct ModelingOptions {
     pub delete_keep_vertices: bool,
     #[serde(default = "bevel_segments_default")]
     pub bevel_segments: u32,
+    #[serde(default = "bevel_follow_edge_loop_default")]
+    pub bevel_follow_edge_loop: bool,
     #[serde(default)]
     pub construction: ModelConstruction,
     #[serde(default = "tap_repeat_default")]
@@ -296,6 +298,9 @@ pub(crate) struct ModelingOptions {
 }
 fn bevel_segments_default() -> u32 {
     3
+}
+fn bevel_follow_edge_loop_default() -> bool {
+    true
 }
 fn tap_repeat_default() -> bool {
     true

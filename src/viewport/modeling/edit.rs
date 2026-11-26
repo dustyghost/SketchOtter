@@ -314,8 +314,10 @@ impl ModelingState {
             )?;
             return Ok(EditOutcome::new(result, amount, false));
         }
-        if options.tool.is_component_bevel() {
-            let edges: Vec<_> = components
+        if options.tool.is_component_bevel()
+            || (options.tool == ModelTool::Bevel && options.span == SelectionSpan::Flat)
+        {
+            let mut edges: Vec<_> = components
                 .iter()
                 .filter_map(|c| {
                     if let Component::Edge(e) = c {
@@ -325,7 +327,7 @@ impl ModelingState {
                     }
                 })
                 .collect();
-            let points: Vec<_> = components
+            let mut points: Vec<_> = components
                 .iter()
                 .filter_map(|c| {
                     if let Component::Vertex(v) = c {
@@ -335,11 +337,27 @@ impl ModelingState {
                     }
                 })
                 .collect();
+            let faces: Vec<_> = components
+                .iter()
+                .filter_map(|c| {
+                    if let Component::Face(f) = c {
+                        Some(*f)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if options.tool == ModelTool::Bevel && options.span == SelectionSpan::Flat {
+                edges = mesh.expand_flat_island_components(&edges, &points, &faces)?;
+                points.clear();
+            } else if options.bevel_follow_edge_loop {
+                (edges, points) = mesh.follow_bevel_edge_loops(&edges, &points)?;
+            }
             let result = mesh.bevel_components(
                 &edges,
                 &points,
                 amount,
-                if options.tool.rounded_bevel() {
+                if options.tool.rounded_bevel() || options.tool == ModelTool::Bevel {
                     options.bevel_segments
                 } else {
                     1

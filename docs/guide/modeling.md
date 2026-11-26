@@ -256,9 +256,9 @@ Hover before pressing to check what the edit will affect. Pressing an already-se
 | Target | What it includes |
 | --- | --- |
 | Connected | Connected visible faces |
-| Flat island | Connected faces within **Island angle** of the starting face |
+| Flat island | Connected coplanar faces within **Island angle** of the starting face; with Face **Bevel**, the island perimeter |
 | Face group | Visible polygons with the same face label |
-| Boundary | An open boundary, in Edge mode |
+| Open boundary | Connected open mesh edges in Edge mode (each has one adjacent face); not the outline of the current selection |
 
 Loop and parallel-edge targets remain available where applicable.
 
@@ -351,7 +351,7 @@ The highlighted rim stays on the dragged face even as the pen moves across other
 
 **Extrude** supports connected regions with shared side walls. Nonplanar regions move along averaged vertex normals; **Individual faces** makes separate extrusions. Distance is available numerically through **Apply amount**, as well as by pen drag. Matching-face tunnel joins remain available for aligned caps.
 
-**Inset** adds a border of the chosen Width inside a flat region. **Individual faces** insets each face separately. **Bevel boundary** trims a flat region's exterior corners, creating a single chamfer band; each corner must have one exterior edge descending away from the region. Use the Edge and Vertex chamfer/bevel tools below for individual components and rounded cuts. Widths that collapse narrow faces are rejected.
+**Inset** adds a border of the chosen Width inside a flat region. **Individual faces** insets each face separately. **Bevel boundary** trims a flat region's exterior corners; choose the **Flat island** target to bevel the connected coplanar island's perimeter, including when the seed face is inside the island. Its **Segments** slider controls the rounded profile. Other targets keep the selected-region bevel behavior. Widths that collapse narrow faces are rejected.
 
 Inset and bevel retain the cap selection for the next operation. New faces inherit their source region's face label; surviving weights and creases are retained.
 
@@ -407,11 +407,11 @@ Transforms group only the moved vertices. Topology changes include the corner ve
 
 Choose **Chamfer edges** or **Bevel edges** in Edge mode, and **Chamfer vertices** or **Bevel vertices** in Vertex mode. All four are in **Q**, the Modeling menu and the Mesh panel. **Width** is measured in model units. For edge tools it is the perpendicular offset from the selected edge on each adjoining face; for vertex tools it is the distance along each incident edge to the cut ring. Chamfer uses one flat band. Bevel uses **Segments** from 2 to 8 to sample a quadratic rounded profile; more segments add geometry without changing Width.
 
-With multiple edges selected, both edge tools follow the selected chain or loop and join the cuts where those edges meet. Offset lines meet at their face-corner intersection, with a local miter limit: cuts consuming 45% of the shorter incident edge are rejected. Rounded edge profiles share their cross-sections at junctions, rather than creating overlapping corner caps. **Bevel vertices** rounds the selected corners across their complete incident surface fans; selecting a vertex loop does not automatically bevel the edges between those vertices. Use Edge mode for a continuous edge bevel.
+With **Follow edge loop** on (the default), selected edges extend along their unambiguous edge loops. A selected vertex loop bevels or chamfers the connecting edges as one continuous band; isolated selected vertices still round their corners. Turn the option off to affect only the selected components. In Face mode, **Flat island** selects the connected coplanar face island; with **Bevel**, it targets the island perimeter. This is one target, not a separate bevel checkbox. The rounded profile's **Segments** slider is available beside Width for rounded Edge/Vertex bevels and for Face Bevel with Flat island selected. Offset lines meet at their face-corner intersection, with a local miter limit: cuts consuming 45% of the shorter incident edge are rejected. Rounded edge profiles share their cross-sections at junctions; three-sided corner caps continue those strips as a triangular grid instead of collapsing all boundary samples into one high-valence fan.
 
-Drag upward on the selected component to increase **Width**, then release to apply. Escape cancels. Alternatively, enter a width and choose **Apply amount**. Q also exposes the width and segments for the active tool. Each cut is one Undo step and supports the optional new vertex group.
+Drag upward on the selected component to increase **Width**, then release to apply. Escape cancels. Alternatively, enter a width and choose **Apply amount**. Q also exposes the width and applicable segments for the active tool. Each cut is one Undo step and supports the optional new vertex group.
 
-Use closed, consistently oriented surface fans with convex face corners. Open borders, loose edges, disconnected corner fans, flat/concave corners, cuts that overlap, or results that intersect nearby faces are rejected without changing the model; reduce Width or the selection when needed. Masks and hidden geometry remain protected. Unchanged face groups, UVs, seams and crease marks are retained. A bevel spanning different face groups is assigned neutral group 0; bevel-created faces have unmapped UVs, and removed crease edges are not transferred onto the rounded strip. Edited faces need unwrapping before texture painting. The face-mode **Bevel boundary** remains the existing region operation; these component tools do not duplicate it.
+Use closed, consistently oriented surface fans with convex face corners. Open borders, loose edges, disconnected corner fans, flat/concave corners, cuts that overlap, or results that intersect nearby faces are rejected without changing the model; reduce Width or the selection when needed. Masks and hidden geometry remain protected. Unchanged face groups, UVs, seams and crease marks are retained. A bevel spanning different face groups is assigned neutral group 0; bevel-created faces have unmapped UVs, and removed crease edges are not transferred onto the rounded strip. Edited faces need unwrapping before texture painting.
 
 ![Rounded edge bevel](../images/bevel-edge.png)
 ![Rounded vertex bevel](../images/bevel-vertex.png)
@@ -545,7 +545,7 @@ Both require noncrossing interior quad loops. They stop before masked or hidden 
 | --- | --- | --- |
 | **Connect vertices** | In Vertex mode, select opposite corners of one quad | Split the quad along the chosen diagonal; existing edges are never duplicated |
 | **Create face** | Select three or four vertices, or edges with three or four distinct endpoints; for larger openings select the complete boundary | Create a triangle, quad or triangulated patch, reusing existing vertices |
-| **Fill boundary** | In Edge mode, choose Boundary and select a complete opening | Fill the selected loop; other holes remain open |
+| **Fill boundary** | In Edge mode, choose Open boundary and select a complete opening | Fill the selected loop; other holes remain open |
 
 Choose an action to apply it immediately. Each successful action creates one Undo step and clears the old component selection; Modeling returns to **Select** ready for the next edit. **Delete faces** also applies immediately as one Undo step. Undo restores the previous geometry and subdivision levels; Redo restores the result. Save the project to keep the edits.
 
@@ -625,7 +625,7 @@ Expand **Topology** for operations on the current selection:
 | Vertex or Edge | Create face | Immediately fills three or four vertices or edge endpoints; larger selections require a complete opening |
 | Vertex | Weld vertices | Merges two vertices at their midpoint, including corresponding symmetry pairs |
 
-Use **Target → Boundary** to select a complete hole. For two boundaries or vertices, use **Add** to select the second. These edits preserve surviving weights and creases, respect **Protect mask**, and reject invalid or ambiguous results as a whole. Complete-loop Bridge boundaries does not detect arbitrary intersections with other surfaces; Bridge partial chains checks its new strip for crossings. Delete and collapse change the surface; **Delete loop (keep surface)** removes redundant loops while keeping it connected; **Delete loop (leave gap)** removes their adjoining face strips. Each completed edit is one Undo step.
+Use **Target → Open boundary** to select a complete hole. For two boundaries or vertices, use **Add** to select the second. These edits preserve surviving weights and creases, respect **Protect mask**, and reject invalid or ambiguous results as a whole. Complete-loop Bridge boundaries does not detect arbitrary intersections with other surfaces; Bridge partial chains checks its new strip for crossings. Delete and collapse change the surface; **Delete loop (keep surface)** removes redundant loops while keeping it connected; **Delete loop (leave gap)** removes their adjoining face strips. Each completed edit is one Undo step.
 
 To remove selected components, choose **Vertex → Q → Topology → Delete vertices** or **Face → Q → Topology → Delete faces**. Vertex deletion also removes every attached face; face deletion removes only the selected faces. Both apply immediately with normal Undo/Redo, preserve protected geometry, and include matching symmetry components. Use the Z selection tools with Ctrl+Shift to select many components before deleting.
 

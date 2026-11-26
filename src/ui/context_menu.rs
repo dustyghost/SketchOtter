@@ -43,14 +43,27 @@ pub(crate) struct ViewportMenuEntry {
     pub hint: String,
 }
 
+fn customization_action(action: &Action) -> Action {
+    match action {
+        Action::ModelTool(ModelTool::Select) => Action::ModelSelect,
+        Action::ModelTool(ModelTool::Extrude) => Action::ModelExtrude,
+        Action::ModelTool(ModelTool::LoopCut) => Action::ModelLoopCut,
+        Action::ModelTarget(SelectionSpan::Single) => Action::ModelSelectSingle,
+        Action::ModelTarget(SelectionSpan::Loop) => Action::ModelSelectLoops,
+        Action::ModelTarget(SelectionSpan::Ring) => Action::ModelSelectRing,
+        _ => action.clone(),
+    }
+}
+
 fn menu_entry(
     ui: &mut egui::Ui,
     entry: &ViewportMenuEntry,
     keyboard_selected: bool,
     compact: bool,
     reveal: bool,
+    show_active_label: bool,
 ) -> bool {
-    let label = if entry.selected {
+    let label = if show_active_label && entry.selected {
         format!("{} (active)", entry.label)
     } else {
         entry.label.clone()
@@ -68,7 +81,8 @@ fn menu_entry(
                 .min_size(egui::vec2(width, 32.)),
         )
         .on_hover_text(&entry.hint)
-        .on_disabled_hover_text(&entry.hint);
+        .on_disabled_hover_text(&entry.hint)
+        .customize(customization_action(&entry.action));
     if keyboard_selected && reveal {
         response.scroll_to_me(Some(egui::Align::Center));
     }
@@ -89,58 +103,84 @@ fn unavailable_menu_help(ui: &mut egui::Ui, entries: &[ViewportMenuEntry]) {
     });
 }
 
-fn modeling_choices(
+pub(super) fn modeling_choices(
     ui: &mut egui::Ui,
     entries: &[ViewportMenuEntry],
     keyboard_index: Option<usize>,
     reveal: bool,
+    flat_angle: Option<&mut f32>,
+    bridge_segments: Option<&mut u32>,
 ) -> Option<(usize, Action)> {
     let mut chosen = None;
-    let highlighted =
-        |i, entry: &ViewportMenuEntry| keyboard_index.map_or(entry.selected, |index| i == index);
-    ui.strong("Component");
+    let highlighted = |i, entry: &ViewportMenuEntry| {
+        keyboard_index.map_or(entry.selected, |index| entry.selected || i == index)
+    };
+    ui.strong("Components");
     ui.horizontal_wrapped(|ui| {
         for (i, entry) in entries.iter().take(3).enumerate() {
-            if menu_entry(ui, entry, highlighted(i, entry), true, reveal) {
+            if menu_entry(ui, entry, highlighted(i, entry), true, reveal, false) {
                 chosen = Some((i, entry.action.clone()));
             }
         }
     });
-    ui.strong("Target");
+    ui.strong("Targets");
     ui.horizontal_wrapped(|ui| {
         for (i, entry) in entries
             .iter()
             .enumerate()
             .filter(|(_, entry)| matches!(entry.action, Action::ModelTarget(_)))
         {
-            if menu_entry(ui, entry, highlighted(i, entry), true, reveal) {
+            if menu_entry(ui, entry, highlighted(i, entry), true, reveal, false) {
                 chosen = Some((i, entry.action.clone()));
             }
         }
     });
-    ui.separator();
-    ui.strong("Topology");
-    for (i, entry) in entries.iter().enumerate().filter(|(_, e)| {
-        matches!(
-            e.action,
-            Action::ModelTopology(_) | Action::ModelDissolveLoops
-        )
-    }) {
-        if menu_entry(ui, entry, highlighted(i, entry), false, reveal) {
-            chosen = Some((i, entry.action.clone()));
-        }
+    if let Some(angle) = flat_angle {
+        search::setting_response(
+            ui.add(
+                egui::Slider::new(angle, 0. ..=180.)
+                    .text("Island angle")
+                    .suffix("°"),
+            ),
+            "Island angle",
+        );
+        ui.weak("Connected faces within this angle of the first face");
     }
     ui.separator();
-    ui.strong("Function");
-    for (i, entry) in entries
-        .iter()
-        .enumerate()
-        .filter(|(_, entry)| matches!(entry.action, Action::ModelTool(_)))
+    ui.strong("Actions");
+    ui.weak("Topology");
+    if let Some(segments) = bridge_segments
+        && entries
+            .iter()
+            .any(|entry| entry.action == Action::ModelTopology(crate::sculpt::TopologyEdit::Bridge))
     {
-        if menu_entry(ui, entry, highlighted(i, entry), false, reveal) {
-            chosen = Some((i, entry.action.clone()));
-        }
+        ui.add(egui::Slider::new(segments, 1..=16).text("Bridge segments"));
+        ui.weak("Bridge connects two open edge chains of equal length; segments divide the gap.");
     }
+    ui.horizontal_wrapped(|ui| {
+        for (i, entry) in entries.iter().enumerate().filter(|(_, e)| {
+            matches!(
+                e.action,
+                Action::ModelTopology(_) | Action::ModelDissolveLoops
+            )
+        }) {
+            if menu_entry(ui, entry, highlighted(i, entry), true, reveal, false) {
+                chosen = Some((i, entry.action.clone()));
+            }
+        }
+    });
+    ui.weak("Modeling");
+    ui.horizontal_wrapped(|ui| {
+        for (i, entry) in entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| matches!(entry.action, Action::ModelTool(_)))
+        {
+            if menu_entry(ui, entry, highlighted(i, entry), true, reveal, false) {
+                chosen = Some((i, entry.action.clone()));
+            }
+        }
+    });
     chosen
 }
 
@@ -170,7 +210,7 @@ fn component_selection_choices(
                         | Action::ModelRedoSelection
                 ),
             }) {
-                if menu_entry(ui, e, i == index, true, reveal) {
+                if menu_entry(ui, e, i == index, true, reveal, true) {
                     action = Some(e.action.clone());
                 }
             }
@@ -227,24 +267,43 @@ impl UiState {
     ) {
         let entries = self.viewport_menu_entries(ViewportMenuContext::Modeling, document);
         unavailable_menu_help(ui, &entries);
-        if let Some((_, action)) = modeling_choices(ui, &entries, None, false) {
+        let flat_angle = (self.modeling.tool != ModelTool::CutCell
+            && self.modeling.span == SelectionSpan::Flat)
+            .then_some(&mut self.modeling.flat_angle);
+        if let Some((_, action)) = modeling_choices(
+            ui,
+            &entries,
+            None,
+            false,
+            flat_angle,
+            (self.modeling.mode == ComponentMode::Edge)
+                .then_some(&mut self.modeling.bridge_segments),
+        ) {
             let function = matches!(
                 action,
-                Action::ModelTool(_) | Action::ModelTopology(_) | Action::ModelDissolveLoops
+                Action::ModelTool(_)
+                    | Action::ModelSelect
+                    | Action::ModelExtrude
+                    | Action::ModelLoopCut
+                    | Action::ModelTopology(_)
+                    | Action::ModelDissolveLoops
             );
             commands.push(Command::Action(action));
             if popup && function {
                 ui.close_kind(egui::UiKind::Menu);
             }
         }
-        if (self.modeling.tool == ModelTool::PointSplit && self.point_split_controls(ui))
-            || (self.modeling.tool.is_component_bevel() && self.bevel_controls(ui))
+        self.modeling_general_options(ui);
+        let mut option_commands = Vec::new();
+        self.modeling_tool_options(ui, document, &mut option_commands);
+        if popup
+            && option_commands
+                .iter()
+                .any(|command| matches!(command, Command::ModelApply))
         {
-            commands.push(Command::ModelApply);
-            if popup {
-                ui.close_kind(egui::UiKind::Menu);
-            }
+            ui.close_kind(egui::UiKind::Menu);
         }
+        commands.extend(option_commands);
     }
 
     pub(crate) fn viewport_menu_entries(
@@ -271,13 +330,19 @@ impl UiState {
                 entries.extend(SelectionSpan::ALL.into_iter()
                     .filter(|span| self.modeling.tool != ModelTool::CutCell && span.available(self.modeling.mode))
                     .map(|span| {
-                        let action = Action::ModelTarget(span);
+                            let action = Action::ModelTarget(span);
                         ViewportMenuEntry {
                             enabled: self.action_enabled(&action, document),
                             action,
                             label: span.label().into(),
                             selected: self.modeling.span == span,
-                            hint: "Choose what the next Modeling gesture targets. Keeps the current tool and selection.".into(),
+                            hint: if span == SelectionSpan::Flat {
+                                "Select the connected coplanar face island. With Face Bevel, bevel its outer perimeter. Keeps the current tool and selection."
+                            } else if span == SelectionSpan::Border {
+                                "Select connected open edges on the mesh (each has one adjacent face). This is not the outline of the current selection."
+                            } else {
+                                "Choose what the next Modeling gesture targets. Keeps the current tool and selection."
+                            }.into(),
                         }
                     }));
                 if self.modeling.mode == ComponentMode::Edge {
@@ -778,22 +843,22 @@ impl UiState {
                 });
             }
             if context == ViewportMenuContext::Modeling {
-                if self.modeling.tool == ModelTool::Delete {
-                    ui.checkbox(
-                        &mut self.modeling.delete_keep_vertices,
-                        "Keep unused vertices",
-                    );
-                }
-                if let Some((i, chosen)) = modeling_choices(ui, &entries, Some(index), navigated) {
+                let flat_angle = (self.modeling.tool != ModelTool::CutCell
+                    && self.modeling.span == SelectionSpan::Flat)
+                    .then_some(&mut self.modeling.flat_angle);
+                if let Some((i, chosen)) = modeling_choices(
+                    ui,
+                    &entries,
+                    Some(index),
+                    navigated,
+                    flat_angle,
+                    (self.modeling.mode == ComponentMode::Edge)
+                        .then_some(&mut self.modeling.bridge_segments),
+                ) {
                     self.viewport_menu.selected = i;
                     action = Some(chosen);
                 }
-                if self.modeling.mode == ComponentMode::Edge {
-                    ui.add(
-                        egui::Slider::new(&mut self.modeling.bridge_segments, 1..=16)
-                            .text("Bridge segments"),
-                    );
-                }
+                self.modeling_general_options(ui);
                 let mut commands = Vec::new();
                 self.modeling_tool_options(ui, document, &mut commands);
                 self.viewport_menu.commands.extend(commands);
@@ -804,7 +869,7 @@ impl UiState {
                 }
             } else {
                 for (i, entry) in entries.iter().enumerate() {
-                    if menu_entry(ui, entry, i == index, false, navigated) {
+                    if menu_entry(ui, entry, i == index, false, navigated, true) {
                         action = Some(entry.action.clone());
                     }
                 }
@@ -837,6 +902,9 @@ impl UiState {
                     | Action::ModelEdges
                     | Action::ModelVertices
                     | Action::ModelTarget(_)
+                    | Action::ModelSelectSingle
+                    | Action::ModelSelectLoops
+                    | Action::ModelSelectRing
                     | Action::ModelInteraction(_)
                     | Action::ModelAxis(_)
                     | Action::Transform
