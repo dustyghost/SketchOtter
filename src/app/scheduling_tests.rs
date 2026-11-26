@@ -27,8 +27,10 @@ fn preference_save_deadline_only_wakes_when_due() {
 fn preference_deadline_frame_saves_without_new_input() {
     let directory = Directory::new();
     let path = directory.0.join("preferences.json");
-    let mut app = App::default();
-    app.preferences_path = Some(path.clone());
+    let mut app = App {
+        preferences_path: Some(path.clone()),
+        ..App::default()
+    };
     app.ui.preferences.external_paint_app = "idle-save-test".into();
     let ctx = egui::Context::default();
     let mut frame = eframe::Frame::_new_kittest();
