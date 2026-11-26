@@ -5,7 +5,7 @@ use super::{
     max_triangles, max_vertices,
 };
 use std::collections::{BTreeMap, BTreeSet};
-mod bevel;
+pub(crate) mod bevel;
 mod components;
 mod delete;
 mod detached;

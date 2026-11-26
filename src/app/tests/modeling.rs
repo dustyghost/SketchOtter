@@ -946,6 +946,77 @@ fn modeling_construction_numeric_and_pen_share_valid_results() {
     }
 }
 #[test]
+fn flat_island_target_face_bevel_uses_the_selected_faces_coplanar_perimeter() {
+    let (mut app, ctx, rect) = setup();
+    let mut primitive = Primitive::for_kind(PrimitiveKind::Cube);
+    primitive.divisions = [3; 3];
+    app.document
+        .replace_geometry(Geometry::new(primitive.mesh().unwrap()))
+        .unwrap();
+    navigation_frame(&mut app, &ctx, vec![]);
+    tap(&mut app, &ctx, rect.center());
+    assert_eq!(app.ui.modeling.mode, ComponentMode::Face);
+    assert!(!app.viewport.modeling.selected.is_empty());
+
+    app.dispatch(
+        Command::Action(Action::ModelTarget(crate::viewport::SelectionSpan::Flat)),
+        &ctx,
+    );
+    app.dispatch(Command::Action(Action::ModelTool(ModelTool::Bevel)), &ctx);
+    app.ui.modeling.amount = 0.05;
+    let before = app.document.mesh().clone();
+    app.dispatch(Command::ModelApply, &ctx);
+
+    assert_ne!(app.document.mesh(), &before, "{}", app.ui.status);
+    app.document.mesh().validate_closed().unwrap();
+}
+
+#[test]
+fn face_group_bevel_boundary_works_on_default_divided_cube() {
+    let (mut app, ctx, rect) = setup();
+    app.dispatch(
+        Command::Action(Action::ModelTarget(crate::viewport::SelectionSpan::Group)),
+        &ctx,
+    );
+    tap(&mut app, &ctx, rect.center());
+    assert_eq!(app.ui.modeling.span, crate::viewport::SelectionSpan::Group);
+    assert!(!app.viewport.modeling.selected.is_empty());
+    app.dispatch(Command::Action(Action::ModelTool(ModelTool::Bevel)), &ctx);
+    app.ui.modeling.amount = 0.05;
+    let before = app.document.mesh().clone();
+
+    app.dispatch(Command::ModelApply, &ctx);
+
+    assert_ne!(app.document.mesh(), &before, "{}", app.ui.status);
+    app.document.mesh().validate_closed().unwrap();
+}
+
+#[test]
+fn face_mode_offers_flat_chamfer_boundary() {
+    let (mut app, ctx, rect) = setup();
+    let entries = app.ui.viewport_menu_entries(
+        crate::ui::context_menu::ViewportMenuContext::Modeling,
+        &app.document,
+    );
+    assert!(entries.iter().any(|entry| {
+        entry.action == Action::ModelTool(ModelTool::FaceChamfer)
+            && entry.label == "Chamfer boundary"
+    }));
+
+    tap(&mut app, &ctx, rect.center());
+    app.dispatch(
+        Command::Action(Action::ModelTool(ModelTool::FaceChamfer)),
+        &ctx,
+    );
+    app.ui.modeling.amount = 0.05;
+    let before = app.document.mesh().clone();
+    app.dispatch(Command::ModelApply, &ctx);
+
+    assert_ne!(app.document.mesh(), &before, "{}", app.ui.status);
+    app.document.mesh().validate_closed().unwrap();
+}
+
+#[test]
 fn modeling_topology_commands_are_atomic_and_undoable() {
     use crate::sculpt::TopologyEdit;
     let (mut app, ctx, rect) = setup();
@@ -1383,6 +1454,15 @@ fn modeling_construction_presets_roundtrip_and_keep_older_preferences_compatible
     old.as_object_mut().unwrap().remove("move_snap");
     old.as_object_mut().unwrap().remove("new_group");
     old.as_object_mut().unwrap().remove("bevel_segments");
+    old.as_object_mut()
+        .unwrap()
+        .remove("bevel_follow_edge_loop");
+    // Older presets may still contain the removed checkbox setting; it is
+    // ignored, and the Flat island target is now the single control.
+    old.as_object_mut().unwrap().insert(
+        "bevel_flat_island_edge".into(),
+        serde_json::Value::Bool(true),
+    );
     let options: crate::viewport::ModelingOptions = serde_json::from_value(old).unwrap();
     options.validate().unwrap();
     assert_eq!(options.construction.width, 0.1);
@@ -1391,6 +1471,7 @@ fn modeling_construction_presets_roundtrip_and_keep_older_preferences_compatible
     assert_eq!(options.move_snap, crate::viewport::MoveSnap::Off);
     assert!(!options.new_group);
     assert_eq!(options.bevel_segments, 3);
+    assert!(options.bevel_follow_edge_loop);
     app.dispatch(
         Command::Action(Action::ModelTool(ModelTool::PointSplit)),
         &ctx,
@@ -1403,6 +1484,7 @@ fn modeling_construction_presets_roundtrip_and_keep_older_preferences_compatible
     app.ui.modeling.flat_angle = 25.;
     app.ui.modeling.move_snap = crate::viewport::MoveSnap::Edge;
     app.ui.modeling.new_group = true;
+    app.ui.modeling.bevel_follow_edge_loop = Some(false);
     let options = app.ui.modeling.options();
     app.ui.modeling.preset_name = "Round point socket".into();
     app.dispatch(Command::Action(Action::ModelSavePreset), &ctx);

@@ -1,7 +1,7 @@
 //! Pen-friendly component targeting and transactional extrusion previews.
 use super::*;
 use crate::sculpt::{Extrusion, LoopCut, Mesh, ModelingSymmetry, Symmetry};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 mod edit;
 mod extrude_snapping;
 mod move_snapping;
@@ -52,6 +52,7 @@ pub(crate) enum ModelTool {
     FaceSplit,
     Delete,
     SurfaceSlide,
+    FaceChamfer,
 }
 impl ModelTool {
     pub fn label(self) -> &'static str {
@@ -80,6 +81,7 @@ impl ModelTool {
             Self::FaceSplit => "Split face",
             Self::Delete => "Delete components",
             Self::SurfaceSlide => "Slide components",
+            Self::FaceChamfer => "Chamfer boundary",
         }
     }
     pub fn construction_kind(self) -> Option<crate::sculpt::ComponentBuild> {
@@ -100,6 +102,7 @@ impl ModelTool {
             Self::Extrude
             | Self::Inset
             | Self::Bevel
+            | Self::FaceChamfer
             | Self::Fuse
             | Self::FacePoint
             | Self::FaceSplit => Some(ComponentMode::Face),
@@ -123,7 +126,11 @@ impl ModelTool {
     pub fn is_component_bevel(self) -> bool {
         matches!(
             self,
-            Self::EdgeChamfer | Self::EdgeBevel | Self::VertexChamfer | Self::VertexBevel
+            Self::EdgeChamfer
+                | Self::EdgeBevel
+                | Self::VertexChamfer
+                | Self::VertexBevel
+                | Self::FaceChamfer
         )
     }
     pub fn rounded_bevel(self) -> bool {
@@ -175,7 +182,7 @@ impl SelectionSpan {
             Self::Connected => "Connected",
             Self::Flat => "Flat island",
             Self::Group => "Face group",
-            Self::Border => "Boundary",
+            Self::Border => "Open boundary",
         }
     }
     pub fn available(self, mode: ComponentMode) -> bool {
@@ -287,6 +294,8 @@ pub(crate) struct ModelingOptions {
     pub delete_keep_vertices: bool,
     #[serde(default = "bevel_segments_default")]
     pub bevel_segments: u32,
+    #[serde(default = "bevel_follow_edge_loop_default")]
+    pub bevel_follow_edge_loop: bool,
     #[serde(default)]
     pub construction: ModelConstruction,
     #[serde(default = "tap_repeat_default")]
@@ -296,6 +305,9 @@ pub(crate) struct ModelingOptions {
 }
 fn bevel_segments_default() -> u32 {
     3
+}
+fn bevel_follow_edge_loop_default() -> bool {
+    true
 }
 fn tap_repeat_default() -> bool {
     true
@@ -697,6 +709,30 @@ impl Viewport {
         painter: &egui::Painter,
         color: Color32,
     ) {
+        let front_visible = |point| {
+            scene.visible_depth(point)
+                && scene
+                    .pick_model(scene.project(point))
+                    .is_none_or(|(_, hit, normal)| {
+                        (point - hit).dot(scene.view) >= -1. / scene.scale_at(point).max(1.)
+                            && normal.dot(scene.view) > 0.
+                    })
+        };
+        let mut edge_visibility = BTreeMap::new();
+        let mut paint_edge = |[a, b]: [usize; 2]| {
+            let key = [a.min(b), a.max(b)];
+            let visible = *edge_visibility
+                .entry(key)
+                .or_insert_with(|| front_visible((mesh.vertices[a] + mesh.vertices[b]) * 0.5));
+            if let Some(points) = scene.clip_segment([mesh.vertices[a], mesh.vertices[b]]) {
+                let (color, width) = if visible {
+                    (color, 3_f32)
+                } else {
+                    (Color32::from_rgba_unmultiplied(100, 126, 138, 105), 1.5_f32)
+                };
+                painter.line_segment(points, egui::Stroke::new(width, color));
+            }
+        };
         let components: Vec<_> = components.into_iter().collect();
         let polygons = components
             .iter()
@@ -706,22 +742,21 @@ impl Viewport {
             match component {
                 Component::Vertex(v) => {
                     if let Some(&p) = mesh.vertices.get(v) {
-                        painter.circle_filled(scene.project(p), 5., color);
+                        let (color, radius) = if front_visible(p) {
+                            (color, 5.)
+                        } else {
+                            (Color32::from_rgba_unmultiplied(100, 126, 138, 105), 3.)
+                        };
+                        painter.circle_filled(scene.project(p), radius, color);
                     }
                 }
                 Component::Edge([a, b]) => {
-                    if let Some(points) = scene.clip_segment([mesh.vertices[a], mesh.vertices[b]]) {
-                        painter.line_segment(points, egui::Stroke::new(3_f32, color));
-                    }
+                    paint_edge([a, b]);
                 }
                 Component::Face(i) => {
                     if let Some(p) = polygons.as_ref().and_then(|p| p.get(i)) {
                         for (a, b) in p.edges() {
-                            if let Some(points) =
-                                scene.clip_segment([mesh.vertices[a], mesh.vertices[b]])
-                            {
-                                painter.line_segment(points, egui::Stroke::new(3_f32, color));
-                            }
+                            paint_edge([a, b]);
                         }
                     }
                 }

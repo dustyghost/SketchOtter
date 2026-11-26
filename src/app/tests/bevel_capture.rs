@@ -2,6 +2,53 @@ use super::*;
 use crate::viewport::{Component, ComponentMode, ModelTool};
 
 #[test]
+#[ignore = "manual corner shape review; requires Vulkan and CLAY_GUIDE_PREVIEW"]
+fn three_bevel_junction_offscreen_review() {
+    let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut primitive = Primitive::for_kind(PrimitiveKind::Cube);
+    primitive.divisions = [3; 3];
+    let mesh = if let Ok(bundle) = std::env::var("CLAY_CORNER_BUNDLE") {
+        crate::persistence::load_project(
+            &std::path::Path::new(&bundle)
+                .join("stage-001.clay")
+                .to_string_lossy(),
+        )
+        .unwrap()
+        .mesh
+    } else {
+        primitive.mesh().unwrap()
+    };
+    let faces = (0..mesh.polygons().len()).collect::<Vec<_>>();
+    let edges = mesh
+        .expand_flat_island_components(&[], &[], &faces)
+        .unwrap();
+    let symmetry = crate::sculpt::ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+    let result = mesh
+        .bevel_components(&edges, &[], 0.149_792_2, 3, &symmetry)
+        .unwrap();
+    let mut g = Guide::new(&directory, [1100, 900]);
+    g.interactive = true;
+    g.toolbar = false;
+    g.app
+        .document
+        .replace_geometry(crate::sculpt::Geometry::new(result))
+        .unwrap();
+    g.app.camera.yaw = 0.65;
+    g.app.camera.pitch = -0.5;
+    g.app.camera.zoom = 1.2;
+    for wire in [false, true] {
+        g.app.ui.wire = wire;
+        g.frame(vec![]);
+        g.save(if wire {
+            "three-bevel-junction-wire"
+        } else {
+            "three-bevel-junction-solid"
+        });
+    }
+}
+
+#[test]
 #[ignore = "requires Vulkan; Q bevel controls, live sizing, cancellation, groups and Undo/Redo"]
 fn component_bevel_offscreen_review() {
     let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
@@ -146,4 +193,83 @@ fn component_bevel_offscreen_review() {
             }
         }
     }
+}
+
+#[test]
+#[ignore = "manual diagnostic review; requires Vulkan, CLAY_BEVEL_BUNDLE and CLAY_GUIDE_PREVIEW"]
+fn bevel_boundary_export_offscreen_review() {
+    let bundle = std::path::PathBuf::from(std::env::var("CLAY_BEVEL_BUNDLE").unwrap());
+    let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(bundle.join("manifest.json")).unwrap()).unwrap();
+    let transition = manifest["transitions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["label"] == "Bevel boundary")
+        .unwrap();
+    let camera = &transition["settings_at_edit_start"]["view_input"]["camera"];
+
+    for (stage, name) in [(1, "boundary-before"), (2, "boundary-after")] {
+        let source = bundle.join(format!("stage-{stage:03}.clay"));
+        let source = source.to_string_lossy().into_owned();
+        let project = crate::persistence::load_project(&source).unwrap();
+        let mut g = Guide::new(&directory, [1100, 900]);
+        g.interactive = true;
+        g.toolbar = false;
+        g.panel(Tool::Mesh, Dock::Right);
+        g.app.document.replace_project(project, &source).unwrap();
+        g.app.camera.yaw = camera["yaw"].as_f64().unwrap() as f32;
+        g.app.camera.pitch = camera["pitch"].as_f64().unwrap() as f32;
+        g.app.camera.roll = camera["roll"].as_f64().unwrap() as f32;
+        g.app.camera.zoom = camera["zoom"].as_f64().unwrap() as f32;
+        let pan = camera["pan"].as_array().unwrap();
+        g.app.camera.pan = Vec2::new(
+            pan[0].as_f64().unwrap() as f32,
+            pan[1].as_f64().unwrap() as f32,
+        );
+        g.app.dispatch(Command::ModelingMode(true), &g.ctx);
+        g.app
+            .dispatch(Command::ModelingComponent(ComponentMode::Face), &g.ctx);
+        g.app
+            .execute_action(Action::ModelTool(ModelTool::Bevel), &g.ctx);
+        g.app.ui.modeling.span = crate::viewport::SelectionSpan::Flat;
+        g.app.ui.wire = true;
+        g.frame(vec![]);
+        g.save(name);
+    }
+
+    let source = bundle.join("stage-001.clay").to_string_lossy().into_owned();
+    let project = crate::persistence::load_project(&source).unwrap();
+    let mesh = project.mesh.clone();
+    let faces: Vec<_> = (0..mesh.polygons().len()).collect();
+    let edges = mesh
+        .expand_flat_island_components(&[], &[], &faces)
+        .unwrap();
+    let symmetry = crate::sculpt::ModelingSymmetry::new(&mesh, &Default::default()).unwrap();
+    let reproduced = mesh
+        .bevel_components(&edges, &[], 0.178_076_6, 3, &symmetry)
+        .unwrap();
+    reproduced.validate_closed().unwrap();
+    let mut g = Guide::new(&directory, [1100, 900]);
+    g.interactive = true;
+    g.toolbar = false;
+    g.panel(Tool::Mesh, Dock::Right);
+    let mut geometry = crate::sculpt::Geometry::new(reproduced);
+    geometry.scene.active_metadata = project.scene.active_metadata.clone();
+    g.app.document.replace_geometry(geometry).unwrap();
+    g.app.camera.yaw = camera["yaw"].as_f64().unwrap() as f32;
+    g.app.camera.pitch = camera["pitch"].as_f64().unwrap() as f32;
+    g.app.camera.roll = camera["roll"].as_f64().unwrap() as f32;
+    g.app.camera.zoom = camera["zoom"].as_f64().unwrap() as f32;
+    g.app.dispatch(Command::ModelingMode(true), &g.ctx);
+    g.app
+        .dispatch(Command::ModelingComponent(ComponentMode::Face), &g.ctx);
+    g.app
+        .execute_action(Action::ModelTool(ModelTool::Bevel), &g.ctx);
+    g.app.ui.modeling.span = crate::viewport::SelectionSpan::Flat;
+    g.app.ui.wire = true;
+    g.frame(vec![]);
+    g.save("boundary-reproduced");
 }

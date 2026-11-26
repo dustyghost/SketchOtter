@@ -132,6 +132,37 @@ fn delete_loop_offscreen_review() {
             if name == "keep-surface" {
                 g.save(&format!("delete-loop-options-{}", size[0]));
             }
+            for _ in 0..8 {
+                g.frame(vec![]);
+                let menu = g
+                    .ctx
+                    .memory(|memory| memory.area_rect(egui::Id::new("viewport_tool_menu")))
+                    .expect("Modeling menu is open");
+                if g.text_positions
+                    .iter()
+                    .any(|(text, point)| text == label && menu.shrink(20.).contains(*point))
+                {
+                    break;
+                }
+                g.frame(vec![
+                    egui::Event::PointerMoved(menu.center()),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: Vec2::new(0., -100.),
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ]);
+                g.frame(vec![egui::Event::PointerGone]);
+            }
+            let menu = g
+                .ctx
+                .memory(|memory| memory.area_rect(egui::Id::new("viewport_tool_menu")))
+                .expect("Modeling menu is open");
+            assert!(
+                g.text_positions
+                    .iter()
+                    .any(|(text, point)| { text == label && menu.shrink(20.).contains(*point) })
+            );
             click_guide_label(&mut g, label);
             assert!(g.app.ui.viewport_menu.context.is_none());
             assert_eq!(
@@ -150,6 +181,34 @@ fn delete_loop_offscreen_review() {
             g.app.dispatch(Command::Undo, &g.ctx);
         }
     }
+}
+
+#[test]
+#[ignore = "manual review of selected rear components; requires Vulkan and CLAY_GUIDE_PREVIEW"]
+fn modeling_selection_backfaces_capture() {
+    let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut g = Guide::new(&directory, [1100, 900]);
+    g.interactive = true;
+    g.toolbar = false;
+    let mut cube = Primitive::for_kind(PrimitiveKind::Cube);
+    cube.divisions = [3; 3];
+    g.app
+        .document
+        .replace_geometry(crate::sculpt::Geometry::new(cube.mesh().unwrap()))
+        .unwrap();
+    g.app.camera.yaw = 0.55;
+    g.app.camera.pitch = -0.35;
+    g.app.camera.zoom = 0.6;
+    g.app.dispatch(Command::ModelingMode(true), &g.ctx);
+    g.app
+        .dispatch(Command::ModelingComponent(ComponentMode::Face), &g.ctx);
+    g.frame(vec![]);
+    g.app.viewport.modeling.selected = (0..g.app.document.mesh().polygons().len())
+        .map(Component::Face)
+        .collect();
+    g.frame(vec![]);
+    g.save("modeling-selection-backfaces");
 }
 
 #[test]
