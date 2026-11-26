@@ -57,3 +57,21 @@ Desktop follow-up should still cover pen pressure changes without pointer
 movement, input after long idle, active progress and cancellation, focus and
 minimise/restore, and additional platform/tablet backends. No GPU regression,
 physical-tablet or cross-platform claim is made here.
+
+## Follow-up: Linux pressure and preference deadline
+
+The Linux evdev reader now requests a repaint when contact, pressure, or device
+status changes, not on its steady 8 ms sample loop. A focused test simulates
+publications from a worker thread without pointer events and checks that held
+and idle samples do not request recurring repaints. A separate app-frame test
+exercises the preference-save deadline through an idle frame and reads the
+persisted file.
+
+On 26 November 2026, a user ran the release build on Linux with a Huion
+Kamvas 13 and reported that the manual tablet checklist looked good. That
+checklist covered stationary pressure changes, input after idle, minimise and
+restore, sculpting, and camera navigation; per-step results were not recorded.
+This is a user-reported hardware smoke test, not a new instrumented trace.
+Windows and macOS tablet backends and visible progress/cancellation still
+require manual checks. The existing desktop measurements above were not
+rerun or changed.

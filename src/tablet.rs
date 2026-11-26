@@ -26,6 +26,10 @@ struct TabletState {
     pressure: f32,
     updated_at: Instant,
     status: String,
+    #[cfg(target_os = "linux")]
+    contact: bool,
+    #[cfg(target_os = "linux")]
+    repaint: Option<egui::Context>,
 }
 type SharedState = Arc<Mutex<TabletState>>;
 pub(crate) struct Tablet {
@@ -47,6 +51,10 @@ impl Tablet {
                 "Using pressure from native pointer events when available"
             }
             .into(),
+            #[cfg(target_os = "linux")]
+            contact: false,
+            #[cfg(target_os = "linux")]
+            repaint: None,
         }));
         let stop = Arc::new(AtomicBool::new(false));
         #[cfg(target_os = "linux")]
@@ -65,6 +73,15 @@ impl Tablet {
     pub fn pressure(&self) -> Option<f32> {
         let state = self.state.lock().unwrap();
         (state.updated_at.elapsed().as_secs_f32() < 0.5).then_some(state.pressure)
+    }
+    pub fn observe_repaints(&self, _ctx: &egui::Context) {
+        #[cfg(target_os = "linux")]
+        {
+            let mut state = self.state.lock().unwrap();
+            if state.repaint.is_none() {
+                state.repaint = Some(_ctx.clone());
+            }
+        }
     }
     pub fn status(&self) -> String {
         let status = self.state.lock().unwrap().status.clone();
