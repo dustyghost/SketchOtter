@@ -1,0 +1,286 @@
+# Ready bug batch, 26 November 2026
+
+Base: `4f5f336`. Issues #199, #203, #205 and #206 were the four open
+bug-labelled stories in SketchOtter Development (all in Ready, none literally
+in Backlog). They moved to In progress together. Private diagnostic projects
+remain local; no artwork or project payload is included here.
+
+## Reproductions and changes
+
+- **#199:** the drag handler used only vertical pointer travel, regardless of
+  the surface rail. Horizontal travel therefore produced no slide; an
+  unspecified numeric axis could also choose an unexpected side. Dragging now
+  projects onto the actual grabbed edge's surface rail and latches that choice
+  through reversal. Numeric axis-based sliding remains available. The interaction
+  regression checks both horizontal directions, reversal, private previews,
+  unchanged topology, preview/commit agreement and exact Undo/Redo.
+- **#203:** independent source-only contact plans cannot see two mirrored caps
+  meeting halfway, because neither midpoint cap exists yet. Reciprocal matching
+  symmetry caps now get a shared midpoint plan. The existing extrusion/join
+  implementation constructs and validates the result; arbitrary mismatched
+  caps are not force-welded. The geometry regression covers both source sides,
+  all three mirror axes, approach/snap/overshoot, a connected closed result,
+  exact symmetry and mask retention.
+- **#205:** soft-footprint seam joining applied to Standard only. Clay now
+  blends direction separately from depth and uses its own sampled-plane depth
+  in the existing soft-footprint join. Copies do not add their strengths.
+  The profile regression checks two mesh densities and two pressure values.
+  Drag stamps and non-Soft alphas do not get the soft-footprint extension.
+- **#206:** Clay's triangle-centroid plane sampling was not invariant under
+  reflection of logical quads with unmirrored rendering diagonals. Plane
+  sampling now uses logical face centres and area vectors. The regression
+  checks reflected planes and repeated mirrored strokes without requiring
+  mirrored triangle indices or forcibly symmetrizing existing geometry.
+
+## Retained export evidence (#206)
+
+The six retained stages have identical triangle and quad indices. Pairing the
+first stage's vertices with their X reflections gives:
+
+| Stage | Maximum reflected-position mismatch | RMS |
+| --- | ---: | ---: |
+| 0 | 0.000000124 | 0.000000032 |
+| 1 | 0.000939384 | 0.000091360 |
+| 2 | 0.000998885 | 0.000121637 |
+| 3 | 0.001817459 | 0.000257762 |
+| 4 | 0.001817459 | 0.000261893 |
+| 5 | 0.002203179 | 0.000286273 |
+
+The first retained stroke already introduces drift. Maximum per-stroke
+displacement mismatches are 0.000939384, 0.000598207, 0.001500337,
+0.001213492 and 0.001678298. The recorded mirror plane is X=0; symmetry is on
+and Dynamic Mesh/Adaptive are off.
+
+A controlled plane-sampling comparison on stage 0 used centres at the normalized
+vectors `(±0.2, 0.23, 1)` with radius 0.36, the same visibility/mask conditions
+and area/taper weighting:
+
+| Sampling | Reflected centre mismatch | Reflected normal mismatch |
+| --- | ---: | ---: |
+| Triangle centroids | 0.0000136824 | 0.0000157762 |
+| Logical face centres | 0.00000000369 | 0.0000000133 |
+
+These double-precision diagnostic calculations isolate the quadrature bias;
+the Rust regression exercises the actual stamp implementation. Complete
+pointer/pressure samples were not retained, so this is **not** an exact replay
+of the five original pen strokes, nor a claim to repair existing drift.
+
+## Validation
+
+Run focused checks using the shared build lock, one compiler and one test
+thread, with `CARGO_PROFILE_TEST_DEBUG=0` and
+`CARGO_PROFILE_TEST_INCREMENTAL=false`. The existing memory probe terminates
+only its own process group on excessive RSS, low available memory or sustained
+memory pressure. An initial 900 MiB production-check probe stopped at its
+budget; the maintainer then freed RAM for the real test harness.
+
+The new ignored `clay_symmetry_seam_offscreen_review` captures on/near/across-
+seam cases with the real renderer and checks one-step Undo/Redo. Set
+`CLAY_BUILDUP_PREVIEW` to a local output prefix; optional
+`CLAY_SYMMETRY_SOURCE` selects a local source project instead of the synthetic
+sphere. These are new deterministic dabs, not replayed original input.
+
+Completed local checks:
+
+- Final current-source combined focused run: **27 passed, zero failures**, four
+  manual captures ignored. This includes approach-before-contact and
+  incompatible mirrored-cap coverage added during final review.
+- Clay-focused suite: **14 passed**, two manual captures ignored.
+- Modeling drag/Fuse checks: **3 passed**.
+- Neighboring Slide/Fuse, Flatten and soft-overlap checks: **14 passed**, two
+  manual captures ignored. This includes tapered surface rails from oblique
+  and reversed views with symmetry.
+- Synthetic on/near/across-seam capture: **passed**, including closed geometry
+  and exact Undo/Redo. Visually inspected all three 900 × 700 shaded images:
+  continuous buildup, no obvious split central lobes or seam groove. The
+  symmetry guide is visible, so the numerical profile regression remains
+  important for the narrow centre line.
+- Retained stage-0 project on/near/across-seam capture: **passed**, with the
+  same geometry/history assertions. All three shaded images were visually
+  inspected; the new strokes likewise show continuous buildup without an
+  obvious split centre. This does not replay or repair the retained edits.
+
+Rendering used software Vulkan, llvmpipe (LLVM 23.1.5), Mesa
+26.3.1-arch1.3, with two worker threads. Local captures use the prefix
+`/tmp/opencode/backlog-clay-synthetic`; no project artwork is committed.
+The retained-project captures use `/tmp/opencode/backlog-clay-retained`.
+Focused test compilation peaked at approximately 2.52 GiB process-tree RSS,
+within the 3,600 MiB probe limit.
+
+Full formatting/lint/default-suite/native-solver and configured GPU checks
+belong to PR CI. Physical pen-tablet review is still required; synthetic
+pressure checks do not establish device behaviour.
+
+## Follow-up release testing: remaining drift
+
+The maintainer supplied a second local diagnostic export from release
+`b83c4c3994c7`. This shows that the initial fix is **incomplete**; the passing
+Clay-only synthetic sequence did not cover subtractive Standard followed by
+Smooth. All 15 stages retain identical topology, X symmetry at centre zero,
+and disabled Dynamic Mesh/Adaptive.
+
+| Stage | Outgoing/incoming edit | Maximum reflected-position mismatch |
+| --- | --- | ---: |
+| 0 | Starting geometry | 0.000000124 |
+| 1 | Standard, edit 3 | 0.000000130 |
+| 2 | Standard, edit 4 | 0.000000211 |
+| 3 | Subtractive Standard, edit 5 | 0.007599561 |
+| 5 | Subtractive Standard, edit 7 | 0.007595376 |
+| 6 | Smooth, edit 8 | 0.053243777 |
+| 14 | Smooth, edit 16 | 0.077707566 |
+
+The first substantial drift is edit 5, before any retained Clay stroke.
+Edit 8 adds a maximum reflected-displacement mismatch of 0.049794569.
+Full pointer samples are again unavailable. The diagnostic files remain
+local and unchanged; these measurements compare vertex pairs established
+from the initial geometry, not nearest neighbours after deformation.
+
+Two minimal regressions reproduced independent failures before the follow-up:
+the triangle safety limiter gave reflected corners of a single symmetric
+quad different reductions, and a single mirrored Smooth dab on the synthetic
+sphere introduced 0.002666726 maximum reflected mismatch.
+
+The follow-up checks both quad triangulations and reduces all four corners
+of a failed logical face together. Smooth uses logical-face normals and
+sheet classification, with mass and cotangent contributions averaged over
+both diagonals. Triangle-only safety behaviour retains its frozen-reference
+comparison. No mirror-pair snapping or repair of existing asymmetry is added.
+Both minimal regressions pass with these changes.
+
+The combined follow-up focused run passed **29 tests**, zero failures, with
+three manual captures ignored. It covers the safety limiter, Smooth,
+Clay, overlap blending and Clay application/history tests. The new 96-dab
+synthetic sequence varies pressure and applies subtractive Standard, Smooth,
+then Clay, checking unchanged topology and exact one-stroke Undo/Redo at each
+step. Maximum reflected mismatches were respectively 0.0000001341,
+0.0000001229 and 0.0000001966.
+
+The ignored `mirrored_brush_sequence_offscreen_review` accepts
+`SYMMETRY_REVIEW_SOURCE` and `SYMMETRY_REVIEW_PREVIEW`, runs that same
+sequence on local starting geometry, and saves front-view before/after images
+with the symmetry guide hidden. Use an initially symmetric source such as
+the new bundle's stage 0: this check does not repair already-drifted stages.
+
+That retained stage-0 check passed with the same three maximum errors as the
+synthetic sequence, unchanged topology, closed geometry and exact Undo/Redo.
+Both 900 × 700 front-view captures were visually inspected: no obvious
+one-sided distortion; lighting itself is not reflection-symmetric.
+Captures remain local at
+`/tmp/opencode/symmetry-followup-retained-{before,after}.png`.
+Rendering used software Vulkan/llvmpipe with two worker threads.
+This is a controlled new sequence, **not** the unavailable original pen replay.
+
+The initial `b83c4c3` PR CI run passed formatting, the default/focused suites,
+lint, native solver checks and GPU regressions. That result does **not**
+validate the follow-up changes, which require a fresh CI run.
+
+## Second release export: additive Standard near the seam
+
+The next local export confirms build `0e4a85a34c80` and retains 14 stages:
+stage 12 is current, stage 13 is redo. The initial geometry is symmetric to
+0.000000124; all stages retain the same topology and X=0 mirror settings.
+
+| Stage | Incoming edit | Maximum reflected-position mismatch |
+| --- | --- | ---: |
+| 1 | Additive Standard, edit 1 | 0.007995771 |
+| 2 | Additive Standard, edit 2 | 0.046795032 |
+| 3 | Smooth, edit 3 | 0.037481000 |
+| 4 | Smooth, edit 4 | 0.037456594 |
+| 5 | Additive Standard, edit 5 | 0.056668728 |
+| 6–9 | Standard, Smooth, Clay, Clay | 0.056668728 |
+| 10 | Smooth, edit 10 | 0.054051772 |
+| 11 | Smooth, edit 11 | 0.044970694 |
+| 12 | Smooth, edit 12 (current) | 0.033146723 |
+| 13 | Clay, edit 13 (redo) | 0.033146723 |
+
+The second stroke moves a vertex originally on X=0 to X=0.023397516.
+The first stroke affects 20 vertices beyond 0.00001 reflected error; the
+second affects 61, including five original centreline vertices.
+The later Clay edits introduce only approximately 0.0000002 or less new
+reflected-displacement mismatch and do not explain the earlier drift.
+Smoothing starts with already-asymmetric input and generally reduces its
+maximum error; its unequal displacements alone do not prove another
+independent smoothing defect.
+
+The remaining isolated failure is the brush-facing cutoff: non-Smooth stamps
+still used rendering-triangle vertex normals for eligibility. On this saved initial
+mesh those normals differ from their reflected partners by up to 0.01790657,
+despite symmetric positions. Near the cutoff that can admit one mirrored
+contribution but reject the other. A new isolated Standard regression failed
+before the fix with 0.008437495 reflected mismatch from one dab. A new real
+viewport multi-stroke regression passed before the fix: that particular pointer
+path does **not** reproduce the reported failure.
+
+The next change uses logical-face area vectors for full and selected sculpt
+normals, while retaining rendering normals for shading. Triangle-only normals
+retain their original accumulation. Full/selected-path equivalence tests now
+compare against full sculpt normals, not rendering normals; the new failing
+regression deliberately derives a grazing dab from rendering normals to test
+that these no longer control brush eligibility. Smooth uses the same logical
+area-vector helper as the sculpt-normal path.
+
+The next focused run passed **37 tests**, zero failures, with four opt-in tests
+ignored. It includes the previously failing grazing Standard regression,
+three real viewport Standard strokes with exact Undo/Redo, full/selected normal
+equivalence across brush kinds, Polish, protection, safety, Smooth, Clay and
+overlap tests. The existing synthetic Standard/Smooth/Clay sequence retains
+the same sub-0.0000002 maximum errors. These checks still do not establish
+physical pen behaviour or replay the actual failing strokes.
+
+The controlled sequence on this latest export's stage 0 also passed, retaining
+those same three reflected-error values, closed geometry, unchanged topology
+and exact Undo/Redo. Both before/after captures were visually inspected with
+the centre guide hidden; no obvious one-sided distortion was visible.
+The images are local at
+`/tmp/opencode/symmetry-facing-retained-{before,after}.png`.
+This rechecks the existing analytic sequence, not the original pen input or
+the newly isolated grazing-angle failure; the dedicated regression covers
+the latter.
+
+The export and analysis remain local; original pen samples are unavailable.
+
+## Final-commit CI follow-up: adaptive quad corner degeneracy
+
+CI on `6ebbe48` failed `mixed_adaptive_sculpt_remesh_sequences` at seed 28,
+step 3: a Standard dab after adaptive quad refinement returned no edit.
+The same seed and step reproduced locally, including through its saved
+replay. The other 1,340 routine tests and all six native packages passed.
+
+The both-diagonals safety guard encountered adaptive quads with three
+effectively collinear boundary corners. Their normal render triangles have
+healthy quality (approximately 0.86 for the first rejected quad), but the
+alternate diagonal creates a virtual triangle with quality approximately
+`6.86e-7`. Midpoint rounding gives that triangle a tiny nonzero normal;
+roundoff during a valid dab makes its relative-area/quality checks unstable,
+eventually rejecting the whole dab.
+
+The follow-up treats quad-corner triangles with dimensionless quality at
+most `8 * f32::EPSILON` as numerically degenerate. Both diagonals still
+contribute every meaningful triangle, and logical-quad reductions remain
+shared across all corners. Triangle-only safety checks are unchanged.
+A synthetic regression exercises the nearly collinear corner at three scales,
+under reflection and either render diagonal.
+
+That correction passed seed 28 but exposed the next failure at seed 50,
+step 3. Its remaining rejected corner is meaningful (quality approximately
+0.01833), not numerically degenerate: after repeated halvings, f32 rounding
+still lowers its quality enough to reject the whole dab. Do not widen the
+degeneracy threshold to bypass this valid safety check.
+
+Quad brush deformation now uses the existing local-rejection strategy used
+by smoothing: halve failed proposals, then pin repeatedly rejected logical
+faces and recheck neighbours. This retains both-diagonal safety on meaningful
+triangles without cancelling unrelated safe proposals. Triangle-only brush
+reduction behaviour remains unchanged. A separate two-quad regression checks
+that an unsafe sliver is restored exactly, a valid disconnected patch retains
+its proposal, the observer receives every reduction, and all final meaningful
+triangles pass the original guard.
+
+The final focused run passed **39 tests**, zero failures, five opt-in tests
+ignored. All nine mixed-operation seeds pass, including 28 and 50, with
+refinement, simplification, sculpt, remesh, rejection and persistence coverage
+retained. The two new guard regressions, frozen triangle-only guard oracle,
+grazing Standard symmetry, real viewport/history, Smooth, Clay and overlap
+checks also pass. Standard/Smooth/Clay reflected errors remain below `2e-7`.
+No full local suite or new release build was run; fresh PR CI must pass before
+merge. Local logs: `/tmp/opencode/pipeline-mixed-local-fixed.log`.

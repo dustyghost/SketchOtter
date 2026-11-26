@@ -1,4 +1,4 @@
-//! Join closely overlapping soft Standard footprints without summing their strength.
+//! Join closely overlapping soft relief footprints without summing their strength.
 use super::{Brush, Dab, Vec3};
 
 pub(super) struct SoftOverlap {
@@ -42,10 +42,10 @@ impl SoftOverlap {
         dabs: &[Dab],
         vertex: Vec3,
         normal: Vec3,
-        mobility: f32,
         depth: f32,
+        unit_depth: impl Fn(usize) -> f32,
     ) -> f32 {
-        if self.influence_sum <= 0. || mobility <= 0. {
+        if self.influence_sum <= 0. {
             return depth;
         }
         let mean = self.center_sum * (1. / self.influence_sum);
@@ -61,7 +61,7 @@ impl SoftOverlap {
         }
         let center = self.origin + mean;
         let mut joined = depth;
-        for dab in dabs {
+        for (index, dab) in dabs.iter().enumerate() {
             let offset = vertex - dab.center;
             if offset.len() > dab.radius * 1.5 || normal.dot(dab.normal) < 0.1 {
                 continue;
@@ -122,7 +122,7 @@ impl SoftOverlap {
                 offset.dot(dab.right) / dab.radius,
                 offset.dot(dab.up) / dab.radius,
             );
-            let candidate = coverage * strength * dab.radius * 0.15 * mobility * dab.normal.len();
+            let candidate = coverage * strength * unit_depth(index);
             // A barely contributing copy must not suddenly extend the footprint.
             let participation = (weight * strength / self.strongest).clamp(0., 1.);
             joined = joined
@@ -140,6 +140,53 @@ fn near(distance: f32, full: f32, end: f32) -> f32 {
 mod tests {
     use super::*;
     use crate::sculpt::{Alpha, Kind, Mesh, Primitive, PrimitiveKind, Symmetry};
+    #[test]
+    fn mirrored_clay_soft_footprints_do_not_dig_a_centre_groove() {
+        for divisions in [40, 100] {
+            for pressure in [0.35, 1.] {
+                let mut plane = Primitive::for_kind(PrimitiveKind::Plane);
+                plane.divisions = [divisions, 8, 1];
+                let mut mesh = plane.mesh().unwrap();
+                let symmetry = Symmetry {
+                    enabled: true,
+                    ..Default::default()
+                };
+                let brush = Brush::new(Kind::Clay);
+                let dab = Dab {
+                    center: Vec3(0.05, 0., 0.),
+                    normal: Vec3(0., 0., 1.),
+                    right: Vec3(1., 0., 0.),
+                    up: Vec3(0., 1., 0.),
+                    radius: 0.4,
+                    pressure,
+                    delta: Vec3::default(),
+                    invert: false,
+                };
+                for _ in 0..6 {
+                    mesh.stamp_many(&brush, &symmetry.dabs(dab));
+                }
+                let height = |x: f32| {
+                    mesh.vertices
+                        .iter()
+                        .min_by(|a, b| {
+                            ((a.0 - x).abs() + a.1.abs()).total_cmp(&((b.0 - x).abs() + b.1.abs()))
+                        })
+                        .unwrap()
+                        .2
+                };
+                assert!(height(0.) > 0.);
+                assert!(
+                    height(0.) >= height(0.05).min(height(-0.05)) * 0.99,
+                    "centre groove at {divisions} divisions, pressure {pressure}: {} vs {} / {}",
+                    height(0.),
+                    height(-0.05),
+                    height(0.05)
+                );
+                mesh.validate().unwrap();
+            }
+        }
+    }
+
     #[test]
     fn soft_join_has_a_level_centre_and_preserves_masks_and_texture_alphas() {
         let mut plane = Primitive::for_kind(PrimitiveKind::Plane);

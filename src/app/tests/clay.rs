@@ -65,6 +65,281 @@ fn clay_viewport_stroke_restores_geometry_and_topology_with_one_undo() {
     }
 }
 
+#[test]
+fn clay_mirrored_viewport_stroke_has_one_exact_undo_and_redo() {
+    let mut app = scene(Kind::Clay, false, false);
+    let ctx = egui::Context::default();
+    app.camera.yaw = 0.;
+    app.camera.pitch = 0.;
+    app.document
+        .set_symmetry(crate::sculpt::Symmetry {
+            enabled: true,
+            ..Default::default()
+        })
+        .unwrap();
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts();
+    stroke(&mut app, &ctx, 12.);
+    let after = app.document.geometry_snapshot();
+    assert_ne!(after, before);
+    assert_eq!(after.mesh.triangles, before.mesh.triangles);
+    assert_eq!(app.document.history_counts().0, history.0 + 1);
+    app.dispatch(Command::Undo, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    app.dispatch(Command::Redo, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), after);
+}
+
+fn mirrored_brush_sequence(app: &mut App) {
+    use crate::sculpt::{Dab, Vec3};
+    let reflect = |p: Vec3| Vec3(-p.0, p.1, p.2);
+    let initial = app.document.geometry_snapshot();
+    let pairs: Vec<_> = initial
+        .mesh
+        .vertices
+        .iter()
+        .map(|&p| {
+            initial
+                .mesh
+                .vertices
+                .iter()
+                .enumerate()
+                .min_by(|(_, a), (_, b)| {
+                    ((**a - reflect(p)).len()).total_cmp(&(**b - reflect(p)).len())
+                })
+                .unwrap()
+                .0
+        })
+        .collect();
+    app.document
+        .set_symmetry(crate::sculpt::Symmetry {
+            enabled: true,
+            ..Default::default()
+        })
+        .unwrap();
+    for kind in [Kind::Standard, Kind::Smooth, Kind::Clay] {
+        let mut brush = app
+            .document
+            .brushes()
+            .iter()
+            .find(|b| b.kind == kind)
+            .unwrap()
+            .clone();
+        brush.strength = 0.6;
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        for step in 0..32 {
+            let t = step as f32 / 31.;
+            let x = 0.1 + 0.04 * (t * std::f32::consts::PI).sin();
+            let y = -0.25 + 0.5 * t;
+            let center = Vec3(x, y, (1. - x * x - y * y).sqrt());
+            app.document.apply_dab(
+                &brush,
+                Dab {
+                    center,
+                    normal: center.norm(),
+                    right: Vec3(1., 0., 0.),
+                    up: Vec3(0., 1., 0.),
+                    radius: 0.3,
+                    pressure: 0.35 + 0.5 * (t * std::f32::consts::PI).sin(),
+                    delta: Vec3::default(),
+                    invert: kind == Kind::Standard,
+                },
+            );
+        }
+        app.document.end_stroke();
+        let after = app.document.geometry_snapshot();
+        assert_ne!(after, before, "{kind:?} must change the surface");
+        assert_eq!(after.mesh.triangles, initial.mesh.triangles);
+        assert_eq!(after.mesh.quads, initial.mesh.quads);
+        let mismatch = after
+            .mesh
+            .vertices
+            .iter()
+            .zip(&pairs)
+            .map(|(&p, &j)| (after.mesh.vertices[j] - reflect(p)).len())
+            .fold(0_f32, f32::max);
+        eprintln!("{kind:?}: maximum reflected mismatch {mismatch}");
+        assert!(mismatch < 1e-5, "{kind:?} drifted by {mismatch}");
+        assert_eq!(app.document.history_counts().0, history.0 + 1);
+        app.document.undo();
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.document.redo();
+        assert_eq!(app.document.geometry_snapshot(), after);
+        after.mesh.validate_closed().unwrap();
+    }
+}
+
+#[test]
+fn mirrored_subtractive_standard_smooth_clay_sequence_preserves_symmetry_and_history() {
+    mirrored_brush_sequence(&mut scene(Kind::Standard, false, false));
+}
+
+#[test]
+fn mirrored_standard_viewport_strokes_keep_the_seam_and_pairs_symmetric() {
+    use crate::sculpt::Vec3;
+    let mut app = scene(Kind::Standard, false, false);
+    let ctx = egui::Context::default();
+    app.camera.yaw = 0.;
+    app.camera.pitch = 0.;
+    app.document
+        .set_symmetry(crate::sculpt::Symmetry {
+            enabled: true,
+            ..Default::default()
+        })
+        .unwrap();
+    let initial = app.document.geometry_snapshot();
+    let reflect = |p: Vec3| Vec3(-p.0, p.1, p.2);
+    let pairs: Vec<_> = initial
+        .mesh
+        .vertices
+        .iter()
+        .map(|&p| {
+            initial
+                .mesh
+                .vertices
+                .iter()
+                .position(|&q| (q - reflect(p)).len() < 1e-6)
+                .unwrap()
+        })
+        .collect();
+    for offset in [-12., 0., 12.] {
+        let before = app.document.geometry_snapshot();
+        stroke(&mut app, &ctx, offset);
+        let after = app.document.geometry_snapshot();
+        assert_ne!(before, after);
+        let mismatch = after
+            .mesh
+            .vertices
+            .iter()
+            .zip(&pairs)
+            .map(|(&p, &j)| (after.mesh.vertices[j] - reflect(p)).len())
+            .fold(0_f32, f32::max);
+        assert!(
+            mismatch < 1e-5,
+            "offset {offset}: viewport drift {mismatch}"
+        );
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.dispatch(Command::Redo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), after);
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "manual local-input symmetry review; requires Vulkan and SYMMETRY_REVIEW_SOURCE/PREVIEW"]
+fn mirrored_brush_sequence_offscreen_review() {
+    let source = std::env::var("SYMMETRY_REVIEW_SOURCE").expect("Set SYMMETRY_REVIEW_SOURCE");
+    let prefix = std::env::var("SYMMETRY_REVIEW_PREVIEW").expect("Set SYMMETRY_REVIEW_PREVIEW");
+    let mut app = scene(Kind::Standard, false, false);
+    app.document
+        .replace_project(crate::persistence::load_project(&source).unwrap(), &source)
+        .unwrap();
+    // Leave the centre unobscured during shaded symmetry inspection.
+    app.ui.show_symmetry_guides = false;
+    let mut capture = crate::viewport::UiCapture::new([900, 700]);
+    for stage in ["before", "after"] {
+        if stage == "after" {
+            mirrored_brush_sequence(&mut app);
+        }
+        app.camera.yaw = 0.;
+        app.camera.pitch = 0.;
+        app.camera.roll = 0.;
+        app.viewport.initialize_renderer(&capture.state).unwrap();
+        let ctx = egui::Context::default();
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(900., 700.))),
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.show_viewport(ui));
+            },
+        );
+        let rgba = capture.render(&ctx, output);
+        capture.save(format!("{prefix}-{stage}.png"), &rgba);
+        app.viewport.destroy_renderer();
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "manual symmetry seam review; requires Vulkan and CLAY_BUILDUP_PREVIEW"]
+fn clay_symmetry_seam_offscreen_review() {
+    use crate::sculpt::{Dab, Vec3};
+    let prefix = std::env::var("CLAY_BUILDUP_PREVIEW").expect("Set CLAY_BUILDUP_PREVIEW");
+    let mut capture = crate::viewport::UiCapture::new([900, 700]);
+    for x in [0., 0.04, 0.12] {
+        let mut app = scene(Kind::Clay, false, false);
+        if let Ok(path) = std::env::var("CLAY_SYMMETRY_SOURCE") {
+            app.document
+                .replace_project(crate::persistence::load_project(&path).unwrap(), &path)
+                .unwrap();
+        }
+        app.document
+            .set_symmetry(crate::sculpt::Symmetry {
+                enabled: true,
+                ..Default::default()
+            })
+            .unwrap();
+        let brush = app
+            .document
+            .brushes()
+            .iter()
+            .find(|b| b.kind == Kind::Clay)
+            .unwrap()
+            .clone();
+        let before = app.document.geometry_snapshot();
+        for step in 0..24 {
+            let y = -0.3 + step as f32 * 0.6 / 23.;
+            let local_x = if x == 0.12 {
+                x * (2. * step as f32 / 23. - 1.)
+            } else {
+                x
+            };
+            let center = Vec3(local_x, y, (1. - local_x * local_x - y * y).sqrt());
+            app.document.apply_dab(
+                &brush,
+                Dab {
+                    center,
+                    normal: center.norm(),
+                    right: Vec3(1., 0., 0.),
+                    up: Vec3(0., 1., 0.),
+                    radius: 0.3,
+                    pressure: 0.6,
+                    delta: Vec3::default(),
+                    invert: false,
+                },
+            );
+        }
+        app.document.end_stroke();
+        let after = app.document.geometry_snapshot();
+        assert_ne!(after, before);
+        app.document.undo();
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.document.redo();
+        assert_eq!(app.document.geometry_snapshot(), after);
+        app.document.mesh().validate_closed().unwrap();
+        app.camera.yaw = 0.25;
+        app.camera.pitch = -0.15;
+        app.viewport.initialize_renderer(&capture.state).unwrap();
+        let ctx = egui::Context::default();
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(900., 700.))),
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.show_viewport(ui));
+            },
+        );
+        let rgba = capture.render(&ctx, output);
+        capture.save(format!("{prefix}-symmetry-{x:.2}.png"), &rgba);
+        app.viewport.destroy_renderer();
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 #[ignore = "manual visual review; requires a Vulkan adapter (software lavapipe supported)"]

@@ -73,6 +73,32 @@ pub(crate) struct Polygon {
     pub visible: bool,
 }
 impl Polygon {
+    pub(super) fn area_vector(&self, vertices: &[super::Vec3]) -> super::Vec3 {
+        let origin = vertices[self.vertices[0]];
+        self.edges().fold(super::Vec3::default(), |sum, (a, b)| {
+            sum + (vertices[a] - origin).cross(vertices[b] - origin)
+        })
+    }
+
+    /// Average both quad triangulations so geometry operations do not inherit
+    /// the arbitrary diagonal used for rendering. Triangles keep full weight.
+    pub(super) fn symmetric_triangles(&self) -> impl Iterator<Item = ([usize; 3], f64)> {
+        let v = &self.vertices;
+        let mut triangles = [([v[0], v[1], v[2]], 1.); 4];
+        let count = if v.len() == 4 {
+            triangles = [
+                ([v[0], v[1], v[2]], 0.5),
+                ([v[0], v[2], v[3]], 0.5),
+                ([v[0], v[1], v[3]], 0.5),
+                ([v[1], v[2], v[3]], 0.5),
+            ];
+            4
+        } else {
+            1
+        };
+        triangles.into_iter().take(count)
+    }
+
     pub fn edges(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
         self.vertices
             .iter()

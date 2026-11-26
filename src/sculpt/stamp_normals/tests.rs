@@ -30,6 +30,60 @@ fn dab(radius: f32) -> Dab {
 }
 
 #[test]
+fn mirrored_standard_facing_does_not_depend_on_quad_render_normals() {
+    let mut mesh = Mesh::sphere();
+    let reflect = |p: Vec3| Vec3(-p.0, p.1, p.2);
+    let pairs: Vec<_> = mesh
+        .vertices
+        .iter()
+        .map(|&p| {
+            mesh.vertices
+                .iter()
+                .position(|&q| (q - reflect(p)).len() < 1e-6)
+                .unwrap()
+        })
+        .collect();
+    let i = mesh
+        .vertices
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| {
+            (**a - Vec3(-0.5, 0.6, 0.6))
+                .len()
+                .total_cmp(&(**b - Vec3(-0.5, 0.6, 0.6)).len())
+        })
+        .unwrap()
+        .0;
+    let normals = mesh.normals();
+    let a = normals[i];
+    let b = reflect(normals[pairs[i]]);
+    // The renderer's diagonal-biased normals straddle the facing cutoff.
+    // Sculpt eligibility must instead see the same logical face on each side.
+    let normal = (a + b).norm() * 0.1 + (a - b).norm() * 0.99_f32.sqrt();
+    assert!(a.dot(normal) > 0.1 && b.dot(normal) < 0.1);
+    let d = Dab {
+        center: mesh.vertices[i],
+        normal,
+        ..dab(0.3)
+    };
+    let symmetry = Symmetry {
+        enabled: true,
+        ..Default::default()
+    };
+    assert!(mesh.stamp_many(&Brush::new(Kind::Standard), &symmetry.dabs(d)));
+    let mismatch = mesh
+        .vertices
+        .iter()
+        .zip(pairs)
+        .map(|(&p, j)| (mesh.vertices[j] - reflect(p)).len())
+        .fold(0_f32, f32::max);
+    assert!(
+        mismatch < 2e-6,
+        "diagonal-biased facing introduced {mismatch} drift"
+    );
+}
+
+#[test]
 fn selected_normals_match_full_accumulation_bit_for_bit() {
     let unusual = Mesh {
         vertices: vec![
@@ -44,7 +98,7 @@ fn selected_normals_match_full_accumulation_bit_for_bit() {
         ..Default::default()
     };
     for mesh in [Mesh::default(), unusual, Mesh::sphere()] {
-        let expected = mesh.normals();
+        let expected = mesh.brush_normals();
         for pattern in 0..6 {
             let needed: Vec<_> = (0..mesh.vertices.len())
                 .map(|i| match pattern {
@@ -88,7 +142,7 @@ fn stamp_normal_selection_preserves_radius_boundary_and_special_brushes() {
             needed[0] = false;
             let original = needed.clone();
             let normals = mesh.stamp_normals(kind, &dabs, &mut needed);
-            let expected = mesh.normals();
+            let expected = mesh.brush_normals();
             if kind == Kind::Snake {
                 assert!(normals.is_empty());
             }
@@ -135,7 +189,10 @@ fn broad_stamp_fallback_keeps_unsampled_outliers_safe() {
     );
     assert_eq!(
         normals.into_iter().map(bits).collect::<Vec<_>>(),
-        mesh.normals().into_iter().map(bits).collect::<Vec<_>>()
+        mesh.brush_normals()
+            .into_iter()
+            .map(bits)
+            .collect::<Vec<_>>()
     );
     let original = mesh.vertices[1];
     let mut expected = mesh.clone();

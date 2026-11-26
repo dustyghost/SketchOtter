@@ -1360,6 +1360,123 @@ fn face_at(mesh: &Mesh, center: Vec3) -> usize {
 }
 
 #[test]
+fn symmetric_fuse_meets_moving_caps_halfway_on_a_single_edit() {
+    use crate::sculpt::{Axis, Symmetry};
+    for axis in Axis::ALL {
+        let mut mesh = cube(1);
+        let mut other = mesh.clone();
+        for p in &mut mesh.vertices {
+            *p = *p - axis.vector() * 2.;
+        }
+        for p in &mut other.vertices {
+            *p = *p + axis.vector() * 2.;
+        }
+        let offset = mesh.vertices.len();
+        mesh.vertices.extend(other.vertices);
+        mesh.triangles
+            .extend(other.triangles.iter().map(|t| t.map(|v| v + offset)));
+        mesh.quads
+            .extend(other.quads.iter().map(|q| q.map(|v| v + offset)));
+        mesh.mask = vec![0.3; mesh.vertices.len()];
+        let mut settings = Symmetry {
+            enabled: true,
+            mirror: [false; 3],
+            ..Default::default()
+        };
+        settings.mirror[match axis {
+            Axis::X => 0,
+            Axis::Y => 1,
+            Axis::Z => 2,
+        }] = true;
+        let symmetry = ModelingSymmetry::new(&mesh, &settings).unwrap();
+        for side in [-1., 1.] {
+            let source = face_at(&mesh, axis.vector() * side);
+            let approach = mesh
+                .extrude_symmetric_contact(
+                    &[source],
+                    0.5,
+                    ExtrudeContact {
+                        join: true,
+                        loops: true,
+                        snap: 0.04,
+                    },
+                    &symmetry,
+                )
+                .unwrap();
+            assert!(!approach.joined && !approach.collapsed);
+            approach.mesh.validate_closed().unwrap();
+            for distance in [0.95, 1., 1.1] {
+                let fused = mesh
+                    .extrude_symmetric_contact(
+                        &[source],
+                        distance,
+                        ExtrudeContact {
+                            join: true,
+                            loops: true,
+                            snap: 0.04,
+                        },
+                        &symmetry,
+                    )
+                    .unwrap();
+                assert!(fused.joined && !fused.collapsed && !fused.partial_contact);
+                assert!((fused.distance - 1.).abs() < 1e-5);
+                fused.mesh.validate_closed().unwrap();
+                manifold(&fused.mesh).unwrap();
+                symmetry.validate_result(&fused.mesh).unwrap();
+                assert!(fused.mesh.mask.iter().all(|&m| m == 0.3));
+                assert_eq!(
+                    fused
+                        .mesh
+                        .vertices
+                        .iter()
+                        .filter(|p| p.dot(axis.vector()).abs() < 1e-5)
+                        .count(),
+                    4
+                );
+                let mut visited = BTreeSet::new();
+                let mut pending = vec![0];
+                let edges = fused.mesh.polygon_edges();
+                while let Some(v) = pending.pop() {
+                    if visited.insert(v) {
+                        pending.extend(edges.iter().filter(|e| e.contains(&v)).flatten().copied());
+                    }
+                }
+                assert_eq!(
+                    visited.len(),
+                    fused.mesh.vertices.len(),
+                    "fused surface must be connected"
+                );
+            }
+        }
+        // Mirrored caps can have matching topology without facing each other
+        // along their extrusion normals. Do not force these into a seam weld.
+        let tangent = if axis == Axis::Y {
+            Axis::Z.vector()
+        } else {
+            Axis::Y.vector()
+        };
+        let source = face_at(&mesh, axis.vector());
+        for p in &mut mesh.vertices {
+            *p = *p + axis.vector() * (p.dot(axis.vector()).signum() * p.dot(tangent) * 0.2);
+        }
+        let symmetry = ModelingSymmetry::new(&mesh, &settings).unwrap();
+        if let Ok(result) = mesh.extrude_symmetric_contact(
+            &[source],
+            1.1,
+            ExtrudeContact {
+                join: true,
+                loops: true,
+                snap: 0.04,
+            },
+            &symmetry,
+        ) {
+            assert!(!result.joined, "incompatible caps must not be force-welded");
+            result.mesh.validate_closed().unwrap();
+        }
+    }
+}
+
+#[test]
 fn modeling_fuse_joins_a_cap_bordered_by_touching_tunnels() {
     let mut mesh = cube(3);
     let midpoint = Vec3(0., 1., 1.);

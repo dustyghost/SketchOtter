@@ -7,28 +7,39 @@ impl Mesh {
     /// Area weighting keeps adaptive triangle density from biasing the plane;
     /// a smooth spatial taper avoids jumps when triangles enter the footprint.
     pub(crate) fn surface_planes(&self, dabs: &[Dab]) -> Vec<(Vec3, Vec3)> {
+        // Sample logical faces, not rendering triangles. A quad's arbitrary
+        // diagonal need not be mirrored even when its surface and corners are.
+        // Triangle-centroid quadrature then gives the two sides different planes.
+        let polygons = self.polygons();
         dabs.iter()
             .map(|dab| {
                 let mut center = Vec3::default();
                 let mut direction = Vec3::default();
                 let mut total = 0.;
-                for (face, &[a, b, c]) in self.triangles.iter().enumerate() {
-                    if !self.face_visible(face) {
+                for polygon in &polygons {
+                    if !polygon.visible {
                         continue;
                     }
-                    let [pa, pb, pc] = [a, b, c].map(|i| self.vertices[i]);
-                    let offset =
-                        ((pa - dab.center) + (pb - dab.center) + (pc - dab.center)) * (1. / 3.);
+                    let count = polygon.vertices.len() as f32;
+                    let mut offset = Vec3::default();
+                    let mut cross = Vec3::default();
+                    let mut mask = 0.;
+                    for (a, b) in polygon.edges() {
+                        let pa = self.vertices[a] - dab.center;
+                        let pb = self.vertices[b] - dab.center;
+                        offset = offset + pa * (1. / count);
+                        cross = cross + pa.cross(pb);
+                        mask += self.mask[a] / count;
+                    }
                     let r2 = offset.dot(offset) / (dab.radius * dab.radius);
                     if r2 >= 1. {
                         continue;
                     }
-                    let cross = (pb - pa).cross(pc - pa);
                     let area = cross.len();
                     if area <= 1e-12 || cross.dot(dab.normal) <= area * 0.25 {
                         continue;
                     }
-                    let mobility = (3. - self.mask[a] - self.mask[b] - self.mask[c]) / 3.;
+                    let mobility = 1. - mask;
                     let weight = (1. - r2).powi(2) * mobility;
                     center = center + offset * (area * weight);
                     direction = direction + cross * weight;
@@ -66,6 +77,59 @@ mod tests {
             delta: Vec3::default(),
             invert: false,
         }
+    }
+
+    #[test]
+    fn clay_sampled_planes_and_repeated_strokes_reflect_across_quad_diagonals() {
+        use crate::sculpt::Symmetry;
+        let mut mesh = Mesh::sphere();
+        let reflect = |p: Vec3| Vec3(-p.0, p.1, p.2);
+        let pairs: Vec<_> = mesh
+            .vertices
+            .iter()
+            .map(|&p| {
+                mesh.vertices
+                    .iter()
+                    .position(|&q| (q - reflect(p)).len() < 1e-6)
+                    .unwrap()
+            })
+            .collect();
+        let symmetry = Symmetry {
+            enabled: true,
+            ..Default::default()
+        };
+        let brush = Brush::new(Kind::Clay);
+        for step in 0..8 {
+            let normal = Vec3(0.18 + step as f32 * 0.01, 0.23, 1.).norm();
+            let dabs = symmetry.dabs(Dab {
+                center: normal,
+                normal,
+                radius: 0.36,
+                pressure: 0.6,
+                ..dab()
+            });
+            let planes = mesh.surface_planes(&dabs);
+            assert!(
+                (planes[1].0 - reflect(planes[0].0)).len() < 2e-6,
+                "quad diagonals must not bias the sampled centre"
+            );
+            assert!(
+                (planes[1].1 - reflect(planes[0].1)).len() < 2e-6,
+                "quad diagonals must not bias the sampled normal"
+            );
+            assert!(mesh.stamp_many(&brush, &dabs));
+            let mismatch = mesh
+                .vertices
+                .iter()
+                .zip(&pairs)
+                .map(|(&p, &j)| (mesh.vertices[j] - reflect(p)).len())
+                .fold(0_f32, f32::max);
+            assert!(
+                mismatch < 1e-5,
+                "step {step}: mirrored Clay drifted by {mismatch}"
+            );
+        }
+        mesh.validate_closed().unwrap();
     }
 
     #[test]

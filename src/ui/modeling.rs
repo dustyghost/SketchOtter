@@ -111,7 +111,14 @@ impl ModelingControls {
             bridge_segments: self.bridge_segments,
             axis: self.axis,
             interaction: self.interaction,
-            transform_direction: self.transform_direction,
+            // Slide's visible numeric controls use Axis. A drag latches its
+            // own view-relative direction privately; Repeat retains that edit,
+            // but loading it must not override a later numeric axis choice.
+            transform_direction: if self.tool == ModelTool::Slide {
+                crate::sculpt::Vec3::default()
+            } else {
+                self.transform_direction
+            },
             amount: self.amount,
             protect_mask: self.protect_mask,
             individual: self.individual,
@@ -703,6 +710,9 @@ impl UiState {
                     commands.push(Command::ModelApply);
                 }
                 ui.weak("Release applies · Esc cancels · one Undo per drag");
+                if self.modeling.tool == ModelTool::Slide {
+                    ui.weak("Drag along surface rails · Axis sets the numeric slide direction");
+                }
                 if self.modeling.tool == ModelTool::Move {
                     ui.strong("Snap and weld on move");
                     ui.horizontal_wrapped(|ui| {

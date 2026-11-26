@@ -7,6 +7,8 @@
 //! grooves: their sidewalls move sideways into slivers instead of relaxing.
 //! Weight clamping and deformation guards make this a modified operator, not
 //! the paper's unmodified cotangent flow or a volume-preserving filter.
+//! Logical quads average both triangulations for mass and cotangent weights;
+//! normals and sheet classification also ignore the rendering diagonal.
 use super::{Brush, Dab, Mesh, alpha::Projection};
 
 struct Edge {
@@ -72,14 +74,25 @@ impl Mesh {
         if brush.strength <= 0. || dabs.is_empty() {
             return false;
         }
-        let normals = self.normals();
+        let polygons = self.polygons();
+        let mut normals = vec![super::Vec3::default(); self.vertices.len()];
+        for p in &polygons {
+            let normal = p.area_vector(&self.vertices);
+            for &i in &p.vertices {
+                normals[i] = normals[i] + normal;
+            }
+        }
+        normals.iter_mut().for_each(|n| *n = n.norm());
         // Classify the local surface sheet, not each individual groove wall.
         // An isolated turned normal must not pin a speck forever. Averaging
         // only topological neighbors keeps a nearby opposing sheet separate.
         let mut facing = normals.clone();
-        for &[a, b, c] in &self.triangles {
-            let sum = normals[a] + normals[b] + normals[c];
-            for i in [a, b, c] {
+        for p in &polygons {
+            let sum = p
+                .vertices
+                .iter()
+                .fold(super::Vec3::default(), |s, &i| s + normals[i]);
+            for &i in &p.vertices {
                 facing[i] = facing[i] + sum;
             }
         }
@@ -137,7 +150,7 @@ impl Mesh {
         let mut raw_edges = Vec::new();
         // One face scan includes the complete one-ring, including fixed neighbors
         // outside the brush. Subsequent solver iterations visit only this patch.
-        for &[a, b, c] in &self.triangles {
+        for ([a, b, c], fraction) in polygons.iter().flat_map(|p| p.symmetric_triangles()) {
             if [a, b, c].iter().all(|&i| indices[i] == usize::MAX) {
                 continue;
             }
@@ -149,11 +162,12 @@ impl Mesh {
             }
             for (i, j, k) in [(a, b, c), (b, c, a), (c, a, b)] {
                 if indices[i] != usize::MAX {
-                    mass[indices[i]] += area / 6.;
+                    mass[indices[i]] += fraction * area / 6.;
                 }
                 let weight = (self.vertices[i] - self.vertices[k])
                     .dot(self.vertices[j] - self.vertices[k]) as f64
-                    / (2. * area);
+                    / (2. * area)
+                    * fraction;
                 raw_edges.push((i.min(j), i.max(j), weight));
             }
         }
@@ -219,6 +233,46 @@ impl Mesh {
 mod tests {
     use super::*;
     use crate::sculpt::{Alpha, Kind, Vec3};
+
+    #[test]
+    fn smooth_mirrored_curved_quads_do_not_drift_with_unmirrored_diagonals() {
+        let mut mesh = Mesh::sphere();
+        let reflect = |p: Vec3| Vec3(-p.0, p.1, p.2);
+        let pairs: Vec<_> = mesh
+            .vertices
+            .iter()
+            .map(|&p| {
+                mesh.vertices
+                    .iter()
+                    .position(|&q| (q - reflect(p)).len() < 1e-6)
+                    .unwrap()
+            })
+            .collect();
+        let symmetry = crate::sculpt::Symmetry {
+            enabled: true,
+            ..Default::default()
+        };
+        let brush = Brush::new(Kind::Smooth);
+        for step in 0..8 {
+            let normal = Vec3(0.2, 0.23, 1.).norm();
+            assert!(mesh.stamp_many(
+                &brush,
+                &symmetry.dabs(Dab {
+                    center: normal,
+                    normal,
+                    ..dab()
+                })
+            ));
+            let mismatch = mesh
+                .vertices
+                .iter()
+                .zip(&pairs)
+                .map(|(&p, &j)| (mesh.vertices[j] - reflect(p)).len())
+                .fold(0_f32, f32::max);
+            assert!(mismatch < 2e-6, "step {step}: Smooth drift {mismatch}");
+        }
+        mesh.validate_closed().unwrap();
+    }
 
     fn dab() -> Dab {
         Dab {

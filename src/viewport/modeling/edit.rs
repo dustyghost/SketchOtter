@@ -226,13 +226,17 @@ impl ModelingState {
         &mut self,
         document: &Document,
         point: Option<Pos2>,
-        options: ModelingOptions,
+        mut options: ModelingOptions,
     ) {
         if !options.tool.is_edit() {
             self.edit_drag = None;
             return;
         }
         if let Some(drag) = &mut self.edit_drag {
+            if options.tool == ModelTool::Slide {
+                // Keep the view-relative rail choice fixed for the whole drag.
+                options.transform_direction = drag.preview_options.transform_direction;
+            }
             if drag.direct.is_some() {
                 return;
             }
@@ -253,6 +257,11 @@ impl ModelingState {
                 } else {
                     let travel = drag.start.y - point.y;
                     drag.amount = match options.tool {
+                        ModelTool::Slide => {
+                            let rail = drag.rail.unwrap_or(egui::Vec2::ZERO);
+                            ((point - drag.start).dot(rail) / rail.length_sq().max(1.))
+                                .clamp(-0.999, 0.999)
+                        }
                         ModelTool::EdgeSplit | ModelTool::EdgeCollapse => {
                             let rail = drag.rail.unwrap_or(egui::Vec2::ZERO);
                             let fraction = drag.initial_amount
@@ -595,7 +604,11 @@ impl ModelingState {
             let result = mesh.slide_model_edges(
                 &edges,
                 amount,
-                options.axis.vector(),
+                if options.transform_direction.len() > 0. {
+                    options.transform_direction
+                } else {
+                    options.axis.vector()
+                },
                 anchor,
                 options.protect_mask,
                 &ModelingSymmetry::new(mesh, document.symmetry())?,
@@ -685,6 +698,9 @@ impl ModelingState {
         let Some(drag) = self.edit_drag.take() else {
             return Ok(());
         };
+        if options.tool == ModelTool::Slide && drag.moved {
+            options.transform_direction = drag.preview_options.transform_direction;
+        }
         if drag.detached && !drag.moved {
             return Ok(());
         }
@@ -856,7 +872,7 @@ impl Viewport {
         &mut self,
         document: &Document,
         scene: &Scene,
-        model: ModelingOptions,
+        mut model: ModelingOptions,
         hover: Option<Component>,
         point: Option<Pos2>,
         pressed: bool,
@@ -932,6 +948,38 @@ impl Viewport {
                     return;
                 }
                 let components = targets.into_iter().collect();
+                let slide_rail = if model.tool == ModelTool::Slide {
+                    // Probe the actual surface rails, not the selected edge's
+                    // tangent or a world-axis transform. Use the most legible
+                    // projection at the grabbed edge and latch it until release.
+                    [scene.right, scene.up]
+                        .into_iter()
+                        .filter_map(|direction| {
+                            model.transform_direction = direction;
+                            let preview = ModelingState::edit_result(
+                                document,
+                                &components,
+                                anchor,
+                                model,
+                                0.5,
+                            )
+                            .ok()?;
+                            let Component::Edge([a, b]) = component else {
+                                return None;
+                            };
+                            let rail = scene.project(preview.mesh.vertices[a])
+                                - scene.project(document.mesh().vertices[a])
+                                + (scene.project(preview.mesh.vertices[b])
+                                    - scene.project(document.mesh().vertices[b]));
+                            Some((direction, rail))
+                        })
+                        .max_by(|a, b| a.1.length_sq().total_cmp(&b.1.length_sq()))
+                } else {
+                    None
+                };
+                if let Some((direction, _)) = slide_rail {
+                    model.transform_direction = direction;
+                }
                 let preview_on_press =
                     matches!(model.tool, ModelTool::PointSplit | ModelTool::CutCell)
                         || (model.tool == ModelTool::Fuse && model.tap_repeat);
@@ -942,7 +990,9 @@ impl Viewport {
                     detached: false,
                     direct: None,
                     start: point,
-                    rail: if let Component::Edge([a, b]) = component {
+                    rail: if model.tool == ModelTool::Slide {
+                        slide_rail.map(|(_, rail)| rail)
+                    } else if let Component::Edge([a, b]) = component {
                         let delta = scene.project(document.mesh().vertices[b])
                             - scene.project(document.mesh().vertices[a]);
                         Some(

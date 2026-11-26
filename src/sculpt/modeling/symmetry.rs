@@ -296,14 +296,81 @@ impl Mesh {
             rim: Vec::new(),
             preview: Default::default(),
         };
+        // Two selected symmetry copies can meet halfway through an empty gap.
+        // Neither midpoint cap exists in the source, so independent source-only
+        // contact plans would call both free extrusions (and reject the second
+        // one when it encounters the first one's new cap).
+        let mut meetings = vec![None; groups.len()];
+        if contact.loops && join && symmetry.vertices.len() > 1 {
+            for (index, group) in groups.iter().enumerate() {
+                let selected: BTreeSet<_> = group.iter().copied().collect();
+                let mut boundary = BTreeMap::new();
+                let mut vertices = BTreeSet::new();
+                for &f in group {
+                    vertices.extend(polygons[f].vertices.iter().copied());
+                    for (a, b) in polygons[f].edges() {
+                        if boundary.remove(&edge(a, b)).is_none() {
+                            boundary.insert(edge(a, b), (a, b, polygons[f].group));
+                        }
+                    }
+                }
+                let size = boundary
+                    .values()
+                    .map(|&(a, b, _)| (self.vertices[a] - self.vertices[b]).len())
+                    .fold(f32::INFINITY, f32::min);
+                let region = super::contact::ContactRegion {
+                    polygons: &polygons,
+                    selected: &selected,
+                    vertices: &vertices,
+                    boundary: &boundary,
+                    direction: normal(self, &polygons[group[0]]),
+                    distance: distance * 2.,
+                    snap: contact.snap * 2.,
+                };
+                if boundary.is_empty() {
+                    continue;
+                }
+                let Some(target) = self.cap_contact(&region, size) else {
+                    continue;
+                };
+                let Some(partner) = groups
+                    .iter()
+                    .position(|g| g.iter().copied().collect::<BTreeSet<_>>() == target.caps)
+                else {
+                    continue;
+                };
+                if partner != index
+                    && symmetry.faces.iter().skip(1).any(|map| {
+                        group.iter().map(|&f| map[f]).collect::<BTreeSet<_>>() == target.caps
+                    })
+                {
+                    meetings[index] = Some((partner, target.depth * 0.5));
+                }
+            }
+            let candidates = meetings.clone();
+            for (index, meeting) in meetings.iter_mut().enumerate() {
+                if let Some((partner, depth)) = *meeting
+                    && candidates[partner].is_none_or(|(other, d)| {
+                        other != index || (d - depth).abs() > depth.abs().max(1.) * 1e-5
+                    })
+                {
+                    *meeting = None;
+                }
+            }
+        }
         // Resolve contacts against the unchanged source. Earlier regions must
         // not create new targets or make a later region pass its original stop.
         let plans = if contact.loops && groups.len() > 1 {
             groups
                 .iter()
-                .map(|group| {
-                    self.extrude_contact(group, distance, contact)
-                        .map(|r| (r.distance, r.joined, r.collapsed))
+                .enumerate()
+                .map(|(index, group)| {
+                    if meetings[index].is_some() {
+                        Ok(None)
+                    } else {
+                        self.extrude_contact(group, distance, contact)
+                            .map(|r| Some((r.distance, r.joined, r.collapsed)))
+                    }
                 })
                 .collect::<Result<Vec<_>, _>>()?
         } else {
@@ -346,8 +413,17 @@ impl Mesh {
             if indices.len() != group.len() {
                 return Err("Selected extrusion regions overlap; the edit was cancelled".into());
             }
-            let next = result.mesh.extrude_contact(&indices, distance, contact)?;
-            if let Some(&(depth, joined, collapsed)) = plans.get(index)
+            let meeting = meetings[index];
+            let travel = meeting.map_or(distance, |(_, depth)| depth);
+            let next = result.mesh.extrude_contact(&indices, travel, contact)?;
+            if let Some((partner, depth)) = meeting
+                && (next.joined != (partner < index)
+                    || next.collapsed
+                    || (next.distance - depth).abs() > depth.abs().max(1.) * 1e-5)
+            {
+                return Err("The symmetric caps cannot meet safely; the edit was cancelled".into());
+            }
+            if let Some(&Some((depth, joined, collapsed))) = plans.get(index)
                 && (next.joined != joined
                     || next.collapsed != collapsed
                     || (next.distance - depth).abs() > depth.abs().max(1.) * 1e-5)
@@ -363,7 +439,7 @@ impl Mesh {
             } else {
                 first_distance = Some(next.distance);
             }
-            free_regions += usize::from(!next.joined && !next.collapsed);
+            free_regions += usize::from(meeting.is_none() && !next.joined && !next.collapsed);
             if next.joined {
                 let first = &polygons[group[0]];
                 let direction = normal(self, first);

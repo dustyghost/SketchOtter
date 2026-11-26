@@ -78,10 +78,15 @@ The following captures are **manual visual review**, not routine CI checks. They
 
 ```sh
 CLAY_GPU_SOFTWARE=1 LP_NUM_THREADS=2 CLAY_BUILDUP_PREVIEW=/tmp/clay-buildup cargo test --locked --lib clay_buildup_offscreen_preview -- --ignored
+CLAY_GPU_SOFTWARE=1 LP_NUM_THREADS=2 CLAY_BUILDUP_PREVIEW=/tmp/clay-seam cargo test --locked --lib clay_symmetry_seam_offscreen_review -- --ignored --test-threads=1
 CLAY_GPU_SOFTWARE=1 LP_NUM_THREADS=2 CLAY_DETAIL_PREVIEW=/tmp/clay-detail cargo test --locked --lib detail_groove_offscreen_preview -- --ignored
 CLAY_GPU_SOFTWARE=1 LP_NUM_THREADS=2 CLAY_GUIDE_PREVIEW=/tmp/clay-inflate-relax cargo test --locked --lib inflate_relaxation_manual_capture -- --ignored
 CLAY_GPU_SOFTWARE=1 LP_NUM_THREADS=2 CLAY_GUIDE_PREVIEW=/tmp/clay-relax-brush cargo test --locked --lib relax_brush_manual_capture -- --ignored
 ```
+
+The symmetry-seam capture compares new Clay strokes on, beside and across the
+mirror plane. Optionally set `CLAY_SYMMETRY_SOURCE` to a local `.clay` project;
+this applies new deterministic dabs, not a replay of its original input.
 
 For a manual studio comparison, run `CLAY_GUIDE_PREVIEW=/tmp/clay-studio cargo test --locked --lib studio_defaults_manual_capture -- --ignored`. This captures the default material on a sphere and front/quarter views. Optionally set `CLAY_REVIEW_PROJECT` to a `.clay` project and `CLAY_REVIEW_LIGHTING` to a lighting-rig JSON file to capture the same sculpt under both rigs. Inspect the highlights, groove contrast and colour consistency. This capture is excluded from routine CI; the GPU lighting tests compare rendered pixels against the CPU lighting model.
 

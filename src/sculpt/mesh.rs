@@ -380,7 +380,12 @@ impl Mesh {
             || (b.kind == Kind::Flatten && flatten_planes.len() != dabs.len()))
         .then(|| self.surface_planes(dabs));
         let flatten_planes = sampled.as_deref().unwrap_or(flatten_planes);
-        let join_soft = b.kind == Kind::Standard
+        let join_soft = (b.kind == Kind::Standard
+            || (b.kind == Kind::Clay
+                && !matches!(
+                    b.stroke_mode,
+                    super::StrokeMode::DragRect | super::StrokeMode::DragDot
+                )))
             && matches!(b.alpha, super::Alpha::Soft)
             && dabs.len() > 1
             && stencils.is_empty();
@@ -500,7 +505,7 @@ impl Mesh {
                     Kind::Mask => Vec3::default(),
                 };
                 blended = blended + displacement;
-                if b.kind == Kind::Standard {
+                if matches!(b.kind, Kind::Standard | Kind::Clay) {
                     strongest_motion_squared =
                         strongest_motion_squared.max(displacement.dot(displacement));
                 }
@@ -518,14 +523,26 @@ impl Mesh {
             }
             // Average directions smoothly across overlaps, but retain the strongest
             // falloff rather than accumulating the strength of the mirrored copies.
-            let displacement = if b.kind == Kind::Standard && contributions > 1 {
-                // Standard lays down a depth along a brush normal. Blend the
+            let displacement = if matches!(b.kind, Kind::Standard | Kind::Clay) && contributions > 1
+            {
+                // Relief brushes lay down depth along a brush/patch normal. Blend the
                 // direction separately from depth: averaging diverging normals
                 // otherwise weakens the seam and leaves a trough between copies.
                 // Keep the strongest masked/pressure-weighted depth, never the sum.
                 let mut depth = strongest_motion_squared.sqrt();
                 if join_soft {
-                    depth = overlap.depth(b, dabs, old[i], normals[i], 1. - self.mask[i], depth);
+                    depth = overlap.depth(b, dabs, old[i], normals[i], depth, |index| {
+                        let dab = dabs[index];
+                        let unit = if b.kind == Kind::Clay {
+                            let (center, normal) = sampled.as_ref().unwrap()[index];
+                            let sign = if b.subtract ^ dab.invert { -1. } else { 1. };
+                            let height = dab.radius * 0.2;
+                            (height - (old[i] - center).dot(normal) * sign).clamp(0., height * 2.)
+                        } else {
+                            dab.radius * 0.15 * dab.normal.len()
+                        };
+                        unit * (1. - self.mask[i])
+                    });
                 }
                 blended.norm() * depth
             } else {

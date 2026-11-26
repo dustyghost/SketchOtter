@@ -120,7 +120,10 @@ fn compact_discovery_and_sparse_reductions_match_original_guards() {
     mixed.mask.push(0.);
     meshes.push(mixed);
     let mut passes_reduced = 0;
-    for base in meshes {
+    for mut base in meshes {
+        // This oracle freezes the triangle-only optimization, not the old
+        // diagonal-dependent behaviour of logical quads.
+        base.quads.clear();
         let before = &base.vertices;
         for pattern in 0..6 {
             let mut proposal = base.clone();
