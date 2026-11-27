@@ -22,6 +22,21 @@ fn aliases_typos_and_exact_names_find_live_controls() {
     assert!(ranked(&entries, "nonesuchxyz").is_empty());
 }
 #[test]
+fn panel_cut_queries_find_panels_without_taking_the_generic_slice_alias() {
+    let ui = UiState::default();
+    let document = Document::default();
+    let entries = ui.search_entries(&document);
+    for query in ["panel cut", "panel cuts", "EMB", "masked border"] {
+        assert_eq!(
+            ranked(&entries, query)[0].action,
+            Some(Action::GeneratePanels),
+            "{query}"
+        );
+    }
+    assert_eq!(ranked(&entries, "cut")[0].action, Some(Action::Slice));
+}
+
+#[test]
 fn catalogue_refreshes_removed_brushes_and_workspace_names() {
     let mut ui = UiState::default();
     let document = Document::default();
