@@ -589,6 +589,7 @@ impl UiState {
                 let mut reasons = Vec::new();
                 ui.horizontal_wrapped(|ui| {
                     for (action, glyph) in [
+                        (Action::SplitVisible, Glyph::Layers),
                         (Action::SplitHidden, Glyph::Layers),
                         (Action::DeleteHidden, Glyph::Delete),
                     ] {

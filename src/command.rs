@@ -105,6 +105,7 @@ pub(crate) enum Command {
     InvertMask,
     DeleteMasked,
     SplitMasked,
+    SplitVisible,
     SplitSelectedFaces,
     SplitDisconnectedIslands,
     SliceTool(bool),

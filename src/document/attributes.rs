@@ -251,6 +251,15 @@ impl Document {
         self.split_surface_parts(visible_mesh, hidden_mesh, "Hidden", "Split hidden");
         Ok(())
     }
+    pub(crate) fn split_visible(&mut self) -> Result<(), String> {
+        if let Some(reason) = self.hidden_faces_unavailable(true) {
+            return Err(reason.into());
+        }
+        let remaining = self.mesh().face_subset(|f| !self.mesh().face_visible(f))?;
+        let separated = self.mesh().face_subset(|f| self.mesh().face_visible(f))?;
+        self.split_surface_parts(remaining, separated, "Visible", "Split visible");
+        Ok(())
+    }
     pub(super) fn split_surface_parts(
         &mut self,
         remaining: Mesh,
@@ -317,8 +326,7 @@ impl Document {
         }
         if selected.iter().all(|&s| s) {
             return Err(
-                "Keep some faces unselected; use Split disconnected islands for separate parts"
-                    .into(),
+                "Keep some faces unselected; use Split to parts for disconnected islands".into(),
             );
         }
         let remaining = self.mesh().face_subset(|f| !selected[f])?;
@@ -384,7 +392,7 @@ impl Document {
         if let Some(reason) = self.surface_partition_unavailable() {
             Some(reason)
         } else if split && self.model_count() >= 64 {
-            Some("Split hidden needs a free submodel slot (maximum 64)")
+            Some("Split needs a free submodel slot (maximum 64)")
         } else if self.hidden_face_count() == 0 {
             Some("Hide some faces inside the active model first")
         } else if split && self.hidden_face_count() == self.mesh().triangles.len() {

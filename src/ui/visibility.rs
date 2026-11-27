@@ -15,6 +15,7 @@ pub(crate) struct SurfaceEditWarning {
 impl SurfaceEditWarning {
     pub fn new(document: &Document, action: Action) -> Self {
         let masked = action == Action::SplitMasked;
+        let visible = action == Action::SplitVisible;
         Self {
             action,
             revision: document.source_revision(),
@@ -24,7 +25,9 @@ impl SurfaceEditWarning {
                 .unwrap()
                 .name
                 .into(),
-            faces: if masked {
+            faces: if visible {
+                document.mesh().triangles.len() - document.hidden_face_count()
+            } else if masked {
                 document.masked_face_count()
             } else {
                 document.hidden_face_count()
@@ -55,11 +58,15 @@ impl UiState {
             ui.heading(match warning.action {
                 Action::SplitMasked => "Split masked faces?",
                 Action::SplitHidden => "Split hidden faces?",
+                Action::SplitVisible => "Split visible faces?",
                 _ => "Delete hidden faces?",
             });
             if let Some(threshold) = warning.threshold {
                 ui.label(format!("{} triangles inside “{}” meet the {:.0}% mask threshold at every corner.", warning.faces, warning.name, threshold * 100.));
                 ui.label("Move these faces to a new submodel; keep the other faces in the original. Includes masked hidden faces. Both pieces keep their mask values, visibility and positions.");
+            } else if warning.action == Action::SplitVisible {
+                ui.label(format!("{} visible triangles inside “{}”.", warning.faces, warning.name));
+                ui.label("Move these faces into a new submodel. Hidden faces stay hidden in the original model. Both pieces stay in place. Visible means not explicitly hidden, regardless of camera occlusion.");
             } else {
                 ui.label(format!("{} hidden triangles inside “{}”.", warning.faces, warning.name));
                 ui.label(if split {

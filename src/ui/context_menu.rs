@@ -196,6 +196,7 @@ fn component_selection_choices(
         (1, "Operation"),
         (2, "Depth"),
         (3, "Selection history"),
+        (4, "Split"),
     ] {
         ui.strong(title);
         ui.horizontal_wrapped(|ui| {
@@ -203,12 +204,13 @@ fn component_selection_choices(
                 0 => matches!(e.action, Action::ModelRegionShape(_)),
                 1 => matches!(e.action, Action::ModelRegionChange(_)),
                 2 => matches!(e.action, Action::ModelSelectThrough(_)),
-                _ => matches!(
+                3 => matches!(
                     e.action,
                     Action::ModelClearSelection
                         | Action::ModelUndoSelection
                         | Action::ModelRedoSelection
                 ),
+                _ => e.action == Action::SplitSelectedFaces,
             }) {
                 if menu_entry(ui, e, i == index, true, reveal, true) {
                     action = Some(e.action.clone());
@@ -491,6 +493,29 @@ impl UiState {
             ViewportMenuContext::Mask => self.temporary_mask_menu_entries(document),
             ViewportMenuContext::Transform => self.transform_menu_entries(document),
         };
+        let split = match context {
+            ViewportMenuContext::Mask => Some(Action::SplitMasked),
+            ViewportMenuContext::Visibility => Some(Action::SplitVisible),
+            ViewportMenuContext::Components => Some(Action::SplitSelectedFaces),
+            _ => None,
+        };
+        if let Some(action) = split {
+            let entry = ViewportMenuEntry {
+                label: action.label().into(),
+                hint: action.help().unwrap().into(),
+                enabled: self.action_enabled(&action, document),
+                action,
+                selected: false,
+            };
+            // Keep the region operation near the shape choices, not below a
+            // potentially long list of saved Mask brush presets.
+            let index = if context == ViewportMenuContext::Components {
+                entries.len()
+            } else {
+                4.min(entries.len())
+            };
+            entries.insert(index, entry);
+        }
         for entry in &mut entries {
             if let Some(reason) = self.action_unavailable(&entry.action, document) {
                 entry.enabled = false;
@@ -543,16 +568,6 @@ impl UiState {
             ),
             (Action::ModelClearSelection, "Clear selection".into(), false),
             (
-                Action::SplitSelectedFaces,
-                "Split selected faces to submodel".into(),
-                false,
-            ),
-            (
-                Action::SplitDisconnectedIslands,
-                "Split disconnected islands".into(),
-                false,
-            ),
-            (
                 Action::ModelUndoSelection,
                 "Undo selection change".into(),
                 false,
@@ -567,6 +582,16 @@ impl UiState {
             enabled: self.modeling.active && self.action_enabled(&action, document), action, label, selected,
             hint: "Select vertices, edge midpoints or face centres. Hidden and protected geometry stays excluded.".into(),
         }).collect()
+    }
+
+    pub(super) fn selection_split_action(&self) -> Action {
+        match self.preferences.selection_mode {
+            crate::preferences::SelectionMode::Visibility => Action::SplitVisible,
+            crate::preferences::SelectionMode::Components if self.modeling.active => {
+                Action::SplitSelectedFaces
+            }
+            _ => Action::SplitMasked,
+        }
     }
 
     fn transform_menu_entries(&self, document: &Document) -> Vec<ViewportMenuEntry> {

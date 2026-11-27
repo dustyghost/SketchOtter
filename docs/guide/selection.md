@@ -112,15 +112,20 @@ handles keep their own interactions. Remapping drag holds does not remap these
 explicit Ctrl/Ctrl+Shift tap shortcuts. Escape, focus loss or a disappearing
 pointer cancels a pending tap.
 
-### Split selected faces and disconnected islands
+### Split the current selection or split to parts
 
-For a direct Modeling face selection, use **Split selected faces to submodel**
-in the Q menu, Modeling controls or Submodels. In Face mode choose **Connected**
+The **Z** menu offers **Split masked**, **Split visible** or **Split selected**
+to match its current Mask, Visibility or component-selection context. Submodels
+also offers the split for the remembered selection mode, with a separate
+**Split to parts** option.
+
+For a direct Modeling face selection, use **Split selected**
+in the component-selection Z menu, Modeling controls or Submodels. In Face mode choose **Connected**
 and select a face to select its connected part first. The selected face region
 moves into one new submodel; an empty or whole-surface selection reports why it
 cannot split.
 
-**Split disconnected islands** separates every vertex-connected surface part
+**Split to parts** in **Submodels** separates every vertex-connected surface part
 of the active mesh, including hidden faces, into its own submodel. The first
 part remains the active source. A mesh with only one part, or insufficient room
 under the 64-submodel limit, is unchanged with an explanation.
@@ -131,6 +136,13 @@ boundaries and complete quads. They use the current surface and reset the
 pieces' subdivision/adaptive/voxel settings; Undo restores the original stack.
 Each complete split is one Undo/Redo step and is retained when saving/reopening.
 Apply Thickness and convert primitives/array outputs before splitting.
+
+In Visibility context, **Z → Split visible** moves the faces that are not
+explicitly hidden into a new submodel. Hidden faces stay hidden in the original.
+This is independent of camera occlusion or back-facing faces. Review the face
+count and settings reset, then choose **Apply split**; Cancel changes nothing.
+Both visible and hidden faces must be present. **Visibility → Split hidden**
+remains available for moving the opposite half into a new visible submodel.
 
 ### Split masked geometry
 

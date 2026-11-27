@@ -132,6 +132,7 @@ pub(crate) enum Action {
     InvertMask,
     DeleteMasked,
     SplitMasked,
+    SplitVisible,
     SplitSelectedFaces,
     SplitDisconnectedIslands,
     ExpandMask,
@@ -324,6 +325,7 @@ impl Action {
         Self::InvertMask,
         Self::DeleteMasked,
         Self::SplitMasked,
+        Self::SplitVisible,
         Self::SplitSelectedFaces,
         Self::SplitDisconnectedIslands,
         Self::ExpandMask,
@@ -595,6 +597,9 @@ impl Action {
             Self::SplitHidden => {
                 "Move hidden faces inside the active mesh into a new visible submodel. Review the subdivision/settings reset before applying. Boundaries stay open; Undo restores both pieces."
             }
+            Self::SplitVisible => {
+                "Move visible faces inside the active mesh into a new submodel, leaving hidden faces in the original. Visibility means face hiding, not camera occlusion. Review the subdivision/settings reset before applying. One Undo restores both pieces."
+            }
             Self::DeleteHidden => {
                 "Delete hidden faces inside the active mesh, preserving the visible surface and its attributes. Review the subdivision/settings reset before applying. Other submodels stay intact; boundaries remain open."
             }
@@ -837,8 +842,9 @@ impl Action {
             Self::InvertMask => "Invert mask",
             Self::DeleteMasked => "Delete masked",
             Self::SplitMasked => "Split masked",
-            Self::SplitSelectedFaces => "Split selected faces to submodel",
-            Self::SplitDisconnectedIslands => "Split disconnected islands",
+            Self::SplitVisible => "Split visible",
+            Self::SplitSelectedFaces => "Split selected",
+            Self::SplitDisconnectedIslands => "Split to parts",
             Self::ExpandMask => "Expand mask",
             Self::ContractMask => "Contract mask",
             Self::BlurMask => "Blur mask",

@@ -931,6 +931,268 @@ fn workflow_screen_controls_move_depth_rotate_after_orbit_roll_and_preserve_pivo
 }
 
 #[test]
+fn workflow_z_split_matches_selection_context() {
+    use crate::preferences::SelectionMode;
+    use crate::ui::context_menu::ViewportMenuContext as Menu;
+    for (mode, context, action, label) in [
+        (
+            SelectionMode::Mask,
+            Menu::Mask,
+            Action::SplitMasked,
+            "Split masked",
+        ),
+        (
+            SelectionMode::Visibility,
+            Menu::Visibility,
+            Action::SplitVisible,
+            "Split visible",
+        ),
+        (
+            SelectionMode::Components,
+            Menu::Components,
+            Action::SplitSelectedFaces,
+            "Split selected",
+        ),
+    ] {
+        let mut app = fixture();
+        let ctx = egui::Context::default();
+        let mut geometry = app.document.geometry_snapshot();
+        geometry.mesh.mask = geometry
+            .mesh
+            .vertices
+            .iter()
+            .map(|p| if p.0 > 0. { 1. } else { 0. })
+            .collect();
+        geometry.mesh.hidden_faces = (0..geometry.mesh.triangles.len())
+            .map(|f| f % 4 < 2)
+            .collect();
+        app.document.replace_geometry(geometry).unwrap();
+        app.dispatch(Command::ModelingMode(true), &ctx);
+        app.ui.preferences.selection_mode = mode;
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        app.open_quick_menu(&ctx, Action::MaskVisibilityMenu);
+        assert_eq!(app.ui.viewport_menu.context, Some(context));
+        let entries = app.ui.viewport_menu_entries(context, &app.document);
+        let splits = entries
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry.action,
+                    Action::SplitMasked
+                        | Action::SplitVisible
+                        | Action::SplitSelectedFaces
+                        | Action::SplitDisconnectedIslands
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(splits.len(), 1);
+        assert_eq!(splits[0].action, action);
+        assert_eq!(splits[0].label, label);
+        assert!(splits[0].enabled, "{}", splits[0].hint);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        assert_eq!(app.document.history_counts(), history);
+
+        app.ui.viewport_menu.position = Some(Pos2::new(20., 20.));
+        let split_index = entries
+            .iter()
+            .position(|entry| entry.action == action)
+            .unwrap();
+        app.ui.viewport_menu.selected = split_index;
+        for _ in 0..6 {
+            frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        }
+        let output = frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let split_point = text_point(&output, label);
+        assert!(app.ui.viewport_menu.rect.unwrap().contains(split_point));
+
+        #[cfg(target_os = "linux")]
+        if let Some(dir) = std::env::var_os("CLAY_WORKFLOW_CAPTURES") {
+            // Start with a fresh egui context so the renderer receives the
+            // initial font atlas (including the white pixel used by buttons).
+            let visual_ctx = egui::Context::default();
+            let mut visual_app = fixture();
+            visual_app
+                .document
+                .replace_geometry(before.clone())
+                .unwrap();
+            visual_app.dispatch(Command::ModelingMode(true), &visual_ctx);
+            visual_app.ui.preferences.selection_mode = mode;
+            visual_app.ui.viewport_menu.context = Some(context);
+            visual_app.ui.viewport_menu.position = Some(Pos2::new(20., 20.));
+            visual_app.ui.viewport_menu.selected = split_index;
+            let mut capture = crate::viewport::UiCapture::new([1000, 800]);
+            for _ in 0..6 {
+                let output = frame(&mut visual_app, &visual_ctx, vec![], egui::Modifiers::NONE);
+                let rgba = capture.render(&visual_ctx, output);
+                capture.save(
+                    std::path::PathBuf::from(&dir).join(format!("split-{context:?}.png")),
+                    &rgba,
+                );
+            }
+        }
+
+        // Activate real menu rows through both pointer and keyboard routes.
+        // Modeling's real face-selection dispatch is covered by the adjacent test.
+        if mode == SelectionMode::Mask {
+            tap(&mut app, &ctx, split_point, egui::Modifiers::NONE, false);
+        } else if mode == SelectionMode::Visibility {
+            app.ui.viewport_menu.selected = split_index;
+            app.ui.viewport_menu.just_opened = false;
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+                egui::Modifiers::NONE,
+            );
+        }
+        if mode != SelectionMode::Components {
+            assert_eq!(app.ui.surface_edit_warning.as_ref().unwrap().action, action);
+            assert_eq!(app.document.geometry_snapshot(), before);
+            app.dispatch(Command::ConfirmSurfaceEdit(false), &ctx);
+            assert_eq!(app.document.history_counts(), history);
+        }
+    }
+}
+
+#[test]
+fn workflow_submodels_has_distinct_split_to_parts_control() {
+    let mut app = fixture();
+    let ctx = egui::Context::default();
+    let mut geometry = app.document.geometry_snapshot();
+    let mut other = geometry.mesh.clone();
+    for p in &mut other.vertices {
+        p.0 += 3.;
+    }
+    geometry.mesh = geometry.mesh.merged_with(&other).unwrap();
+    app.document.replace_geometry(geometry).unwrap();
+    app.ui.preferences.selection_mode = preferences::SelectionMode::Mask;
+    for panel in &mut app.ui.preferences.panels {
+        panel.open = panel.tool == preferences::Tool::Submodels;
+        panel.dock = if panel.open {
+            preferences::Dock::Left
+        } else {
+            preferences::Dock::Hidden
+        };
+    }
+    let before = app.document.geometry_snapshot();
+    let count = app.document.history_counts().0;
+    let panel_frame = |app: &mut App, events| {
+        let mut commands = Vec::new();
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    Vec2::new(1200., 1000.),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ctx| {
+                commands = app.ui.brush_panel(ctx, &app.document, "", 1., &app.camera);
+            },
+        );
+        for command in commands {
+            app.dispatch(command, &ctx);
+        }
+        output
+    };
+    for _ in 0..6 {
+        panel_frame(&mut app, vec![]);
+    }
+    let output = panel_frame(&mut app, vec![]);
+    let region = text_point(&output, "Split masked");
+    let parts = text_point(&output, "Split to parts");
+    assert_ne!(region, parts);
+    assert!(ctx.content_rect().contains(parts));
+    for pressed in [true, false] {
+        panel_frame(
+            &mut app,
+            vec![
+                egui::Event::PointerMoved(parts),
+                button(parts, pressed, egui::Modifiers::NONE),
+            ],
+        );
+    }
+    assert_eq!(app.document.model_count(), 2, "{}", app.ui.status);
+    roundtrip(&mut app, &before, count);
+}
+
+#[test]
+fn workflow_split_visible_preserves_hidden_remainder_and_is_atomic() {
+    let mut app = fixture();
+    let ctx = egui::Context::default();
+    let history = app.document.history_counts();
+    let before = app.document.geometry_snapshot();
+    assert!(!app.ui.action_enabled(&Action::SplitVisible, &app.document));
+    assert!(app.document.split_visible().is_err());
+    assert_eq!(app.document.geometry_snapshot(), before);
+    assert_eq!(app.document.history_counts(), history);
+
+    let mut geometry = before;
+    geometry.mesh.hidden_faces = (0..geometry.mesh.triangles.len())
+        .map(|f| f % 4 < 2)
+        .collect();
+    geometry.mesh.mask = geometry
+        .mesh
+        .vertices
+        .iter()
+        .map(|p| (p.0 + 1.) / 2.)
+        .collect();
+    app.document.replace_geometry(geometry).unwrap();
+    let before = app.document.geometry_snapshot();
+    let count = app.document.history_counts().0;
+    app.dispatch(Command::SplitVisible, &ctx);
+    assert_eq!(
+        app.ui.surface_edit_warning.as_ref().unwrap().action,
+        Action::SplitVisible
+    );
+    assert_eq!(app.document.geometry_snapshot(), before);
+    app.dispatch(Command::ConfirmSurfaceEdit(true), &ctx);
+    assert_eq!(app.document.model_count(), 2, "{}", app.ui.status);
+    let project = app.document.project();
+    assert_eq!(
+        project.mesh.hidden_face_count(),
+        project.mesh.triangles.len()
+    );
+    let separated = &project.submodels[0].mesh;
+    assert_eq!(separated.hidden_face_count(), 0);
+    assert_eq!(
+        separated.triangles.len() + project.mesh.triangles.len(),
+        before.mesh.triangles.len()
+    );
+    assert!(project.submodels[0].name.starts_with("Visible "));
+    for (part, visible) in [(&project.mesh, false), (separated, true)] {
+        part.validate().unwrap();
+        for triangle in &part.triangles {
+            let source = before
+                .mesh
+                .triangles
+                .iter()
+                .position(|t| {
+                    (0..3).all(|c| part.vertices[triangle[c]] == before.mesh.vertices[t[c]])
+                })
+                .unwrap();
+            assert_eq!(before.mesh.face_visible(source), visible);
+            for c in 0..3 {
+                assert_eq!(
+                    part.mask[triangle[c]],
+                    before.mesh.mask[before.mesh.triangles[source][c]]
+                );
+            }
+        }
+    }
+    roundtrip(&mut app, &before, count);
+}
+
+#[test]
 fn workflow_split_selected_and_islands_are_atomic_and_persist_attributes() {
     for islands in [false, true] {
         let mut app = fixture();

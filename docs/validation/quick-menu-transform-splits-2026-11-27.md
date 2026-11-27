@@ -7,7 +7,7 @@ In progress until review and merge.
 
 `src/app/workflow_tests.rs` runs in both the default and focused CPU harnesses.
 It exercises actual egui button/pointer input, not only command implementations.
-The final follow-up local run passed all 19 checks in 48.69 seconds including
+The masking follow-up local run passed all 19 checks in 48.69 seconds including
 compilation, with peak process-tree RSS 1,676,756 KiB (about 1.60 GiB).
 
 | Story | Checks |
@@ -59,6 +59,31 @@ flock -n /home/mark/.cache/codex-build.lock \
   cargo test --locked -j 1 --lib --features focused-retopology \
   workflow_ -- --test-threads=1
 ```
+
+## Selection-context split follow-up
+
+All 22 focused workflow checks passed with optional GPU captures in 69.41 seconds
+including compilation; peak process-tree RSS was 1,722,416 KiB. The Mask,
+Visibility and component Z captures were visually reviewed: each displays its
+correct split control inside the menu.
+
+- Z offers exactly one region split: **Split masked**, **Split visible** or
+  **Split selected**, according to its actual menu context. It no longer mixes
+  in the disconnected-island operation.
+- Submodels has a context-sensitive region split and a distinct **Split to
+  parts** action. The existing disconnected-island action identity is retained
+  for saved bindings and custom controls.
+- `workflow_z_split_matches_selection_context` checks labels, action identity,
+  enabled state, rendered controls, unchanged geometry/history on opening, and
+  pointer/keyboard activation of the Mask/Visibility confirmation. Optional captures are `split-Mask.png`,
+  `split-Visibility.png` and `split-Components.png`.
+- `workflow_submodels_has_distinct_split_to_parts_control` checks the distinct
+  rendered region/parts controls and clicks **Split to parts** in the actual
+  Submodels panel, then verifies one Undo/Redo and JSON save/reopen.
+- `workflow_split_visible_preserves_hidden_remainder_and_is_atomic` checks that
+  explicitly visible faces move to the new submodel, hidden faces remain hidden
+  in the original, masks/positions survive, and Undo/Redo plus JSON save/reopen
+  restore the exact result. An all-visible mesh is rejected without history.
 
 ## Optional visual review
 
