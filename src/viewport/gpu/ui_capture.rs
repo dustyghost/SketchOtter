@@ -87,6 +87,18 @@ impl UiCapture {
         }
     }
     pub fn render(&mut self, ctx: &egui::Context, output: egui::FullOutput) -> Vec<u8> {
+        self.render_frame(ctx, output);
+        read_texture(&self.state.device, &self.state.queue, &self.texture)
+    }
+    /// Render and finish the same GPU work without copying unused pixels to CPU.
+    pub fn render_without_readback(&mut self, ctx: &egui::Context, output: egui::FullOutput) {
+        self.render_frame(ctx, output);
+        self.state
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+    }
+    fn render_frame(&mut self, ctx: &egui::Context, output: egui::FullOutput) {
         let mut renderer = self.state.renderer.write();
         let device = &self.state.device;
         let queue = &self.state.queue;
@@ -126,7 +138,6 @@ impl UiCapture {
         for id in &output.textures_delta.free {
             renderer.free_texture(id);
         }
-        read_texture(device, queue, &self.texture)
     }
     pub fn save(&self, path: impl AsRef<std::path::Path>, rgba: &[u8]) {
         let flipped: Vec<_> = rgba

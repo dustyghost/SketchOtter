@@ -53,6 +53,9 @@ jobs:
           python3 scripts/check-test-partitions.py "$RUNNER_TEMP/all-tests.txt" "$RUNNER_TEMP/focused-tests.txt"
           cargo test --locked --lib --features focused-retopology -- --test-threads=1
 
+      - name: Check GPU selection audit
+        run: python3 scripts/test-gpu-ci.py
+
       - name: Check capacity benchmark comparisons
         run: python3 scripts/test-benchmark-capacity.py
 
@@ -73,8 +76,12 @@ jobs:
           path: target/invariant-failures/
           if-no-files-found: ignore
 
-  graphics:
-    name: Headless wgpu/Vulkan regressions
+  graphics-tests:
+    name: GPU / ${{ matrix.group }}
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [core, interactions-a, interactions-b]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -97,83 +104,40 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes libwayland-dev libxkbcommon-dev libvulkan1 mesa-vulkan-drivers
 
-      - name: Run all GPU correctness checks
-        # Keep pixel/depth/clipping checks and tests that exercise real controls.
-        # Manual-only captures are documented in docs/gpu-rendering.md.
-        run: |
-          cargo test --locked --lib viewport::gpu:: -- --ignored --skip gpu_load_profile --test-threads=1
-          cargo test --locked --lib diagnostic_export_dialog_offscreen_preview -- --ignored
-          cargo test --locked --lib recovery_and_menu_placement_offscreen_preview -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-workspace" cargo test --locked --lib discoverable_workspace_offscreen_review -- --ignored --test-threads=1
-          cargo test --locked --lib obj_import_offscreen_preview -- --ignored
-          cargo test --locked --lib material_controls_offscreen_review -- --ignored
-          cargo test --locked --lib paint_palette_picker_offscreen_review -- --ignored
-          cargo test --locked --lib brush_sidebar_resize_offscreen_review -- --ignored
-          cargo test --locked --lib quad_topology_controls_offscreen_review -- --ignored
-          cargo test --locked --lib uv_texture_controls_offscreen_review -- --ignored
-          cargo test --locked --lib uv_island_controls_offscreen_review -- --ignored
-          cargo test --locked --lib manual_topology_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-topology-regions" cargo test --locked --lib topology_regions_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-region-selection" cargo test --locked --lib region_selection_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-loop-delete" cargo test --locked --lib delete_loop_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-component-delete" cargo test --locked --lib component_delete_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-point-extrude" cargo test --locked --lib point_extrude_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-extrusion-snap" cargo test --locked --lib extrusion_snap_join_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-selected-face" cargo test --locked --lib create_selected_face_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-move-snap" cargo test --locked --lib move_snap_weld_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-detached" cargo test --locked --lib detached_copy_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-bevel" cargo test --locked --lib component_bevel_offscreen_review -- --ignored --test-threads=1
-          cargo test --locked --lib viewport_lighting_offscreen_review -- --ignored
-          cargo test --locked --lib reference_images_offscreen_preview -- --ignored
-          cargo test --locked --lib navigation_and_smooth_offscreen_preview -- --ignored
-          cargo test --locked --lib sculpt_frame_revision_trace_gpu -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-flatten" cargo test --locked --lib flatten_stroke_offscreen_review -- --ignored
-          cargo test --locked --lib perspective_view_offscreen_preview -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-cameras" cargo test --locked --lib saved_cameras_offscreen_review -- --ignored --test-threads=1
-          cargo test --locked --lib closed_cylinder_path_offscreen_preview -- --ignored
-          cargo test --locked --lib live_detail_path_offscreen_preview -- --ignored
-          cargo test --locked --lib one_drag_ring_authoring_offscreen_preview -- --ignored
-          cargo test --locked --lib rounded_path_corners_offscreen_preview -- --ignored
-          cargo test --locked --lib automatic_path_settings_offscreen_preview -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-alpha" cargo test --locked --lib alpha_library_stencil_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-file-pickers" cargo test --locked --lib asset_file_dialog_offscreen_review -- --ignored
-          cargo test --locked --lib interchange_export_controls_offscreen_review -- --ignored
-          cargo test --locked --lib paint_modes_offscreen_review -- --ignored
-          cargo test --locked --lib paint_target_scope_inspection_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-visibility" cargo test --locked --lib visibility_selection_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-visibility-edits" cargo test --locked --lib visibility_edits_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-temporary-mask" cargo test --locked --lib temporary_mask_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-context-menu" cargo test --locked --lib viewport_context_menu_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-universal" cargo test --locked --lib universal_transform_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-precision" cargo test --locked --lib precision_modeling_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-shared-selection" cargo test --locked --lib shared_selection_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-interaction-batch" cargo test --locked --lib interaction_batch_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-mesh-refinement" cargo test --locked --lib mesh_refinement_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-guided-retopology" cargo test --locked --lib native_retopology_controls_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-local-fusion" cargo test --locked --lib local_fusion_controls_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-surface-boolean" cargo test --locked --lib surface_boolean_method_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-level-switch" cargo test --locked --lib subdivision_level_switch_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-reusable-models" cargo test --locked --lib reusable_models_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-path-join" cargo test --locked --lib reusable_path_bend_join_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-grouped-path" cargo test --locked --lib grouped_path_object_controls_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-path-transform" cargo test --locked --lib whole_path_transform_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-object-kits" cargo test --locked --lib object_kit_library_and_strokes_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-object-stamps" cargo test --locked --lib object_stamp_controls_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-ship-greebles" cargo test --locked --lib ship_greebles_default_library_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-array-layers" cargo test --locked --lib layered_array_controls_offscreen_review -- --ignored
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-surface-arrays" cargo test --locked --lib surface_array_controls_offscreen_review -- --ignored --test-threads=1
-          CLAY_GUIDE_PREVIEW="$RUNNER_TEMP/clay-attached-arrays" cargo test --locked --lib attached_array_controls_offscreen_review -- --ignored
+      - name: Run and time audited GPU checks
+        run: python3 scripts/run-gpu-ci.py '${{ matrix.group }}'
+
+      - name: Retain GPU timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-timings-${{ matrix.group }}
+          path: ${{ runner.temp }}/gpu-review/timings-*.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Retain path and Integer grid control review
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: editable-path-ring-controls
+          name: editable-path-ring-controls-${{ matrix.group }}
           path: |
             /tmp/clay-ring-editable-panel.png
             /tmp/clay-automatic-path-settings.png
-            ${{ runner.temp }}/clay-guided-retopology/integer-grid-controls.png
-            ${{ runner.temp }}/clay-guided-retopology/selected-guides-before-preview.png
-            ${{ runner.temp }}/clay-guided-retopology/native-preview.png
+            ${{ runner.temp }}/gpu-review/native_retopology_controls_offscreen_review/integer-grid-controls.png
+            ${{ runner.temp }}/gpu-review/native_retopology_controls_offscreen_review/selected-guides-before-preview.png
+            ${{ runner.temp }}/gpu-review/native_retopology_controls_offscreen_review/native-preview.png
           if-no-files-found: ignore
           retention-days: 7
+
+  graphics:
+    # Preserve the existing required check name; every shard must succeed.
+    name: Headless wgpu/Vulkan regressions
+    needs: graphics-tests
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all GPU groups
+        env:
+          GPU_RESULT: ${{ needs.graphics-tests.result }}
+        run: test "$GPU_RESULT" = success
