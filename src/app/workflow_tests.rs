@@ -931,6 +931,166 @@ fn workflow_screen_controls_move_depth_rotate_after_orbit_roll_and_preserve_pivo
 }
 
 #[test]
+fn workflow_selection_menu_reopens_with_reachable_tabs() {
+    use crate::ui::context_menu::ViewportMenuContext as Menu;
+    fn menu_frame(
+        app: &mut App,
+        ctx: &egui::Context,
+        events: Vec<egui::Event>,
+        size: Vec2,
+    ) -> egui::FullOutput {
+        ctx.style_mut(|s| s.animation_time = 0.);
+        ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, size)),
+                events,
+                ..Default::default()
+            },
+            |ctx| {
+                let mut commands = app.ui.toolbar(ctx, &app.document, &app.camera);
+                commands.extend(
+                    app.ui
+                        .brush_panel(ctx, &app.document, "Guide", 1., &app.camera),
+                );
+                for command in commands {
+                    app.dispatch(command, ctx);
+                }
+                egui::CentralPanel::default().show(ctx, |ui| app.show_viewport(ui));
+            },
+        )
+    }
+    for size in [Vec2::new(1100., 800.), Vec2::new(640., 480.)] {
+        let mut app = fixture();
+        for panel in &mut app.ui.preferences.panels {
+            panel.dock = crate::preferences::Dock::Hidden;
+        }
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |ctx| {
+            let _ = app.ui.toolbar(ctx, &app.document, &app.camera);
+        });
+        app.dispatch(Command::ModelingMode(true), &ctx);
+        menu_frame(&mut app, &ctx, vec![], size);
+        app.open_quick_menu(&ctx, Action::ViewportContextMenu);
+        app.ui.viewport_menu.position = Some(Pos2::new(size.x - 10., size.y - 10.));
+        app.ui.viewport_menu.selected = 0;
+        for _ in 0..6 {
+            menu_frame(&mut app, &ctx, vec![], size);
+        }
+        // Scroll the old chooser to the last operation before opening Z.
+        menu_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowUp,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            size,
+        );
+        for _ in 0..6 {
+            menu_frame(&mut app, &ctx, vec![], size);
+        }
+        app.ui.viewport_menu.context = None;
+        app.ui.preferences.selection_mode = crate::preferences::SelectionMode::Mask;
+        menu_frame(&mut app, &ctx, vec![], size);
+        app.open_quick_menu(&ctx, Action::MaskVisibilityMenu);
+        for _ in 0..6 {
+            menu_frame(&mut app, &ctx, vec![], size);
+        }
+        let output = menu_frame(&mut app, &ctx, vec![], size);
+        let point = text_point(&output, "Visibility");
+        assert!(
+            app.ui.viewport_menu.rect.unwrap().contains(point),
+            "{size:?}: tab outside menu at {point:?}"
+        );
+        assert!(output.shapes.iter().any(|shape| shape.clip_rect.contains(point)
+            && matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Visibility")), "{size:?}: Visibility tab is clipped");
+        for pressed in [true, false] {
+            menu_frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(point),
+                    button(point, pressed, egui::Modifiers::NONE),
+                ],
+                size,
+            );
+        }
+        assert_eq!(
+            app.ui.viewport_menu.context,
+            Some(Menu::Visibility),
+            "{size:?}"
+        );
+        for label in ["Mask", "Rectangle", "Visible only"] {
+            if app.ui.viewport_menu.context.is_none() {
+                app.open_quick_menu(&ctx, Action::MaskVisibilityMenu);
+            }
+            for _ in 0..6 {
+                menu_frame(&mut app, &ctx, vec![], size);
+            }
+            let mut output = menu_frame(&mut app, &ctx, vec![], size);
+            if label == "Visible only" {
+                // Depth controls can be below the fold on a compact display.
+                // Click them only after real wheel input reveals their pixels.
+                for _ in 0..16 {
+                    if output.shapes.iter().any(|shape| {
+                        matches!(&shape.shape, egui::Shape::Text(text)
+                            if text.galley.text() == label
+                            && shape.clip_rect.contains(text.pos + text.galley.size() * 0.5))
+                    }) {
+                        break;
+                    }
+                    let rect = app.ui.viewport_menu.rect.unwrap();
+                    output = menu_frame(
+                        &mut app,
+                        &ctx,
+                        vec![
+                            egui::Event::PointerMoved(rect.center()),
+                            egui::Event::MouseWheel {
+                                unit: egui::MouseWheelUnit::Point,
+                                delta: Vec2::new(0., -60.),
+                                modifiers: egui::Modifiers::NONE,
+                            },
+                        ],
+                        size,
+                    );
+                }
+            }
+            let point = text_point(&output, label);
+            assert!(output.shapes.iter().any(|shape| shape.clip_rect.contains(point)
+                && matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == label)), "{size:?}: {label} is clipped at {point:?}");
+            for pressed in [true, false] {
+                menu_frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(point),
+                        button(point, pressed, egui::Modifiers::NONE),
+                    ],
+                    size,
+                );
+            }
+            if label == "Mask" {
+                assert_eq!(
+                    app.ui.viewport_menu.context,
+                    Some(Menu::Mask),
+                    "{size:?}: Mask tab"
+                );
+            } else if label == "Rectangle" {
+                assert_eq!(
+                    app.ui.preferences.mask_preset.shape,
+                    crate::preferences::MaskShape::Rectangle,
+                    "{size:?}: Mask shape"
+                );
+            }
+        }
+        assert!(app.ui.preferences.mask_preset.visible_only, "{size:?}");
+    }
+}
+
+#[test]
 fn workflow_z_split_matches_selection_context() {
     use crate::preferences::SelectionMode;
     use crate::ui::context_menu::ViewportMenuContext as Menu;
@@ -944,8 +1104,8 @@ fn workflow_z_split_matches_selection_context() {
         (
             SelectionMode::Visibility,
             Menu::Visibility,
-            Action::SplitVisible,
-            "Split visible",
+            Action::SplitHidden,
+            "Split hidden",
         ),
         (
             SelectionMode::Components,
@@ -981,7 +1141,7 @@ fn workflow_z_split_matches_selection_context() {
                 matches!(
                     entry.action,
                     Action::SplitMasked
-                        | Action::SplitVisible
+                        | Action::SplitHidden
                         | Action::SplitSelectedFaces
                         | Action::SplitDisconnectedIslands
                 )
@@ -1126,70 +1286,118 @@ fn workflow_submodels_has_distinct_split_to_parts_control() {
 }
 
 #[test]
-fn workflow_split_visible_preserves_hidden_remainder_and_is_atomic() {
-    let mut app = fixture();
-    let ctx = egui::Context::default();
-    let history = app.document.history_counts();
-    let before = app.document.geometry_snapshot();
-    assert!(!app.ui.action_enabled(&Action::SplitVisible, &app.document));
-    assert!(app.document.split_visible().is_err());
-    assert_eq!(app.document.geometry_snapshot(), before);
-    assert_eq!(app.document.history_counts(), history);
+fn workflow_region_splits_clear_new_part_and_preserve_source_atomically() {
+    // Bindings saved while the unreleased action was named SplitVisible still
+    // resolve to the single Visibility split rather than invalidating preferences.
+    assert_eq!(
+        serde_json::from_str::<Action>("\"SplitVisible\"").unwrap(),
+        Action::SplitHidden
+    );
+    for masked in [false, true] {
+        let mut app = fixture();
+        let ctx = egui::Context::default();
+        let history = app.document.history_counts();
+        let before = app.document.geometry_snapshot();
+        let action = if masked {
+            Action::SplitMasked
+        } else {
+            Action::SplitHidden
+        };
+        assert!(!app.ui.action_enabled(&action, &app.document));
+        assert!(
+            if masked {
+                app.document.split_masked()
+            } else {
+                app.document.split_hidden()
+            }
+            .is_err()
+        );
+        assert_eq!(app.document.geometry_snapshot(), before);
+        assert_eq!(app.document.history_counts(), history);
 
-    let mut geometry = before;
-    geometry.mesh.hidden_faces = (0..geometry.mesh.triangles.len())
-        .map(|f| f % 4 < 2)
-        .collect();
-    geometry.mesh.mask = geometry
-        .mesh
-        .vertices
-        .iter()
-        .map(|p| (p.0 + 1.) / 2.)
-        .collect();
-    app.document.replace_geometry(geometry).unwrap();
-    let before = app.document.geometry_snapshot();
-    let count = app.document.history_counts().0;
-    app.dispatch(Command::SplitVisible, &ctx);
-    assert_eq!(
-        app.ui.surface_edit_warning.as_ref().unwrap().action,
-        Action::SplitVisible
-    );
-    assert_eq!(app.document.geometry_snapshot(), before);
-    app.dispatch(Command::ConfirmSurfaceEdit(true), &ctx);
-    assert_eq!(app.document.model_count(), 2, "{}", app.ui.status);
-    let project = app.document.project();
-    assert_eq!(
-        project.mesh.hidden_face_count(),
-        project.mesh.triangles.len()
-    );
-    let separated = &project.submodels[0].mesh;
-    assert_eq!(separated.hidden_face_count(), 0);
-    assert_eq!(
-        separated.triangles.len() + project.mesh.triangles.len(),
-        before.mesh.triangles.len()
-    );
-    assert!(project.submodels[0].name.starts_with("Visible "));
-    for (part, visible) in [(&project.mesh, false), (separated, true)] {
-        part.validate().unwrap();
-        for triangle in &part.triangles {
-            let source = before
-                .mesh
-                .triangles
-                .iter()
-                .position(|t| {
-                    (0..3).all(|c| part.vertices[triangle[c]] == before.mesh.vertices[t[c]])
-                })
-                .unwrap();
-            assert_eq!(before.mesh.face_visible(source), visible);
-            for c in 0..3 {
-                assert_eq!(
-                    part.mask[triangle[c]],
-                    before.mesh.mask[before.mesh.triangles[source][c]]
-                );
+        let mut geometry = before;
+        geometry.mesh.hidden_faces = (0..geometry.mesh.triangles.len())
+            .map(|f| f % 4 < 2)
+            .collect();
+        geometry.mesh.mask = geometry
+            .mesh
+            .vertices
+            .iter()
+            .map(|p| if p.0 > 0. { 0.9 } else { 0.2 })
+            .collect();
+        app.document.replace_geometry(geometry).unwrap();
+        let before = app.document.geometry_snapshot();
+        let count = app.document.history_counts().0;
+        let threshold = before.scene.active_metadata.mask_threshold;
+        let selected = |f| {
+            if masked {
+                before.mesh.face_mask_selected(f, threshold)
+            } else {
+                !before.mesh.face_visible(f)
+            }
+        };
+        let remaining = before.mesh.face_subset(|f| !selected(f)).unwrap();
+        let mut expected = before.mesh.face_subset(selected).unwrap();
+        expected.show_all_faces();
+        expected.mask.fill(0.);
+        app.dispatch(
+            if masked {
+                Command::SplitMasked
+            } else {
+                Command::SplitHidden
+            },
+            &ctx,
+        );
+        assert_eq!(app.ui.surface_edit_warning.as_ref().unwrap().action, action);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.dispatch(Command::ConfirmSurfaceEdit(true), &ctx);
+        assert_eq!(app.document.model_count(), 2, "{}", app.ui.status);
+        let project = app.document.project();
+        assert_eq!(
+            project.mesh, remaining,
+            "source attributes must remain unchanged"
+        );
+        let separated = &project.submodels[0].mesh;
+        assert_eq!(separated, &expected);
+        assert!(project.submodels[0].metadata.visible);
+        assert_eq!(separated.hidden_face_count(), 0);
+        assert!(separated.mask.iter().all(|&m| m == 0.));
+        assert!(app.viewport.modeling.selected_faces().is_empty());
+        assert_eq!(
+            separated.triangles.len() + project.mesh.triangles.len(),
+            before.mesh.triangles.len()
+        );
+        assert!(
+            project.submodels[0]
+                .name
+                .starts_with(if masked { "Masked " } else { "Hidden " })
+        );
+        for (part, is_new) in [(&project.mesh, false), (separated, true)] {
+            part.validate().unwrap();
+            for triangle in &part.triangles {
+                let source = before
+                    .mesh
+                    .triangles
+                    .iter()
+                    .position(|t| {
+                        (0..3).all(|c| part.vertices[triangle[c]] == before.mesh.vertices[t[c]])
+                    })
+                    .unwrap();
+                assert_eq!(selected(source), is_new);
+                for (c, &vertex) in triangle.iter().enumerate() {
+                    assert_eq!(
+                        part.mask[vertex],
+                        if is_new {
+                            0.
+                        } else {
+                            before.mesh.mask[before.mesh.triangles[source][c]]
+                        }
+                    );
+                }
             }
         }
+        roundtrip(&mut app, &before, count);
     }
-    roundtrip(&mut app, &before, count);
 }
 
 #[test]
@@ -1252,28 +1460,37 @@ fn workflow_split_selected_and_islands_are_atomic_and_persist_attributes() {
             parts.iter().map(|m| m.triangles.len()).sum::<usize>(),
             before.mesh.triangles.len()
         );
-        for part in parts {
+        for (index, part) in parts.into_iter().enumerate() {
+            let cleared = !islands && index == 1;
+            if cleared {
+                assert!(!part.has_hidden_faces());
+                assert!(project.submodels[0].metadata.visible);
+                assert!(part.mask.iter().all(|&m| m == 0.));
+            }
             assert!(!part.uv.corners.is_empty());
             assert_eq!(part.creases, part.polygon_edges());
             assert_eq!(part.uv.seams, part.polygon_edges());
             assert_eq!(part.quads.len() * 2, part.triangles.len());
             part.validate().unwrap();
             for (i, p) in part.vertices.iter().enumerate() {
-                assert!(
-                    before
-                        .mesh
-                        .vertices
-                        .iter()
-                        .zip(&before.mesh.mask)
-                        .any(|(q, &mask)| q == p && mask == part.mask[i])
-                );
+                assert!(before.mesh.vertices.contains(p));
+                // Islands may have coincident, deliberately unwelded vertices
+                // with different attributes at their touching boundaries.
                 let source = before
                     .mesh
                     .vertices
                     .iter()
                     .zip(&before.mesh.mask)
-                    .position(|(q, &mask)| q == p && mask == part.mask[i])
+                    .position(|(q, &mask)| q == p && (cleared || mask == part.mask[i]))
                     .unwrap();
+                assert_eq!(
+                    part.mask[i],
+                    if cleared {
+                        0.
+                    } else {
+                        before.mesh.mask[source]
+                    }
+                );
                 assert_eq!(part.materials[i], before.mesh.materials[source]);
                 for (a, b) in part.vertex_groups.iter().zip(&before.mesh.vertex_groups) {
                     assert_eq!(a.weights[i], b.weights[source]);
@@ -1285,13 +1502,13 @@ fn workflow_split_selected_and_islands_are_atomic_and_persist_attributes() {
                     .triangles
                     .iter()
                     .position(|t| {
-                        (0..3).all(|c| {
-                            part.vertices[triangle[c]] == before.mesh.vertices[t[c]]
-                                && part.mask[triangle[c]] == before.mesh.mask[t[c]]
-                        })
+                        (0..3).all(|c| part.vertices[triangle[c]] == before.mesh.vertices[t[c]])
                     })
                     .unwrap();
-                assert_eq!(part.face_visible(f), before.mesh.face_visible(source));
+                assert_eq!(
+                    part.face_visible(f),
+                    cleared || before.mesh.face_visible(source)
+                );
                 assert_eq!(part.uv.corners[f], before.mesh.uv.corners[source]);
                 assert_eq!(
                     part.polygroups.get(f).copied().unwrap_or(0),
@@ -1335,6 +1552,18 @@ fn workflow_face_selection_dispatch_and_model_limit_rejections_are_atomic() {
     let count = app.document.history_counts().0;
     app.dispatch(Command::SplitSelectedFaces, &ctx);
     assert_eq!(app.document.model_count(), 2, "{}", app.ui.status);
+    assert!(app.viewport.modeling.selected_faces().is_empty());
+    assert!(app.document.model(1).unwrap().metadata.visible);
+    assert!(!app.document.model(1).unwrap().mesh.has_hidden_faces());
+    assert!(
+        app.document
+            .model(1)
+            .unwrap()
+            .mesh
+            .mask
+            .iter()
+            .all(|&m| m == 0.)
+    );
     roundtrip(&mut app, &before, count);
 
     let mut project = app.document.project();

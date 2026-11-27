@@ -62,12 +62,17 @@ flock -n /home/mark/.cache/codex-build.lock \
 
 ## Selection-context split follow-up
 
-All 22 focused workflow checks passed with optional GPU captures in 69.41 seconds
+The final region-reset run passed all **23** focused workflow checks in
+52.89 seconds including compilation; peak process-tree RSS was 1,765,456 KiB.
+The updated Mask/Visibility/Components captures were visually reviewed.
+
+Before the final region-reset refinement, all 22 focused workflow checks passed
+with optional GPU captures in 69.41 seconds
 including compilation; peak process-tree RSS was 1,722,416 KiB. The Mask,
 Visibility and component Z captures were visually reviewed: each displays its
 correct split control inside the menu.
 
-- Z offers exactly one region split: **Split masked**, **Split visible** or
+- Z offers exactly one region split: **Split masked**, **Split hidden** or
   **Split selected**, according to its actual menu context. It no longer mixes
   in the disconnected-island operation.
 - Submodels has a context-sensitive region split and a distinct **Split to
@@ -80,10 +85,28 @@ correct split control inside the menu.
 - `workflow_submodels_has_distinct_split_to_parts_control` checks the distinct
   rendered region/parts controls and clicks **Split to parts** in the actual
   Submodels panel, then verifies one Undo/Redo and JSON save/reopen.
-- `workflow_split_visible_preserves_hidden_remainder_and_is_atomic` checks that
-  explicitly visible faces move to the new submodel, hidden faces remain hidden
-  in the original, masks/positions survive, and Undo/Redo plus JSON save/reopen
-  restore the exact result. An all-visible mesh is rejected without history.
+- `workflow_region_splits_clear_new_part_and_preserve_source_atomically` checks
+  that masked/hidden faces move to a visible, unmasked new submodel while the
+  remaining source keeps its exact mask/visibility. Undo/Redo plus JSON
+  save/reopen restore the exact result. Missing regions are rejected without
+  history. Saved `SplitVisible` action bindings resolve to `SplitHidden`.
+- Selected-face splits likewise clear the new part's mask/hiding; command
+  dispatch clears component selection immediately. The distinct **Split to
+  parts** operation still preserves masks and visibility on all islands.
+- Four existing `visibility_split_` regressions also passed with their normal
+  assertions updated for the deliberate new-part reset, including group-hidden
+  faces, blurred masks/thresholds, settings reset, rejection and exact history.
+  Their module was temporarily included in the focused harness for that run;
+  its normal partition gate has been restored.
+- The compact themed-layout regression clicks between selection contexts, then
+  scrolls to and clicks Mask's **Visible only** control. Q/Z/E use separate
+  scroll state, reset on opening. The two GPU guide fixtures now restrict these
+  menu clicks to text inside the actual clip and scroll it into view first.
+- Previous-head CPU tests passed, but CI rejected a range-index loop under
+  Clippy; that loop now enumerates vertices directly. GPU menu interactions
+  remain covered in CI; their behavioral assertions have not been removed.
+- The island attribute regression distinguishes coincident unwelded vertices
+  by their retained mask values rather than assuming every position is unique.
 
 ## Optional visual review
 

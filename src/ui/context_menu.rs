@@ -495,7 +495,7 @@ impl UiState {
         };
         let split = match context {
             ViewportMenuContext::Mask => Some(Action::SplitMasked),
-            ViewportMenuContext::Visibility => Some(Action::SplitVisible),
+            ViewportMenuContext::Visibility => Some(Action::SplitHidden),
             ViewportMenuContext::Components => Some(Action::SplitSelectedFaces),
             _ => None,
         };
@@ -586,7 +586,7 @@ impl UiState {
 
     pub(super) fn selection_split_action(&self) -> Action {
         match self.preferences.selection_mode {
-            crate::preferences::SelectionMode::Visibility => Action::SplitVisible,
+            crate::preferences::SelectionMode::Visibility => Action::SplitHidden,
             crate::preferences::SelectionMode::Components if self.modeling.active => {
                 Action::SplitSelectedFaces
             }
@@ -818,147 +818,151 @@ impl UiState {
             });
             ui.weak("Up/Down choose · Enter apply · Escape close");
             // Keep the pin reachable while the long tool/options list scrolls.
-            egui::ScrollArea::vertical()
-                .max_height((ctx.content_rect().height() - 145.).max(80.))
-                .show(ui, |ui| {
-                    if let Some(entry) = entries.get(index) {
-                        ui.label(format!("{}: {}", entry.label, entry.hint));
-                    }
-                    unavailable_menu_help(ui, &entries);
+            // Q, Z and E share a window, but must not inherit each other's
+            // scroll position. A newly opened chooser starts with its tabs.
+            let mut scroll = egui::ScrollArea::vertical()
+                .id_salt(context as u8)
+                .max_height((ctx.content_rect().height() - 145.).max(80.));
+            if just_opened {
+                scroll = scroll.vertical_scroll_offset(0.);
+            }
+            scroll.show(ui, |ui| {
+                if let Some(entry) = entries.get(index) {
+                    ui.label(format!("{}: {}", entry.label, entry.hint));
+                }
+                unavailable_menu_help(ui, &entries);
+                if matches!(
+                    context,
+                    ViewportMenuContext::Components
+                        | ViewportMenuContext::Mask
+                        | ViewportMenuContext::Visibility
+                        | ViewportMenuContext::Slice
+                ) {
                     if matches!(
                         context,
-                        ViewportMenuContext::Components
-                            | ViewportMenuContext::Mask
-                            | ViewportMenuContext::Visibility
-                            | ViewportMenuContext::Slice
+                        ViewportMenuContext::Mask | ViewportMenuContext::Visibility
                     ) {
-                        if matches!(
-                            context,
-                            ViewportMenuContext::Mask | ViewportMenuContext::Visibility
-                        ) {
-                            ui.horizontal_wrapped(|ui| {
-                        for (operation, label, hint) in [
-                            (
-                                Action::InvertMask,
-                                "Invert mask",
-                                "Swap masked and unmasked areas, preserving soft mask values.",
-                            ),
-                            (
-                                Action::ClearMask,
-                                "Clear mask",
-                                "Remove the active model's mask.",
-                            ),
-                            (
-                                Action::InvertVisibility,
-                                "Invert visibility",
-                                "Swap visible and hidden faces on the active model.",
-                            ),
-                            (
-                                Action::ShowAllFaces,
-                                "Show all",
-                                "Clear visibility hiding: show all faces of the active model.",
-                            ),
+                        ui.horizontal_wrapped(|ui| {
+                            for (operation, label, hint) in [
+                                (
+                                    Action::InvertMask,
+                                    "Invert mask",
+                                    "Swap masked and unmasked areas, preserving soft mask values.",
+                                ),
+                                (
+                                    Action::ClearMask,
+                                    "Clear mask",
+                                    "Remove the active model's mask.",
+                                ),
+                                (
+                                    Action::InvertVisibility,
+                                    "Invert visibility",
+                                    "Swap visible and hidden faces on the active model.",
+                                ),
+                                (
+                                    Action::ShowAllFaces,
+                                    "Show all",
+                                    "Clear visibility hiding: show all faces of the active model.",
+                                ),
+                            ] {
+                                let unavailable = self.action_unavailable(&operation, document);
+                                if ui
+                                    .add_enabled(unavailable.is_none(), egui::Button::new(label))
+                                    .on_hover_text(hint)
+                                    .on_disabled_hover_text(unavailable.unwrap_or_default())
+                                    .customize(operation.clone())
+                                    .clicked()
+                                {
+                                    action = Some(operation);
+                                }
+                            }
+                        });
+                        ui.separator();
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        for (choice, label) in [
+                            (ViewportMenuContext::Components, "Select"),
+                            (ViewportMenuContext::Mask, "Mask"),
+                            (ViewportMenuContext::Visibility, "Visibility"),
+                            (ViewportMenuContext::Slice, "Slice"),
                         ] {
-                            let unavailable = self.action_unavailable(&operation, document);
-                            if ui
-                                .add_enabled(unavailable.is_none(), egui::Button::new(label))
-                                .on_hover_text(hint)
-                                .on_disabled_hover_text(unavailable.unwrap_or_default())
-                                .customize(operation.clone())
-                                .clicked()
-                            {
-                                action = Some(operation);
+                            if choice == ViewportMenuContext::Components && !self.modeling.active {
+                                continue;
+                            }
+                            if ui.selectable_label(context == choice, label).clicked() {
+                                self.preferences.selection_mode = match choice {
+                                    ViewportMenuContext::Components => {
+                                        crate::preferences::SelectionMode::Components
+                                    }
+                                    ViewportMenuContext::Mask => {
+                                        crate::preferences::SelectionMode::Mask
+                                    }
+                                    ViewportMenuContext::Slice => {
+                                        crate::preferences::SelectionMode::Slice
+                                    }
+                                    _ => crate::preferences::SelectionMode::Visibility,
+                                };
+                                self.viewport_menu.context = Some(choice);
+                                self.viewport_menu.selected = 0;
                             }
                         }
                     });
-                            ui.separator();
-                        }
-                        ui.horizontal_wrapped(|ui| {
-                            for (choice, label) in [
-                                (ViewportMenuContext::Components, "Select"),
-                                (ViewportMenuContext::Mask, "Mask"),
-                                (ViewportMenuContext::Visibility, "Visibility"),
-                                (ViewportMenuContext::Slice, "Slice"),
-                            ] {
-                                if choice == ViewportMenuContext::Components
-                                    && !self.modeling.active
-                                {
-                                    continue;
-                                }
-                                if ui.selectable_label(context == choice, label).clicked() {
-                                    self.preferences.selection_mode = match choice {
-                                        ViewportMenuContext::Components => {
-                                            crate::preferences::SelectionMode::Components
-                                        }
-                                        ViewportMenuContext::Mask => {
-                                            crate::preferences::SelectionMode::Mask
-                                        }
-                                        ViewportMenuContext::Slice => {
-                                            crate::preferences::SelectionMode::Slice
-                                        }
-                                        _ => crate::preferences::SelectionMode::Visibility,
-                                    };
-                                    self.viewport_menu.context = Some(choice);
-                                    self.viewport_menu.selected = 0;
-                                }
-                            }
-                        });
-                        let hold = &self.preferences.visibility_hold;
-                        if hold.enabled() {
-                            ui.weak(if context == ViewportMenuContext::Slice {
-                                format!(
-                                    "Hold {} to slice · Release the hold to restore your tool",
-                                    hold.label()
-                                )
-                            } else {
-                                format!("Hold {} to use selected tab · Alt reverses", hold.label())
-                            });
+                    let hold = &self.preferences.visibility_hold;
+                    if hold.enabled() {
+                        ui.weak(if context == ViewportMenuContext::Slice {
+                            format!(
+                                "Hold {} to slice · Release the hold to restore your tool",
+                                hold.label()
+                            )
                         } else {
-                            ui.weak("Assign Hold for selection in Key settings · Alt reverses");
-                        }
-                        ui.separator();
-                    } else if context == ViewportMenuContext::Transform {
-                        ui.strong(if self.modeling.active {
-                            "Selected components"
-                        } else {
-                            "Active object"
+                            format!("Hold {} to use selected tab · Alt reverses", hold.label())
                         });
-                    }
-                    if context == ViewportMenuContext::Modeling {
-                        let flat_angle = (self.modeling.tool != ModelTool::CutCell
-                            && self.modeling.span == SelectionSpan::Flat)
-                            .then_some(&mut self.modeling.flat_angle);
-                        if let Some((i, chosen)) = modeling_choices(
-                            ui,
-                            &entries,
-                            Some(index),
-                            navigated,
-                            flat_angle,
-                            (self.modeling.mode == ComponentMode::Edge)
-                                .then_some(&mut self.modeling.bridge_segments),
-                        ) {
-                            self.viewport_menu.selected = i;
-                            action = Some(chosen);
-                        }
-                        self.modeling_general_options(ui);
-                        let mut commands = Vec::new();
-                        self.modeling_tool_options(ui, document, &mut commands);
-                        self.viewport_menu.commands.extend(commands);
-                    } else if context == ViewportMenuContext::Components {
-                        ui.label(format!("Active component: {:?}", self.modeling.mode));
-                        if let Some(chosen) =
-                            component_selection_choices(ui, &entries, index, navigated)
-                        {
-                            action = Some(chosen);
-                        }
                     } else {
-                        for (i, entry) in entries.iter().enumerate() {
-                            if menu_entry(ui, entry, i == index, false, navigated, true) {
-                                action = Some(entry.action.clone());
-                            }
+                        ui.weak("Assign Hold for selection in Key settings · Alt reverses");
+                    }
+                    ui.separator();
+                } else if context == ViewportMenuContext::Transform {
+                    ui.strong(if self.modeling.active {
+                        "Selected components"
+                    } else {
+                        "Active object"
+                    });
+                }
+                if context == ViewportMenuContext::Modeling {
+                    let flat_angle = (self.modeling.tool != ModelTool::CutCell
+                        && self.modeling.span == SelectionSpan::Flat)
+                        .then_some(&mut self.modeling.flat_angle);
+                    if let Some((i, chosen)) = modeling_choices(
+                        ui,
+                        &entries,
+                        Some(index),
+                        navigated,
+                        flat_angle,
+                        (self.modeling.mode == ComponentMode::Edge)
+                            .then_some(&mut self.modeling.bridge_segments),
+                    ) {
+                        self.viewport_menu.selected = i;
+                        action = Some(chosen);
+                    }
+                    self.modeling_general_options(ui);
+                    let mut commands = Vec::new();
+                    self.modeling_tool_options(ui, document, &mut commands);
+                    self.viewport_menu.commands.extend(commands);
+                } else if context == ViewportMenuContext::Components {
+                    ui.label(format!("Active component: {:?}", self.modeling.mode));
+                    if let Some(chosen) =
+                        component_selection_choices(ui, &entries, index, navigated)
+                    {
+                        action = Some(chosen);
+                    }
+                } else {
+                    for (i, entry) in entries.iter().enumerate() {
+                        if menu_entry(ui, entry, i == index, false, navigated, true) {
+                            action = Some(entry.action.clone());
                         }
                     }
-                });
+                }
+            });
         });
         if let Some(response) = &response {
             // Compact viewport launchers share the foreground layer. Keep this

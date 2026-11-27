@@ -114,7 +114,7 @@ pointer cancels a pending tap.
 
 ### Split the current selection or split to parts
 
-The **Z** menu offers **Split masked**, **Split visible** or **Split selected**
+The **Z** menu offers **Split masked**, **Split hidden** or **Split selected**
 to match its current Mask, Visibility or component-selection context. Submodels
 also offers the split for the remembered selection mode, with a separate
 **Split to parts** option.
@@ -122,27 +122,30 @@ also offers the split for the remembered selection mode, with a separate
 For a direct Modeling face selection, use **Split selected**
 in the component-selection Z menu, Modeling controls or Submodels. In Face mode choose **Connected**
 and select a face to select its connected part first. The selected face region
-moves into one new submodel; an empty or whole-surface selection reports why it
-cannot split.
+moves into one new visible, unmasked, unselected submodel; an empty or
+whole-surface selection reports why it cannot split.
 
 **Split to parts** in **Submodels** separates every vertex-connected surface part
 of the active mesh, including hidden faces, into its own submodel. The first
 part remains the active source. A mesh with only one part, or insufficient room
 under the 64-submodel limit, is unchanged with an explanation.
 
-Both operations leave pieces in place and cut boundaries open. They preserve
-masks, groups/weights, visibility, materials, UVs/textures, creases, shading
-boundaries and complete quads. They use the current surface and reset the
+All splits leave pieces in place and cut boundaries open. They preserve
+groups/weights, materials, UVs/textures, creases, shading boundaries and complete
+quads. Region splits clear the new part's mask, face hiding and component
+selection; the remaining source keeps its mask and visibility. **Split to parts**
+preserves masks and visibility on every part. They use the current surface and reset the
 pieces' subdivision/adaptive/voxel settings; Undo restores the original stack.
 Each complete split is one Undo/Redo step and is retained when saving/reopening.
 Apply Thickness and convert primitives/array outputs before splitting.
 
-In Visibility context, **Z → Split visible** moves the faces that are not
-explicitly hidden into a new submodel. Hidden faces stay hidden in the original.
+In Visibility context, **Z → Split hidden** moves the hidden faces
+into a new visible, unmasked, unselected submodel. Visible faces stay in the
+original.
 This is independent of camera occlusion or back-facing faces. Review the face
 count and settings reset, then choose **Apply split**; Cancel changes nothing.
-Both visible and hidden faces must be present. **Visibility → Split hidden**
-remains available for moving the opposite half into a new visible submodel.
+Both visible and hidden faces must be present. The same operation is available
+in **Visibility → Split hidden**.
 
 ### Split masked geometry
 
@@ -155,10 +158,11 @@ remains available for moving the opposite half into a new visible submodel.
    reset, then choose **Apply split**.
 
 The selected faces move into **Masked 1** (or the next free name). The remaining
-faces stay in the original active model, and both pieces keep their positions,
-mask values, groups, face visibility, paint, UVs, creases and surviving seams.
+faces stay in the original active model with their mask and visibility unchanged.
+The new part is visible, unmasked and unselected. Both pieces keep their positions,
+groups/weights, paint, UVs, creases and surviving seams.
 As with Delete masked and Extract masked, the threshold also selects masked
-hidden faces. Use Show all or Clear mask on either piece when needed.
+hidden faces; these become visible in the new part too.
 
 Cut boundaries stay open. Both pieces use the current subdivision level and
 reset subdivision, Adaptive and Dynamic Mesh settings. **Cancel** or **Escape**
@@ -167,8 +171,9 @@ and remaining faces, a visible editable model and a free submodel slot. Apply or
 remove Thickness first; loose geometry and stale UV layouts must be resolved.
 
 **Extract masked** in Submodels still copies the selected faces while retaining
-the source, and clears the copy's mask. **Split masked** moves them and preserves
-their mask values. Split masked is also available in search and custom bindings.
+the source, and clears the copy's mask. **Split masked** moves them and clears
+the new part's mask and face hiding. Split masked is also available in search
+and custom bindings.
 
 ## Vertex groups
 
@@ -273,13 +278,15 @@ An unfinished outline is cancelled by tool/view/model changes or loss of focus. 
 
 ### Split hidden faces
 
-Choose **Visibility → Split hidden** to move hidden faces into a new visible
-submodel named **Hidden 1**, **Hidden 2**, and so on. Both pieces stay in place.
+Choose **Visibility → Split hidden** to move hidden faces into a new visible,
+unmasked, unselected submodel named **Hidden 1**, **Hidden 2**, and so on. Both
+pieces stay in place.
 The dialog identifies the active model and hidden triangle count. Review it,
 then choose **Apply split**, or **Cancel** / **Escape** to leave the scene intact.
 
-Both pieces retain masks, group weights and labels, vertex paint/materials,
-complete quads, UV coordinates and masks, assigned texture images, crease edges,
+The source retains its mask; the new part starts unmasked. Both retain group
+weights and labels, vertex paint/materials, complete quads, UV coordinates and
+masks, assigned texture images, crease edges,
 UV seam marks and shading seams. The new submodel is shown so it can be edited.
 Shared texture images remain shared; splitting does not duplicate their pixels.
 

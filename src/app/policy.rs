@@ -429,9 +429,6 @@ impl<'a> EditorPolicy<'a> {
             Action::SplitHidden | Action::DeleteHidden => document
                 .hidden_faces_unavailable(*action == Action::SplitHidden)
                 .unwrap_or("Choose an editable mesh with visible and hidden faces"),
-            Action::SplitVisible => document
-                .hidden_faces_unavailable(true)
-                .unwrap_or("Choose an editable mesh with visible and hidden faces"),
             Action::SplitMasked => document
                 .split_masked_unavailable()
                 .unwrap_or("Choose an editable mesh with a partial mask selection"),
@@ -715,7 +712,6 @@ impl<'a> EditorPolicy<'a> {
             Action::SplitHidden | Action::DeleteHidden => document
                 .hidden_faces_unavailable(*action == Action::SplitHidden)
                 .is_none(),
-            Action::SplitVisible => document.hidden_faces_unavailable(true).is_none(),
             Action::SplitMasked => document.split_masked_unavailable().is_none(),
             Action::SplitSelectedFaces | Action::SplitDisconnectedIslands => {
                 document.surface_partition_unavailable().is_none() && document.model_count() < 64
@@ -908,7 +904,6 @@ impl<'a> EditorPolicy<'a> {
             Command::DeleteSubmodel => Some(Action::DeleteSubmodel),
             Command::MergeDown => Some(Action::MergeDown),
             Command::SplitHidden => Some(Action::SplitHidden),
-            Command::SplitVisible => Some(Action::SplitVisible),
             Command::DeleteHidden => Some(Action::DeleteHidden),
             Command::SplitMasked => Some(Action::SplitMasked),
             Command::SplitSelectedFaces => Some(Action::SplitSelectedFaces),

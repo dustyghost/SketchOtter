@@ -380,7 +380,6 @@ fn action_destination(action: &Action) -> Destination {
         | SelectLasso
         | ShowAllFaces
         | InvertVisibility
-        | SplitVisible
         | SplitHidden
         | DeleteHidden => Destination::Menu(BuiltinMenu::Visibility),
         Sculpt | Transform | LineTransform | TransformMenu | UniversalTransform | Move | Scale

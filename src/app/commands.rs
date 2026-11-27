@@ -411,19 +411,20 @@ impl App {
                     self.document.split_disconnected_islands()
                 };
                 if result.is_ok() {
+                    self.viewport.modeling.sync(&self.document);
                     self.ui.selected_vertex_group = None;
-                    self.ui.status = "Split into submodels in place. Surface attributes preserved; subdivision/adaptive/voxel settings reset to the current surface. Undo restores all parts.".into();
+                    self.ui.status = if matches!(command, Command::SplitSelectedFaces) {
+                        "Selected faces moved to a new visible, unmasked, unselected submodel in place. Subdivision/adaptive/voxel settings reset to the current surface. Undo restores both parts."
+                    } else {
+                        "Split into submodels in place. Surface attributes preserved; subdivision/adaptive/voxel settings reset to the current surface. Undo restores all parts."
+                    }.into();
                 }
                 result
             }
-            Command::SplitHidden
-            | Command::SplitVisible
-            | Command::DeleteHidden
-            | Command::SplitMasked => {
+            Command::SplitHidden | Command::DeleteHidden | Command::SplitMasked => {
                 self.viewport.cancel(&mut self.document);
                 let action = match command {
                     Command::SplitHidden => Action::SplitHidden,
-                    Command::SplitVisible => Action::SplitVisible,
                     Command::SplitMasked => Action::SplitMasked,
                     _ => Action::DeleteHidden,
                 };
@@ -443,16 +444,15 @@ impl App {
                     } else {
                         let result = match warning.action {
                             Action::SplitHidden => self.document.split_hidden(),
-                            Action::SplitVisible => self.document.split_visible(),
                             Action::SplitMasked => self.document.split_masked(),
                             _ => self.document.delete_hidden(),
                         };
                         result.map(|()| {
+                            self.viewport.modeling.sync(&self.document);
                             self.ui.selected_vertex_group = None;
                             self.ui.status = match warning.action {
-                                Action::SplitHidden => "Hidden faces moved to a new visible submodel. Undo restores the original.",
-                                Action::SplitVisible => "Visible faces moved to a new submodel; hidden faces remain in the original. Undo restores both parts.",
-                                Action::SplitMasked => "Masked faces moved to a new submodel; masks and visibility preserved. Undo restores the original.",
+                                Action::SplitHidden => "Hidden faces moved to a new visible, unmasked, unselected submodel. Undo restores the original.",
+                                Action::SplitMasked => "Masked faces moved to a new visible, unmasked, unselected submodel. Undo restores the original.",
                                 _ => "Hidden faces deleted; cut boundaries remain open. Undo restores the original.",
                             }.into();
                         })

@@ -246,27 +246,22 @@ impl Document {
         if let Some(reason) = self.hidden_faces_unavailable(true) {
             return Err(reason.into());
         }
-        let visible_mesh = self.mesh().visibility_part(true)?;
-        let hidden_mesh = self.mesh().visibility_part(false)?;
+        let visible_mesh = self.mesh().face_subset(|f| self.mesh().face_visible(f))?;
+        let hidden_mesh = self.mesh().face_subset(|f| !self.mesh().face_visible(f))?;
         self.split_surface_parts(visible_mesh, hidden_mesh, "Hidden", "Split hidden");
         Ok(())
     }
-    pub(crate) fn split_visible(&mut self) -> Result<(), String> {
-        if let Some(reason) = self.hidden_faces_unavailable(true) {
-            return Err(reason.into());
-        }
-        let remaining = self.mesh().face_subset(|f| !self.mesh().face_visible(f))?;
-        let separated = self.mesh().face_subset(|f| self.mesh().face_visible(f))?;
-        self.split_surface_parts(remaining, separated, "Visible", "Split visible");
-        Ok(())
-    }
+    /// Region splits consume the new part's working mask/visibility. The source
+    /// retains its attributes; Split to parts deliberately bypasses this reset.
     pub(super) fn split_surface_parts(
         &mut self,
         remaining: Mesh,
-        separated: Mesh,
+        mut separated: Mesh,
         prefix: &str,
         label: &'static str,
     ) {
+        separated.show_all_faces();
+        separated.mask.fill(0.);
         self.install_surface_parts(vec![remaining, separated], prefix, label);
     }
     /// All parts are extracted and validated before this single history boundary.

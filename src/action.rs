@@ -132,7 +132,6 @@ pub(crate) enum Action {
     InvertMask,
     DeleteMasked,
     SplitMasked,
-    SplitVisible,
     SplitSelectedFaces,
     SplitDisconnectedIslands,
     ExpandMask,
@@ -154,6 +153,7 @@ pub(crate) enum Action {
     FlipMaskLine,
     ShowAllFaces,
     InvertVisibility,
+    #[serde(alias = "SplitVisible")]
     SplitHidden,
     DeleteHidden,
     Slice,
@@ -325,7 +325,6 @@ impl Action {
         Self::InvertMask,
         Self::DeleteMasked,
         Self::SplitMasked,
-        Self::SplitVisible,
         Self::SplitSelectedFaces,
         Self::SplitDisconnectedIslands,
         Self::ExpandMask,
@@ -595,19 +594,16 @@ impl Action {
                 "Group visible faces on the active model across stored subdivision levels. Hidden memberships and face labels stay intact; shared boundary vertices also join the new group. Undo restores the previous groups."
             }
             Self::SplitHidden => {
-                "Move hidden faces inside the active mesh into a new visible submodel. Review the subdivision/settings reset before applying. Boundaries stay open; Undo restores both pieces."
-            }
-            Self::SplitVisible => {
-                "Move visible faces inside the active mesh into a new submodel, leaving hidden faces in the original. Visibility means face hiding, not camera occlusion. Review the subdivision/settings reset before applying. One Undo restores both pieces."
+                "Move hidden faces inside the active mesh into a new visible, unmasked, unselected submodel. Review the subdivision/settings reset before applying. Boundaries stay open; Undo restores both pieces."
             }
             Self::DeleteHidden => {
                 "Delete hidden faces inside the active mesh, preserving the visible surface and its attributes. Review the subdivision/settings reset before applying. Other submodels stay intact; boundaries remain open."
             }
             Self::SplitMasked => {
-                "Move faces whose corners all meet Mask → Selection threshold into a new submodel. Includes masked hidden faces; preserves masks and visibility. Review the threshold and subdivision/settings reset before applying."
+                "Move faces whose corners all meet Mask → Selection threshold into a new visible, unmasked, unselected submodel. Includes masked hidden faces. Review the threshold and subdivision/settings reset before applying."
             }
             Self::SplitSelectedFaces => {
-                "Move the Modeling face selection to a new submodel in place. Use Connected selection for a connected part. Preserves surface attributes and open boundaries; resets subdivision/adaptive/voxel settings to the current surface. One Undo restores both parts."
+                "Move the Modeling face selection to a new visible, unmasked, unselected submodel in place. Use Connected selection for a connected part. Preserves groups, paint, UVs and open boundaries; resets subdivision/adaptive/voxel settings to the current surface. One Undo restores both parts."
             }
             Self::SplitDisconnectedIslands => {
                 "Separate every disconnected part of the active mesh (including hidden faces) into independently editable submodels in place. Preserves surface attributes; resets subdivision/adaptive/voxel settings. One Undo restores all parts."
@@ -842,7 +838,6 @@ impl Action {
             Self::InvertMask => "Invert mask",
             Self::DeleteMasked => "Delete masked",
             Self::SplitMasked => "Split masked",
-            Self::SplitVisible => "Split visible",
             Self::SplitSelectedFaces => "Split selected",
             Self::SplitDisconnectedIslands => "Split to parts",
             Self::ExpandMask => "Expand mask",

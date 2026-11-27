@@ -1413,7 +1413,10 @@ mod visibility_tests {
             assert_eq!(model.mesh.vertex_groups.len(), 2);
             for (v, p) in model.mesh.vertices.iter().enumerate() {
                 let old = initial.mesh.vertices.iter().position(|q| q == p).unwrap();
-                assert_eq!(model.mesh.mask[v], initial.mesh.mask[old]);
+                assert_eq!(
+                    model.mesh.mask[v],
+                    if i == 0 { initial.mesh.mask[old] } else { 0. }
+                );
                 assert_eq!(
                     model.mesh.vertex_groups[1].weights[v],
                     initial.mesh.vertex_groups[1].weights[old]
