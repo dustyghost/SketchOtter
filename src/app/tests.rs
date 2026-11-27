@@ -2187,6 +2187,7 @@ fn visibility_frame(
 #[test]
 fn visibility_rectangle_latches_operation_and_hold_release_or_escape_cancel() {
     let mut app = App::default();
+    app.ui.preferences.selection_mode = preferences::SelectionMode::Visibility;
     let ctx = egui::Context::default();
     navigation_frame(&mut app, &ctx, vec![]);
     let before = app.document.geometry_snapshot();
@@ -2286,6 +2287,7 @@ fn visibility_rectangle_latches_operation_and_hold_release_or_escape_cancel() {
 #[test]
 fn visibility_background_click_reveals_and_empty_drag_inverts() {
     let mut app = App::default();
+    app.ui.preferences.selection_mode = preferences::SelectionMode::Visibility;
     let ctx = egui::Context::default();
     app.document.select_face_region(|p| p.0 > 0., true).unwrap();
     navigation_frame(&mut app, &ctx, vec![]);
@@ -2329,6 +2331,7 @@ fn visibility_background_click_reveals_and_empty_drag_inverts() {
 #[test]
 fn visibility_single_group_click_flips_faces_and_background_click_recovers() {
     let mut app = App::default();
+    app.ui.preferences.selection_mode = preferences::SelectionMode::Visibility;
     let ctx = egui::Context::default();
     let center = navigation_frame(&mut app, &ctx, vec![]).center();
     let modifiers = egui::Modifiers {
@@ -2377,6 +2380,7 @@ fn visibility_single_group_click_flips_faces_and_background_click_recovers() {
 #[test]
 fn visibility_polygroup_click_hides_clicked_faces_then_flips_the_last_group() {
     let mut app = App::default();
+    app.ui.preferences.selection_mode = preferences::SelectionMode::Visibility;
     let mut plane = crate::sculpt::Primitive::for_kind(crate::sculpt::PrimitiveKind::Plane);
     plane.divisions = [2, 1, 1];
     let mut mesh = plane.mesh().unwrap();
