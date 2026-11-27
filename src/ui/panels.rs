@@ -64,6 +64,7 @@ impl UiState {
             return commands;
         }
         let mut open = true;
+        let mut round_outline = false;
         // Keep Apply/Cancel above the scroll area on short screens.
         egui::Window::new("Generate panels")
             .order(egui::Order::Foreground).open(&mut open).default_width(370.).default_height((ctx.content_rect().height()-60.).clamp(160.,850.)).resizable(true)
@@ -82,7 +83,7 @@ impl UiState {
                 });
                 ui.horizontal_wrapped(|ui| {
                     ui.checkbox(&mut self.wire, "Wireframe");
-                    ui.checkbox(&mut state.panels.outline, "Source outlines");
+                    ui.checkbox(&mut state.panels.outline, "Source outlines").on_hover_text("Gold lines show the original unsmoothed mask/group boundary, even when the panel is rounded. Turn off to inspect the panel silhouette.");
                 });
                 if state.busy { ui.horizontal(|ui| { ui.spinner(); ui.label("Building and checking panels… Cancel remains available."); }); }
                 if let Some(error)=&state.error { ui.colored_label(Color32::from_rgb(240,130,110), error); }
@@ -113,9 +114,17 @@ impl UiState {
                         }
                         ui.weak(if document.symmetry().enabled { "Symmetry includes matching whole groups. Mismatched groups are rejected." } else { "Symmetry is off. Only the checked groups are generated." });
                         ui.separator();
-                        if ui.button("Fit border to mesh").on_hover_text("Reduce gap, border width and bevel together to fit the source edge spacing. Thickness and offset stay unchanged. Preview again to validate.").clicked() {
-                            panel.options = document.mesh().fit_panel_border(panel.options);
-                        }
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.button("Fit border to mesh").on_hover_text("Reduce gap, border width and bevel together to fit the source edge spacing. Thickness and offset stay unchanged. Preview again to validate.").clicked() {
+                                panel.options = document.mesh().fit_panel_border(panel.options);
+                            }
+                            if ui.button("Round outline").on_hover_text("Round stair-step boundaries: set smoothing to 1 and preserve turns to 120°, rebuild the preview, and hide the original gold outline to show the result. Thickness, gap and bevel stay unchanged.").clicked() {
+                                panel.options.border.smoothing = 1.;
+                                panel.options.border.corner_angle = 120.;
+                                panel.outline = false;
+                                round_outline = true;
+                            }
+                        });
                         let o=&mut panel.options;
                         ui.add(egui::DragValue::new(&mut o.thickness).range(0.00001..=100.).speed(0.001).prefix("Thickness "));
                         ui.add(egui::DragValue::new(&mut o.offset).range(-100. ..=100.).speed(0.001).prefix("Normal offset "));
@@ -146,9 +155,9 @@ impl UiState {
                         ui.weak(format!("Uses current subdivision level {}. Output has no subdivision stack; the source keeps its complete stack and paths.", document.mesh_settings().level()));
                     });
                 });
-                if old!=state.panels.key(document) {
+                if old!=state.panels.key(document) || round_outline {
                     commands.retain(|c| !matches!(c,Command::ApplyProjection|Command::PreviewProjection));
-                    commands.push(Command::ClearProjectionPreview);
+                    commands.push(if round_outline { Command::PreviewProjection } else { Command::ClearProjectionPreview });
                 }
             });
         if !open {

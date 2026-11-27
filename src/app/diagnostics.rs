@@ -4,6 +4,20 @@ impl App {
         let options = self.ui.projection.layout;
         serde_json::json!({"backend":options.method.diagnostic_name(),"input_triangle_limit":options.input_triangle_limit,"target":options.target,"paths":self.ui.projection.flow_paths,"path_strength":options.flow,"path_reprojection_distance":self.paths.reproject_distance,"density_strength":options.density,"shape_adaptation":options.adaptive,"mirror_path_x":options.mirror_path_x,"preserve_sharp":options.preserve_sharp,"sharp_angle_degrees":options.sharp_angle_degrees,"symmetry_axis":options.symmetry_axis,"symmetry_center":options.symmetry_center,"symmetry_centreline":options.symmetry_centreline,"symmetry_source":options.symmetry_source,"target_model_id":self.document.active_model_id(),"source_vertices":self.document.mesh().vertices.len(),"source_triangles":self.document.mesh().triangles.len()})
     }
+    fn panel_diagnostic_settings(&self) -> serde_json::Value {
+        let panel = &self.ui.projection.panels;
+        let o = panel.options;
+        serde_json::json!({
+            "open": self.ui.projection.open && self.ui.projection.mode == crate::ui::SurfaceMode::Panels,
+            "use_mask": panel.use_mask, "groups": panel.groups, "protect_mask": panel.protect,
+            "mask_threshold": self.document.model(self.document.active_model_index()).unwrap().metadata.mask_threshold,
+            "thickness": o.thickness, "offset": o.offset, "bevel": o.bevel,
+            "profile": format!("{:?}", o.profile), "segments": o.segments, "wall_loops": o.wall_loops,
+            "gap": o.border.gap, "border_width": o.border.width, "border_loops": o.border.loops,
+            "spacing": o.border.spacing, "smoothing": o.border.smoothing, "corner_angle": o.border.corner_angle,
+            "preview_busy": self.ui.projection.busy, "preview_can_apply": self.ui.projection.report.as_ref().is_some_and(crate::ui::SurfaceReport::can_apply),
+        })
+    }
     pub(super) fn diagnostic_warning(&mut self, category: &str) {
         let warnings = &mut self.diagnostic_environment.warnings;
         if warnings.len() == 32 {
@@ -30,6 +44,7 @@ impl App {
             "modeling_active": self.ui.modeling.active,
             "reverse_hold": format!("{:?}", self.ui.preferences.reverse),
             "smooth_hold": format!("{:?}", self.ui.preferences.smooth),
+            "panel_generation": self.panel_diagnostic_settings(),
             "guided_retopology": self.retopology_diagnostic_settings(),
             "last_guided_retopology_attempt": self.projection.last_retopology_settings,
         }));
@@ -182,6 +197,24 @@ mod tests {
         assert_eq!(view["guided_retopology"]["target"], 1000);
         assert_eq!(view["guided_retopology"]["paths"], serde_json::json!([1]));
     }
+    #[test]
+    fn panels_diagnostics_capture_smoothing_and_preview_state() {
+        let mut app = App::default();
+        app.ui.projection.open = true;
+        app.ui.projection.mode = crate::ui::SurfaceMode::Panels;
+        app.ui.projection.panels.use_mask = true;
+        app.ui.projection.panels.options.border.smoothing = 0.7;
+        app.ui.projection.panels.options.border.corner_angle = 120.;
+        app.capture_diagnostic_context(&egui::Context::default());
+        let manifest = app.document.diagnostic_manifest(Default::default());
+        let panel = &manifest.current_settings.view_input.as_ref().unwrap()["panel_generation"];
+        assert_eq!(panel["open"], true);
+        assert_eq!(panel["use_mask"], true);
+        assert!((panel["smoothing"].as_f64().unwrap() - 0.7).abs() < 1e-6);
+        assert_eq!(panel["corner_angle"], 120.);
+        assert_eq!(panel["preview_can_apply"], false);
+    }
+
     #[test]
     fn diagnostics_latch_view_at_edit_and_keep_safe_bounded_warnings() {
         let mut app = App::default();

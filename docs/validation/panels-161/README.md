@@ -47,3 +47,15 @@ The direct mask workflow creates a new output vertex group and closed panel in a
 The full saved diagnostic stage before grouping was also checked with the real Vulkan viewport. [Shaded output](panels-painted-mask-shaded.png), [wireframe](panels-painted-mask-wire.png) and [changed thickness](panels-painted-mask-stale.png) show the generated panel and the retained view while settings are stale. Parameter changes disable Apply and retain the previous view until Preview panels updates it; the old view is ignored after source changes. These screenshots are a visual review, not an automatic pixel comparison. The original diagnostic bundle is not included in this change.
 
 To repeat the manual check, run `panels_mask_and_painted_boundary_offscreen_review` with the same GPU environment above. It uses the small regression fixture by default; optionally set `CLAY_PANEL_REPRO` to a saved project with a painted mask to review that complete source.
+
+## Rounded-outline review
+
+**Round outline** selects smoothing 1 and corner preservation 120°, hides the original gold boundary overlay, and starts a fresh preview. The original outline remains available for comparison. Manual slider changes still require Preview panels; the preserved view is explicitly stale until that succeeds.
+
+The saved painted sphere was reviewed through the actual button in the Vulkan viewport: [rounded shading](panels-rounded-mask-shaded.png) and [rounded wireframe](panels-rounded-mask-wire.png). The geometry regression compares five smoothing strengths at 120° and 150° and checks closed-shell generation; on this boundary, its summed turning measure falls from about 25.55 to 1.48 at full smoothing.
+
+A separate full-sphere regression reproduces a real source collision with smoothing 1, thickness 0.11 and offset 0.05. Offset 0.065 passes the same checks. The [rejection screenshot](panels-rounded-mask-source-intersection.png) shows the corrected offset guidance and disabled Apply. The manual review exercises the rejection, changes offset, then verifies Apply and Undo without altering the source. This is a demonstrated clearance value for this source, not a universal offset formula.
+
+The original diagnostic export did not retain panel controls, so its exact failed settings cannot be recovered. New diagnostic manifests include panel selection, dimensions, smoothing, corner preservation and preview state, without model names or paths in that settings block. All 29 focused checks passed; the full-project Vulkan interaction review passed. Full CI remains pending.
+
+For the additional manual comparison, set `CLAY_PANEL_ROUND_OUTLINE=1` alongside `CLAY_PANEL_REPRO` when running `panels_mask_and_painted_boundary_offscreen_review`.

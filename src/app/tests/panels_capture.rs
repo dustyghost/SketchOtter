@@ -251,6 +251,18 @@ fn panels_mask_and_painted_boundary_offscreen_review() {
     g.save("panels-painted-mask-shaded");
     click_guide_label(&mut g, "Wireframe");
     g.save("panels-painted-mask-wire");
+    if std::env::var_os("CLAY_PANEL_ROUND_OUTLINE").is_some() {
+        click_guide_label(&mut g, "Round outline");
+        crate::app::test_support::finish_projection(&mut g.app);
+        assert!(g.app.projection.draft.is_some(), "{}", g.app.ui.status);
+        assert_eq!(g.app.ui.projection.panels.options.border.smoothing, 1.);
+        assert_eq!(g.app.ui.projection.panels.options.border.corner_angle, 120.);
+        assert!(!g.app.ui.projection.panels.outline);
+        g.save("panels-rounded-mask-wire");
+        g.app.ui.wire = false;
+        g.save("panels-rounded-mask-shaded");
+        g.app.ui.wire = true;
+    }
     let old = g.app.projection.draft.as_ref().unwrap().mesh.clone();
     for thickness in [0.09, 0.1, 0.11] {
         g.app.ui.projection.panels.options.thickness = thickness;
@@ -262,6 +274,26 @@ fn panels_mask_and_painted_boundary_offscreen_review() {
     g.save("panels-painted-mask-stale");
     click_guide_label(&mut g, "Preview panels");
     crate::app::test_support::finish_projection(&mut g.app);
+    if std::env::var_os("CLAY_PANEL_ROUND_OUTLINE").is_some()
+        && std::env::var_os("CLAY_PANEL_REPRO").is_some()
+        && g.app.projection.draft.is_none()
+    {
+        assert!(
+            g.app
+                .ui
+                .projection
+                .error
+                .as_ref()
+                .is_some_and(|e| e.contains("source geometry")),
+            "{}",
+            g.app.ui.status
+        );
+        assert_eq!(g.app.document.geometry_snapshot(), before);
+        g.save("panels-rounded-mask-source-intersection");
+        g.app.ui.projection.panels.options.offset = 0.065;
+        click_guide_label(&mut g, "Preview panels");
+        crate::app::test_support::finish_projection(&mut g.app);
+    }
     assert!(g.app.projection.draft.is_some(), "{}", g.app.ui.status);
     let expected = g
         .app

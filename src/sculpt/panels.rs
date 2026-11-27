@@ -648,7 +648,7 @@ impl Mesh {
                 .triangles
                 .extend(display.triangles.iter().map(|t| t.map(|v| v + n)));
             super::fusion::validate_panel_faces(&collision,first_new,cancel)
-                .map_err(|e| format!("Panel intersects nearby source geometry; reduce offset/thickness or increase gap. {e}"))?;
+                .map_err(|e| format!("Panel intersects nearby source geometry. Adjust Normal offset (increase it to move outward), reduce thickness, or increase gap. {e}"))?;
         }
         if symmetry.enabled {
             super::ModelingSymmetry::new(&display, symmetry)?;
@@ -1498,5 +1498,125 @@ mod tests {
                 .iter()
                 .all(|p| p.len() > 0.97 && p.len() < 1.13)
         );
+    }
+    #[test]
+    fn painted_staircase_border_smoothing_reduces_turns_without_folding() {
+        let source: Mesh =
+            serde_json::from_str(include_str!("fixtures/panel-painted-boundary.json")).unwrap();
+        let options = source.fit_panel_border(Default::default());
+        let region = source
+            .panel_regions(&[1], true, &|| false)
+            .unwrap()
+            .remove(0);
+        for angle in [120., 150.] {
+            let mut initial = None;
+            for strength in [0., 0.25, 0.5, 0.7, 1.] {
+                let border = region
+                    .rebuild_border(
+                        PanelBorder {
+                            smoothing: strength,
+                            corner_angle: angle,
+                            ..options.border
+                        },
+                        &|| false,
+                    )
+                    .unwrap_or_else(|e| {
+                        panic!("smoothing {strength}, preserve turns {angle}: {e}")
+                    });
+                region
+                    .generate(
+                        PanelOptions {
+                            border: PanelBorder {
+                                smoothing: strength,
+                                corner_angle: angle,
+                                ..options.border
+                            },
+                            ..options
+                        },
+                        &|| false,
+                    )
+                    .unwrap_or_else(|e| {
+                        panic!("closed shell smoothing {strength}, preserve turns {angle}: {e}")
+                    })
+                    .validate_closed()
+                    .unwrap();
+                let rings =
+                    super::super::fusion::boundaries_cancellable(&border, &|| false).unwrap();
+                let ring = &rings[0].vertices;
+                let energy: f32 = (0..ring.len())
+                    .map(|i| {
+                        let a = border.vertices[ring[(i + ring.len() - 1) % ring.len()]];
+                        let p = border.vertices[ring[i]];
+                        let b = border.vertices[ring[(i + 1) % ring.len()]];
+                        (1. - (p - a).norm().dot((b - p).norm())).max(0.)
+                    })
+                    .sum();
+                eprintln!("angle={angle}, strength={strength}, turning energy={energy}");
+                if strength == 0. {
+                    initial = Some(energy);
+                }
+                if strength == 1. {
+                    assert!(
+                        energy < initial.unwrap() * 0.5,
+                        "stair steps should be visibly rounded: {energy}"
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn rounded_panels_on_painted_sphere_require_sufficient_outward_clearance() {
+        let patch: Mesh =
+            serde_json::from_str(include_str!("fixtures/panel-painted-boundary.json")).unwrap();
+        let triangle_key = |mesh: &Mesh, triangle: [usize; 3]| {
+            let mut positions = triangle.map(|v| {
+                let p = mesh.vertices[v];
+                [
+                    (p.0 * 1e6).round() as i32,
+                    (p.1 * 1e6).round() as i32,
+                    (p.2 * 1e6).round() as i32,
+                ]
+            });
+            positions.sort_unstable();
+            positions
+        };
+        let painted: BTreeSet<_> = patch
+            .triangles
+            .iter()
+            .map(|&t| triangle_key(&patch, t))
+            .collect();
+        let mut source = Mesh::sphere();
+        source.vertex_groups.push(VertexGroup {
+            name: "Painted patch".into(),
+            purpose: GroupPurpose::Selection,
+            visible: true,
+            weights: vec![0.; source.vertices.len()],
+        });
+        source.polygroups = source
+            .triangles
+            .iter()
+            .map(|&t| usize::from(painted.contains(&triangle_key(&source, t))))
+            .collect();
+        assert_eq!(
+            source.polygroups.iter().filter(|&&g| g == 1).count(),
+            patch.triangles.len()
+        );
+        let before = source.clone();
+        let mut options = source.fit_panel_border(Default::default());
+        options.border.smoothing = 1.;
+        options.border.corner_angle = 120.;
+        options.thickness = 0.11;
+        let error = source
+            .generate_panels(&[1], options, true, &Default::default(), &|| false)
+            .err()
+            .unwrap();
+        assert!(error.contains("source geometry"), "{error}");
+        assert!(error.contains("Normal offset"), "{error}");
+        options.offset = 0.065;
+        let result = source
+            .generate_panels(&[1], options, true, &Default::default(), &|| false)
+            .unwrap();
+        result.display.validate_closed().unwrap();
+        assert_eq!(source, before);
     }
 }
