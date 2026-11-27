@@ -227,6 +227,13 @@ fn edges_empty_space_drag_matches_normal_navigation_and_keeps_selection() {
                     },
                 );
                 if pressed == Some(true) {
+                    if !selecting && modifiers == egui::Modifiers::CTRL {
+                        // Model picking defers Ctrl until the press becomes a drag.
+                        assert!(app.viewport.session.gesture.is_none());
+                    } else {
+                        assert!(app.viewport.session.gesture == Some(Gesture::Orbit));
+                    }
+                } else if pressed.is_none() {
                     assert!(app.viewport.session.gesture == Some(Gesture::Orbit));
                 }
             }

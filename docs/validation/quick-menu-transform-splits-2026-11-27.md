@@ -7,8 +7,8 @@ In progress until review and merge.
 
 `src/app/workflow_tests.rs` runs in both the default and focused CPU harnesses.
 It exercises actual egui button/pointer input, not only command implementations.
-The final local run passed all 16 checks in 46.84 seconds including compilation,
-with peak process-tree RSS 1,693,496 KiB (about 1.62 GiB).
+The final follow-up local run passed all 19 checks in 48.69 seconds including
+compilation, with peak process-tree RSS 1,676,756 KiB (about 1.60 GiB).
 
 | Story | Checks |
 | --- | --- |
@@ -24,6 +24,29 @@ gesture priority. Pointer-button events are the shared mouse/pen-tip route;
 physical pen hardware/pressure has not been validated in this headless run.
 Existing context-menu lifecycle and shared face-subset shading/texture
 regressions remain in the default suite for CI.
+
+## Release-test follow-up
+
+- New or missing selection preferences now start in Mask / Surface brush.
+  Explicit saved selection modes and shapes are not migrated or overwritten.
+- The new no-Z regression paints with Ctrl+Shift, including over a previously
+  selected visibility tool, preserves camera/vertices/face visibility, and
+  restores the persistent tool on hold release.
+- Temporary Mask takes priority over persistent visibility selection. Legacy
+  Rectangle/Lasso tools retain their actual shape rather than being replaced by
+  the visibility preset; persistent configured visibility still uses its preset.
+- Ctrl edge removal retains priority over Ctrl model taps. Ctrl navigation tests
+  allow the intentional deferred press and still require navigation on movement.
+- Transform operations remain before coordinate-space choices so opening E and
+  pressing Enter still activates Move rather than merely changing axes.
+
+An additional 42-check targeted run passed: 18 workflow checks before the focused
+edge-removal case was added, 12 menu lifecycle checks, 11 masking checks, and the
+previously failing Vulkan lasso preview/commit regression. Mask and hide captures
+were visually reviewed. For this run only, the existing menu/masking/GPU-lasso
+modules were temporarily included in the focused harness; their normal partition
+gates were restored before the final 19-check run. Compiling the full default
+harness exceeded the local memory-pressure guard; its full execution stays in CI.
 
 Bounded local command:
 

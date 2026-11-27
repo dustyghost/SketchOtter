@@ -604,6 +604,19 @@ impl UiState {
                 }
             }
         } else {
+            for operation in [
+                TransformOperation::Move,
+                TransformOperation::Rotate,
+                TransformOperation::Scale,
+                TransformOperation::Universal,
+            ] {
+                choices.push((
+                    operation.into(),
+                    operation.label().to_owned(),
+                    self.transform_mode != TransformMode::Sculpt
+                        && self.transform_operation == operation,
+                ));
+            }
             for (space, action) in [
                 (
                     crate::viewport::TransformSpace::World,
@@ -618,19 +631,6 @@ impl UiState {
                     action.clone(),
                     action.label().to_owned(),
                     self.transform_space == space,
-                ));
-            }
-            for operation in [
-                TransformOperation::Move,
-                TransformOperation::Rotate,
-                TransformOperation::Scale,
-                TransformOperation::Universal,
-            ] {
-                choices.push((
-                    operation.into(),
-                    operation.label().to_owned(),
-                    self.transform_mode != TransformMode::Sculpt
-                        && self.transform_operation == operation,
                 ));
             }
             for (mode, label) in [

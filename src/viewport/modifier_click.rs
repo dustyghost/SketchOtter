@@ -40,6 +40,7 @@ impl Viewport {
             && self.session.gesture.is_none()
             && !self.modeling.dragging()
             && options.enabled
+            && !options.edge_select
             && !ui.ctx().wants_keyboard_input()
             && !egui::Popup::is_any_open(ui.ctx())
             && let Some((pos, modifiers)) = press

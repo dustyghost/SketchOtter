@@ -5,6 +5,169 @@ use crate::viewport::{TransformMode, TransformOperation, TransformSpace};
 use egui::{Pos2, Vec2};
 
 #[test]
+fn workflow_ctrl_edge_removal_has_priority_over_model_taps() {
+    let mut app = App::default();
+    let ctx = egui::Context::default();
+    app.document
+        .replace_geometry(Geometry::new(
+            Primitive::for_kind(PrimitiveKind::Plane).mesh().unwrap(),
+        ))
+        .unwrap();
+    app.dispatch(Command::Action(Action::SelectEdges), &ctx);
+    frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+    let rect = app.ui.viewport_menu.viewport_rect.unwrap();
+    let scale = rect.width().min(rect.height()) * 0.35;
+    let a = rect.center() + Vec2::new(0., -scale);
+    let b = rect.center() + Vec2::new(-scale, 0.);
+    let before = app.document.geometry_snapshot();
+    for (point, modifiers, expected) in [
+        (a, egui::Modifiers::NONE, 1),
+        (b, egui::Modifiers::SHIFT, 2),
+        (a, egui::Modifiers::CTRL, 1),
+    ] {
+        tap(&mut app, &ctx, point, modifiers, false);
+        assert_eq!(app.ui.edges.selected.len(), expected);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        assert_eq!(app.camera.zoom, 1.);
+    }
+}
+
+#[test]
+fn workflow_persistent_lasso_keeps_its_shape_and_commits_only_the_outline() {
+    use crate::viewport::SelectionTool;
+    for tool in [SelectionTool::MaskLasso, SelectionTool::Lasso] {
+        for degenerate in [false, true] {
+            let mut app = App::default();
+            let ctx = egui::Context::default();
+            app.dispatch(Command::SelectTool(Some(tool)), &ctx);
+            frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+            let before = app.document.geometry_snapshot();
+            let modifiers = if tool == SelectionTool::Lasso {
+                egui::Modifiers::ALT
+            } else {
+                egui::Modifiers::NONE
+            };
+            let a = Pos2::new(500., 250.);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(a), button(a, true, modifiers)],
+                modifiers,
+            );
+            let points = if degenerate {
+                vec![Pos2::new(700., 600.)]
+            } else {
+                vec![
+                    Pos2::new(700., 250.),
+                    Pos2::new(700., 600.),
+                    Pos2::new(500., 600.),
+                    a,
+                ]
+            };
+            let end = *points.last().unwrap();
+            frame(
+                &mut app,
+                &ctx,
+                points.into_iter().map(egui::Event::PointerMoved).collect(),
+                modifiers,
+            );
+            assert_eq!(app.document.geometry_snapshot(), before);
+            frame(
+                &mut app,
+                &ctx,
+                vec![button(end, false, modifiers)],
+                modifiers,
+            );
+            if degenerate {
+                assert_eq!(app.document.geometry_snapshot(), before);
+                assert_eq!(app.document.history_counts(), (0, 0));
+            } else {
+                if tool == SelectionTool::Lasso {
+                    let mesh = app.document.mesh();
+                    assert!(mesh.hidden_face_count() > 0);
+                    assert!(mesh.hidden_face_count() < mesh.triangles.len());
+                } else {
+                    let mask = &app.document.mesh().mask;
+                    assert!(mask.contains(&1.) && mask.contains(&0.));
+                }
+                roundtrip(&mut app, &before, 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn workflow_default_mask_hold_paints_before_opening_z_and_restores_selection() {
+    use crate::viewport::SelectionTool;
+    for tool in [
+        None,
+        Some(SelectionTool::Visibility(
+            preferences::VisibilitySettings::default(),
+        )),
+        Some(SelectionTool::Lasso),
+    ] {
+        let mut app = fixture();
+        let ctx = egui::Context::default();
+        assert_eq!(
+            app.ui.preferences.selection_mode,
+            preferences::SelectionMode::Mask
+        );
+        assert_eq!(
+            app.ui.preferences.mask_preset.shape,
+            preferences::MaskShape::Brush
+        );
+        app.ui.selection_tool = tool;
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let before = app.document.mesh().clone();
+        let camera = (
+            app.camera.yaw,
+            app.camera.pitch,
+            app.camera.zoom,
+            app.camera.pan,
+        );
+        let modifiers = egui::Modifiers::CTRL | egui::Modifiers::SHIFT;
+        let a = Pos2::new(500., 400.);
+        let b = a + Vec2::new(30., 0.);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(a), button(a, true, modifiers)],
+            modifiers,
+        );
+        assert!(app.ui.mask_active);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(b)],
+            modifiers,
+        );
+        frame(&mut app, &ctx, vec![button(b, false, modifiers)], modifiers);
+        assert_ne!(app.document.mesh().mask, before.mask, "{tool:?}");
+        assert_eq!(app.document.mesh().vertices, before.vertices);
+        assert_eq!(app.document.mesh().hidden_faces, before.hidden_faces);
+        assert_eq!(
+            (
+                app.camera.yaw,
+                app.camera.pitch,
+                app.camera.zoom,
+                app.camera.pan
+            ),
+            camera
+        );
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        assert!(!app.ui.mask_active);
+        assert_eq!(app.ui.selection_tool, tool);
+        assert!(app.ui.viewport_menu.context.is_none());
+    }
+    // Defaults apply to missing preferences, not deliberate saved choices.
+    let saved: preferences::Preferences =
+        serde_json::from_str(r#"{"selection_mode":"Visibility","mask_preset":{"shape":"Lasso"}}"#)
+            .unwrap();
+    assert_eq!(saved.selection_mode, preferences::SelectionMode::Visibility);
+    assert_eq!(saved.mask_preset.shape, preferences::MaskShape::Lasso);
+}
+
+#[test]
 fn workflow_pen_tip_release_before_pointer_gone_completes_one_tap() {
     let mut app = fixture();
     let ctx = egui::Context::default();

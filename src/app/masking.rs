@@ -503,6 +503,7 @@ mod tests {
             vec![button(p, false), key(Key::M, false)],
         );
         assert_eq!(app.document.geometry_snapshot(), before);
+        app.ui.preferences.selection_mode = preferences::SelectionMode::Visibility;
         app.ui.preferences.mask_hold = HoldBinding {
             ctrl: true,
             ..Default::default()

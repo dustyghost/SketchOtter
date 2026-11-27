@@ -150,6 +150,8 @@ mod tests {
     };
     fn setup() -> (App, egui::Context) {
         let mut app = App::default();
+        // These menu lifecycle cases exercise a saved Visibility selection.
+        app.ui.preferences.selection_mode = preferences::SelectionMode::Visibility;
         let ctx = egui::Context::default();
         let mut primitive = Primitive::for_kind(PrimitiveKind::Cube);
         primitive.divisions = [3; 3];

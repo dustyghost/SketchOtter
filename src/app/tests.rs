@@ -619,7 +619,9 @@ fn holding_zoom_when_pen_drag_starts_over_clay_avoids_sculpting() {
             egui::CentralPanel::default().show(ctx, |ui| app.show_viewport(ui));
         },
     );
-    assert!(app.viewport.session.gesture == Some(Gesture::Orbit));
+    // Ctrl taps select a model; navigation starts once movement passes the
+    // click threshold, rather than consuming the press immediately.
+    assert!(app.viewport.session.gesture.is_none());
     let _ = ctx.run(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(

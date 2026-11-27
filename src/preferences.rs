@@ -377,9 +377,9 @@ pub(crate) struct ModelingPreset {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum SelectionMode {
     Components,
+    #[default]
     Mask,
     Slice,
-    #[default]
     Visibility,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

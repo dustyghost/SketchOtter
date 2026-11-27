@@ -928,16 +928,7 @@ impl App {
                     .filter(|_| !temporary_visibility),
                 select: if temporary_slice {
                     None
-                } else if temporary_visibility
-                    || matches!(
-                        self.ui.selection_tool,
-                        Some(
-                            crate::viewport::SelectionTool::Visibility(_)
-                                | crate::viewport::SelectionTool::Rectangle
-                                | crate::viewport::SelectionTool::Lasso
-                        )
-                    )
-                {
+                } else if temporary_visibility {
                     Some(self.ui.preferences.visibility_selection.tool())
                 } else if self.ui.mask_active {
                     self.ui.preferences.mask_preset.selection_tool()
@@ -954,6 +945,11 @@ impl App {
                             },
                         },
                     ))
+                } else if matches!(
+                    self.ui.selection_tool,
+                    Some(crate::viewport::SelectionTool::Visibility(_))
+                ) {
+                    Some(self.ui.preferences.visibility_selection.tool())
                 } else {
                     self.ui.selection_tool
                 },
@@ -971,7 +967,17 @@ impl App {
                     || temporary_components
                 {
                     None
-                } else if temporary_visibility {
+                } else if temporary_visibility
+                    || (!self.ui.mask_active
+                        && matches!(
+                            self.ui.selection_tool,
+                            Some(
+                                crate::viewport::SelectionTool::Visibility(_)
+                                    | crate::viewport::SelectionTool::Rectangle
+                                    | crate::viewport::SelectionTool::Lasso
+                            )
+                        ))
+                {
                     Some(crate::viewport::ModifierTap::Visibility)
                 } else if self.ui.mask_active
                     || matches!(
