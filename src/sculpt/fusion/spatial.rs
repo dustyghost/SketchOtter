@@ -169,7 +169,7 @@ impl<'a> Index<'a> {
                 return Err("Panel intersection search budget exceeded; select fewer groups or simplify the source".into());
             }
             *budget -= 1;
-            if *budget % 256 == 0 {
+            if (*budget).is_multiple_of(256) {
                 cancelled(cancel)?;
             }
             let n = &self.nodes[id];
