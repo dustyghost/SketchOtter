@@ -614,7 +614,7 @@ impl Action {
                 "Confirm removal of the selected submodel, including hidden geometry, masks, levels and modifiers. Undo restores it. Deleting the last model leaves an empty model slot."
             }
             Self::GeneratePanels => {
-                "Generate thickened panels from a mask or polygon groups with reconstructed borders, gaps and bevels. Preview, then Apply; the source is retained."
+                "Extract thickened panels or cut cleaned outline/support loops into the active surface from a mask or polygon groups. Preview, then Apply."
             }
             Self::GuidedRetopology => {
                 "Preview a quad-dominant layout. A saved path guides edges and painted mask weights retain local density. Apply keeps the original as a hidden reference."

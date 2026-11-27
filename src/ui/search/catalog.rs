@@ -486,7 +486,7 @@ fn action_aliases(action: &Action) -> &'static str {
         }
         Action::GuidedRetopology => "retopo topology quads remesh",
         Action::GeneratePanels => {
-            "armour plates polygon groups panel border loops bevel thickness gap"
+            "armour plates polygon groups panel border loops bevel thickness gap cut surface emb masked border"
         }
         Action::BrushSize => "radius diameter brush size",
         Action::BrushStrength => "intensity power brush strength",

@@ -449,3 +449,93 @@ fn painted_sphere_boundary_uses_density_appropriate_initial_widths() {
     app.dispatch(Command::ApplyProjection, &ctx);
     assert_eq!(app.document.model_count(), 2, "{}", app.ui.status);
 }
+
+#[test]
+fn panels_cut_applies_in_place_in_one_step_and_survives_undo_redo_and_reopening() {
+    let (mut app, ctx) = setup();
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts();
+    app.dispatch(Command::OpenPanels, &ctx);
+    app.ui.projection.panels.cut = true;
+    app.ui.projection.panels.options.border.loops = 3;
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish(&mut app);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    let draft = app.projection.draft.as_ref().expect(&app.ui.status);
+    assert!(draft.panels.as_ref().unwrap().cut);
+    let expected = (*draft.mesh).clone();
+    assert!(expected.vertices.len() > before.mesh.vertices.len());
+    // Cut mode ignores shell-only controls, including their validation and stale key.
+    app.ui.projection.panels.options.thickness = 0.;
+    app.ui.projection.panels.options.bevel = 200.;
+    app.ui.projection.panels.options.border.gap = 100.;
+    app.dispatch(Command::ApplyProjection, &ctx);
+    assert_eq!(app.document.mesh(), &expected, "{}", app.ui.status);
+    assert_eq!(app.document.model_count(), 1);
+    assert_eq!(app.document.active_model_index(), before.scene.active_index);
+    assert_eq!(app.document.geometry_snapshot().name, before.name);
+    assert_eq!(app.document.undo_label(), Some("Panel cut"));
+    let manifest = app.document.diagnostic_manifest(Default::default());
+    let recorded = manifest
+        .transitions
+        .last()
+        .unwrap()
+        .settings_at_edit_start
+        .as_ref()
+        .unwrap()
+        .view_input
+        .as_ref()
+        .unwrap();
+    assert_eq!(recorded["panel_generation"]["cut_surface"], true);
+    assert_eq!(recorded["panel_generation"]["border_loops"], 3);
+    assert_eq!(app.document.history_counts().0, history.0 + 1);
+    let after = app.document.geometry_snapshot();
+    app.document.undo();
+    assert_eq!(app.document.geometry_snapshot(), before);
+    app.document.redo();
+    assert_eq!(app.document.geometry_snapshot(), after);
+    let encoded = serde_json::to_string(&app.document.project()).unwrap();
+    let mut loaded = Document::default();
+    loaded
+        .replace_project(serde_json::from_str(&encoded).unwrap(), "cut.clay")
+        .unwrap();
+    assert_eq!(loaded.geometry_snapshot(), after);
+}
+#[test]
+fn panels_cut_mode_changes_stale_settings_and_cancel_leave_source_untouched() {
+    let (mut app, ctx) = setup();
+    let before = app.document.geometry_snapshot();
+    app.dispatch(Command::OpenPanels, &ctx);
+    app.ui.projection.panels.cut = true;
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish(&mut app);
+    app.ui.projection.panels.cut = false;
+    app.dispatch(Command::ApplyProjection, &ctx);
+    assert!(app.ui.status.contains("settings changed"));
+    assert_eq!(app.document.geometry_snapshot(), before);
+    app.ui.projection.panels.cut = true;
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish(&mut app);
+    app.ui.projection.panels.options.border.loops += 1;
+    app.dispatch(Command::ApplyProjection, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    app.dispatch(Command::PreviewProjection, &ctx);
+    app.dispatch(Command::CancelProjection, &ctx);
+    finish(&mut app);
+    assert_eq!(app.document.geometry_snapshot(), before);
+}
+#[test]
+fn panels_cut_can_edit_at_the_submodel_limit_without_creating_a_backing_copy() {
+    let (mut app, ctx) = setup();
+    for _ in 1..64 {
+        app.document.duplicate_model(false).unwrap();
+    }
+    app.ui.projection.panels.cut = true;
+    app.dispatch(Command::OpenPanels, &ctx);
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish(&mut app);
+    assert!(app.projection.draft.is_some(), "{}", app.ui.status);
+    app.dispatch(Command::ApplyProjection, &ctx);
+    assert_eq!(app.document.model_count(), 64, "{}", app.ui.status);
+    assert_eq!(app.document.undo_label(), Some("Panel cut"));
+}

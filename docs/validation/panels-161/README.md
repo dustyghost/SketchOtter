@@ -59,3 +59,23 @@ A separate full-sphere regression reproduces a real source collision with smooth
 The original diagnostic export did not retain panel controls, so its exact failed settings cannot be recovered. New diagnostic manifests include panel selection, dimensions, smoothing, corner preservation and preview state, without model names or paths in that settings block. All 29 focused checks passed; the full-project Vulkan interaction review passed. Full CI remains pending.
 
 For the additional manual comparison, set `CLAY_PANEL_ROUND_OUTLINE=1` alongside `CLAY_PANEL_REPRO` when running `panels_mask_and_painted_boundary_offscreen_review`.
+
+## Panel cut (EMB-style topology)
+
+The new **Panel cut** option takes the cleaned mask/group outline and welds it and its support loops into the active mesh. The reference is ZBrush’s [Edgeloop Masked Border and GroupsLoops](https://help.maxon.net/zbr/en-us/Content/html/reference-guide/tool/polymesh/geometry/geometry.html). The workflow retains SketchOtter’s complete-face threshold selection. **Added loops** selects 1–8 new rows, with independent support width and spacing. Shell-only thickness, offset, gap, bevel/profile/segments and wall controls are disabled and ignored by the cut preview key. The original extraction mode stays available.
+
+| Review | What it shows |
+| --- | --- |
+| [Whole-surface wireframe](panels-cut-wire.png) | Original model present around the rounded cut, four added loops selected and shell controls disabled. |
+| [Support-row detail](panels-cut-detail-wire.png) | Four continuous quad rows welded between the cut boundary and the retained panel interior. |
+| [Applied surface, mask cleared](panels-cut-clean-shaded.png) | The blue PolyGroup remains part of the same flush surface. Clearing the selection mask is a separate, undoable operation used only to remove mask shading for this image. |
+
+The local patch retains original vertices outside the outline exactly. Smoothing can make an old adjoining diagonal fold; safe edge flips repair those faces locally, preserving vertex attributes and compatible corner UVs. The repair refuses cut/support edges, existing UV/shading/crease seams, hidden faces and category boundaries. Necessary adjoining triangles are explicitly permitted; no whole-model remesh occurs. New support faces have unmapped UVs. Unsupported folds, crossings and incompatible shared corners fail without editing the scene.
+
+Apply edits one active model in place with one **Panel cut** Undo step. No panel or backing copy is added, so cuts can be applied at the 64-submodel limit. Like Slice, the topology edit resets the active subdivision stack; Undo restores the source stack. The preview remains private, cancellable and guarded by scene revision and enabled controls. The history diagnostic captures the exact cut/loop settings handed to its preview worker.
+
+The focused `panels` selection passed 37 tests (four GPU/manual tools ignored), covering the existing extraction mode plus cut closure/winding, holes, islands, shared boundaries, protected inputs, UV seams, symmetry, working budgets, stale controls, Cancel, Undo/Redo and persistence. Twelve controller checks also passed after the diagnostic snapshot change. The Vulkan interaction review on the saved sphere passed a real Added loops slider change from 2 to 4, a drag over disabled thickness, Round outline, Apply, Undo/Redo and Cancel. The same interaction test is now called by GPU CI with its small built-in fixture. Full CI remains pending.
+
+Manual source review uses the same software-Vulkan environment as above, with `CLAY_PANEL_REPRO` pointing to the saved masked project, and test filter `panels_cut_offscreen_review`. Omit that variable for the built-in CI fixture. Original diagnostic bundles remain local and are not included in this change.
+
+The built-in CI fixture and existing 800 × 560 Apply/Cancel GPU review also passed locally on the final UI. Full remote CI is still pending.

@@ -3,6 +3,7 @@ use super::*;
 use crate::sculpt::{PanelOptions, PanelProfile, Symmetry};
 #[derive(Clone, PartialEq)]
 pub(crate) struct PanelKey {
+    pub cut: bool,
     pub mask_threshold: Option<f32>,
     pub groups: Vec<usize>,
     pub options: PanelOptions,
@@ -11,13 +12,15 @@ pub(crate) struct PanelKey {
 }
 impl PanelKey {
     pub fn same_selection(&self, other: &Self) -> bool {
-        self.groups == other.groups
+        self.cut == other.cut
+            && self.groups == other.groups
             && self.mask_threshold == other.mask_threshold
             && self.protect == other.protect
             && self.symmetry == other.symmetry
     }
 }
 pub(crate) struct PanelControls {
+    pub cut: bool,
     pub use_mask: bool,
     pub groups: Vec<usize>,
     pub options: PanelOptions,
@@ -27,6 +30,7 @@ pub(crate) struct PanelControls {
 impl Default for PanelControls {
     fn default() -> Self {
         Self {
+            cut: false,
             use_mask: false,
             groups: Vec::new(),
             options: Default::default(),
@@ -38,6 +42,7 @@ impl Default for PanelControls {
 impl PanelControls {
     pub fn key(&self, document: &Document) -> PanelKey {
         PanelKey {
+            cut: self.cut,
             mask_threshold: self.use_mask.then(|| {
                 document
                     .model(document.active_model_index())
@@ -46,7 +51,17 @@ impl PanelControls {
                     .mask_threshold
             }),
             groups: self.groups.clone(),
-            options: self.options,
+            options: if self.cut {
+                PanelOptions {
+                    border: crate::sculpt::PanelBorder {
+                        gap: 0.,
+                        ..self.options.border
+                    },
+                    ..Default::default()
+                }
+            } else {
+                self.options
+            },
             protect: self.protect,
             symmetry: document.symmetry().clone(),
         }
@@ -71,12 +86,22 @@ impl UiState {
             .show(ctx, |ui| {
                 let state=&mut self.projection;
                 let old=state.panels.key(document);
-                ui.label("One editable submodel per group. Source kept hidden below the panels.");
+                let previous_cut = state.panels.cut;
                 ui.horizontal_wrapped(|ui| {
-                    if ui.add_enabled(!state.busy && (state.panels.use_mask || !state.panels.groups.is_empty()), egui::Button::new("Preview panels")).clicked() {
+                    ui.selectable_value(&mut state.panels.cut, false, "Extract panels");
+                    ui.selectable_value(&mut state.panels.cut, true, "Panel cut");
+                });
+                if state.panels.cut != previous_cut && state.panels.cut {
+                    self.wire = true;
+                    self.show_polygroups = true;
+                    state.panels.outline = false;
+                }
+                ui.label(if state.panels.cut { "Cut outline/support loops into the active surface. Inspect in Wireframe. Apply is one Undo step." } else { "One editable submodel per group. Source kept hidden below the panels." });
+                ui.horizontal_wrapped(|ui| {
+                    if ui.add_enabled(!state.busy && (state.panels.use_mask || !state.panels.groups.is_empty()), egui::Button::new(if state.panels.cut { "Preview cut" } else { "Preview panels" })).clicked() {
                         commands.push(Command::PreviewProjection);
                     }
-                    if ui.add_enabled(!state.busy && state.report.as_ref().is_some_and(SurfaceReport::can_apply), egui::Button::new("Apply panels")).clicked() {
+                    if ui.add_enabled(!state.busy && state.report.as_ref().is_some_and(SurfaceReport::can_apply), egui::Button::new(if state.panels.cut { "Apply cut" } else { "Apply panels" })).clicked() {
                         commands.push(Command::ApplyProjection);
                     }
                     if ui.button("Cancel").clicked() { commands.push(Command::CancelProjection); }
@@ -92,10 +117,10 @@ impl UiState {
                 egui::ScrollArea::vertical().max_height((ctx.content_rect().height()-230.).max(120.)).show(ui, |ui| {
                     ui.add_enabled_ui(!state.busy, |ui| {
                         let panel=&mut state.panels;
-                        ui.checkbox(&mut panel.use_mask, "Use mask as panel selection").on_hover_text("Create a vertex group from complete masked faces at the selection threshold, then generate panels in the same Apply step. The source mask stays intact.");
+                        ui.checkbox(&mut panel.use_mask, "Use mask as panel selection").on_hover_text(if panel.cut { "Use complete masked faces as the cut region. The group and surface topology are committed together on Apply." } else { "Create a vertex group from complete masked faces at the selection threshold, then generate panels in the same Apply step. The source mask stays intact." });
                         if panel.use_mask {
-                            ui.label("Masked faces become a new Mask panel group on the output. Disconnected islands share that group.");
-                            ui.weak("The mask selects the panel here; it does not protect those faces from generation. Hidden faces remain protected.");
+                            ui.label(if panel.cut { "Masked faces become a Mask cut group on the active surface. Islands share that group." } else { "Masked faces become a new Mask panel group on the output. Disconnected islands share that group." });
+                            ui.weak(if panel.cut { "The mask selects the cut region here. Hidden faces remain protected." } else { "The mask selects the panel here; it does not protect those faces from generation. Hidden faces remain protected." });
                         } else {
                         ui.label("Polygon groups");
                         let available: std::collections::BTreeSet<_> = document.mesh().polygroups.iter().copied().filter(|&g| g>0).collect();
@@ -115,8 +140,11 @@ impl UiState {
                         ui.weak(if document.symmetry().enabled { "Symmetry includes matching whole groups. Mismatched groups are rejected." } else { "Symmetry is off. Only the checked groups are generated." });
                         ui.separator();
                         ui.horizontal_wrapped(|ui| {
-                            if ui.button("Fit border to mesh").on_hover_text("Reduce gap, border width and bevel together to fit the source edge spacing. Thickness and offset stay unchanged. Preview again to validate.").clicked() {
-                                panel.options = document.mesh().fit_panel_border(panel.options);
+                            if ui.button("Fit border to mesh").on_hover_text(if panel.cut { "Reduce support width to fit source edge spacing. Preview again to validate." } else { "Reduce gap, border width and bevel together to fit the source edge spacing. Thickness and offset stay unchanged. Preview again to validate." }).clicked() {
+                                if panel.cut {
+                                let cut = PanelOptions { bevel: 0., border: crate::sculpt::PanelBorder { gap: 0., ..panel.options.border }, ..Default::default() };
+                                panel.options.border.width = document.mesh().fit_panel_border(cut).border.width;
+                            } else { panel.options = document.mesh().fit_panel_border(panel.options); }
                             }
                             if ui.button("Round outline").on_hover_text("Round stair-step boundaries: set smoothing to 1 and preserve turns to 120°, rebuild the preview, and hide the original gold outline to show the result. Thickness, gap and bevel stay unchanged.").clicked() {
                                 panel.options.border.smoothing = 1.;
@@ -125,7 +153,10 @@ impl UiState {
                                 round_outline = true;
                             }
                         });
+                        let cutting = panel.cut;
                         let o=&mut panel.options;
+                        if cutting { outline_controls(ui,o,true); }
+                        ui.add_enabled_ui(!cutting, |ui| {
                         ui.add(egui::DragValue::new(&mut o.thickness).range(0.00001..=100.).speed(0.001).prefix("Thickness "));
                         ui.add(egui::DragValue::new(&mut o.offset).range(-100. ..=100.).speed(0.001).prefix("Normal offset "));
                         ui.horizontal(|ui| {
@@ -142,17 +173,9 @@ impl UiState {
                         });
                         ui.add(egui::Slider::new(&mut o.segments, 1..=8).text("Bevel segments"));
                         ui.add(egui::Slider::new(&mut o.wall_loops, 0..=8).text("Wall support loops"));
-                        ui.separator();
-                        ui.label("Surface border reconstruction");
-                        ui.add(egui::DragValue::new(&mut o.border.width).range(0.00001..=100.).speed(0.001).prefix("Border width "));
-                        ui.add(egui::Slider::new(&mut o.border.loops, 1..=8).text("Surface border loops"));
-                        ui.add(egui::Slider::new(&mut o.border.spacing, 0.25..=4.).text("Loop spacing"))
-                            .on_hover_text("1 is uniform. Higher values place support closer to the bevel; dimensions stay fixed.");
-                        ui.add(egui::Slider::new(&mut o.border.smoothing, 0. ..=1.).text("Outline smoothing"));
-                        ui.add(egui::Slider::new(&mut o.border.corner_angle, 15. ..=150.).text("Preserve turns ≥"))
-                            .on_hover_text("Turns at or above this angle and crease endpoints stay pinned. Raise it deliberately to smooth staircase boundaries; inspect the gold source outline.");
-                        ui.weak("Only boundary vertices and their incident faces are reconstructed. Interior connectivity stays intact. New border and wall faces inherit the group and outline attributes; their UVs are unmapped.");
-                        ui.weak(format!("Uses current subdivision level {}. Output has no subdivision stack; the source keeps its complete stack and paths.", document.mesh_settings().level()));
+                        }).response.on_disabled_hover_text("Shell controls apply to Extract panels. Panel cut edits only surface topology.");
+                        if !cutting { outline_controls(ui,o,false); }
+                        ui.weak(if cutting { format!("Uses current subdivision level {}. Apply resets this subdivision stack; Undo restores it.", document.mesh_settings().level()) } else { format!("Uses current subdivision level {}. Output has no subdivision stack; the source keeps its complete stack and paths.", document.mesh_settings().level()) });
                     });
                 });
                 if old!=state.panels.key(document) || round_outline {
@@ -165,4 +188,40 @@ impl UiState {
         }
         commands
     }
+}
+
+fn outline_controls(ui: &mut egui::Ui, o: &mut PanelOptions, cutting: bool) {
+    ui.separator();
+    ui.label(if cutting {
+        "Surface cut loops"
+    } else {
+        "Surface border reconstruction"
+    });
+    ui.add(
+        egui::DragValue::new(&mut o.border.width)
+            .range(0.00001..=100.)
+            .speed(0.001)
+            .prefix(if cutting {
+                "Support width "
+            } else {
+                "Border width "
+            }),
+    );
+    ui.add(
+        egui::Slider::new(&mut o.border.loops, 1..=8).text(if cutting {
+            "Added loops"
+        } else {
+            "Surface border loops"
+        }),
+    );
+    ui.add(egui::Slider::new(&mut o.border.spacing, 0.25..=4.).text("Loop spacing"))
+        .on_hover_text(if cutting {
+            "1 is uniform. Higher values concentrate added loops near the cut outline."
+        } else {
+            "1 is uniform. Higher values place support closer to the bevel; dimensions stay fixed."
+        });
+    ui.add(egui::Slider::new(&mut o.border.smoothing, 0. ..=1.).text("Outline smoothing"));
+    ui.add(egui::Slider::new(&mut o.border.corner_angle, 15. ..=150.).text("Preserve turns ≥"))
+                            .on_hover_text("Turns at or above this angle and crease endpoints stay pinned. Raise it deliberately to smooth staircase boundaries; inspect the gold source outline.");
+    ui.weak(if cutting { "Welded surface loops. Inspect the cut in Wireframe or polygon-group colours. New support-strip UVs are unmapped." } else { "Only boundary vertices and their incident faces are reconstructed. Interior connectivity stays intact. New border and wall faces inherit the group and outline attributes; their UVs are unmapped." });
 }

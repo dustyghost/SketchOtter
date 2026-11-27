@@ -15,6 +15,7 @@ pub(super) struct ProjectionDraft {
     pub panels: Option<PanelDraft>,
 }
 pub(super) struct PanelDraft {
+    pub cut: bool,
     pub panels: Vec<crate::sculpt::GeneratedPanel>,
     pub outlines: Vec<Vec<crate::sculpt::Vec3>>,
     pub key: crate::ui::PanelKey,
@@ -225,6 +226,18 @@ impl App {
             .take()
             .ok_or("Preview the surface edit before applying it")?;
         if let Some(panels) = draft.panels {
+            if panels.cut {
+                let result = self.document.apply_panel_cut(
+                    (*draft.mesh).clone(),
+                    draft.revision,
+                    Some(draft.settings),
+                );
+                self.cancel_projection();
+                if result.is_ok() {
+                    self.ui.status = "Panel outline cut into the active surface. Undo restores the original topology.".into();
+                }
+                return result;
+            }
             if panels.panels.is_empty() {
                 return Err("Preview panels before applying the shell".into());
             }

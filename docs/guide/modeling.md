@@ -872,6 +872,20 @@ Widths that cross holes, pinch narrow areas, reverse faces, or intersect another
 
 See the [panel visual review](../validation/panels-161/README.md) for holes, concave and narrow regions, islands, irregular boundaries, profile comparisons and subdivision examples.
 
+### Cut panel outlines into the surface
+
+Choose **Panel cut** at the top of **Generate panels** to rebuild the cleaned outline and its support loops on the active mesh. This is a topology cut inspired by ZBrush’s [Edgeloop Masked Border and GroupsLoops](https://help.maxon.net/zbr/en-us/Content/html/reference-guide/tool/polymesh/geometry/geometry.html). It uses the same complete-face mask threshold or polygon-group selection as panel extraction.
+
+1. Set **Added loops** (1–8), **Support width** and **Loop spacing**. Added loops are welded surface edges inside the selected region; they do not make a separate panel.
+2. Use **Round outline**, or tune smoothing and preserved turns, then **Preview cut**. Wireframe and polygon-group colours switch on when entering this mode. Source outlines remain the original, unsmoothed comparison.
+3. Inspect the entire surface, then **Apply cut**. The active submodel keeps its name and identity. One **Panel cut** Undo restores the original mesh and subdivision stack; saving and reopening retains the cut geometry.
+
+![Four added cut loops on the existing surface](../validation/panels-161/panels-cut-detail-wire.png)
+
+Thickness, normal offset, gap, bevel/profile/segments and wall loops are disabled in this mode. There is no intentional depth or raised panel: these controls describe a shell, while Panel cut adds topology to the existing surface. Like Slice, this edit uses the current stored subdivision level and resets its subdivision stack on Apply.
+
+Smoothing reprojects the outline onto the source and adjusts its adjoining faces. Where an old diagonal would fold, a small number of adjoining faces may become triangles. Faces across protected, hidden, categorical or UV/shading/crease boundaries cannot be retessellated; incompatible corners are rejected. Other vertex positions remain unchanged. Existing vertex attributes and retained UV corners survive; new support-strip faces are explicitly unmapped. Holes, islands and shared group boundaries remain welded, and the result is checked for closure when the source is closed, winding and self-intersections. Cancel, a stale preview or any failed check leaves the document unchanged.
+
 ## Thickness modifier
 
 ### Preview a shell

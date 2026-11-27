@@ -15,6 +15,10 @@ pub(crate) enum SurfaceMode {
 }
 
 pub(crate) enum SurfaceReport {
+    PanelCut {
+        groups: usize,
+        vertices: usize,
+    },
     Panels {
         count: usize,
         triangles: usize,
@@ -35,6 +39,7 @@ impl SurfaceReport {
     pub fn can_apply(&self) -> bool {
         match self {
             Self::Retopology { changed, .. } => *changed,
+            Self::PanelCut { vertices, .. } => *vertices > 0,
             Self::Panels { count, .. } => *count > 0,
             Self::PanelSelection { .. } => false,
             Self::Projection(r) => r.moved > 0,
@@ -43,8 +48,11 @@ impl SurfaceReport {
     }
     pub fn summary(&self) -> String {
         match self {
+            Self::PanelCut { groups, vertices } => {
+                format!("{groups} cut groups · {vertices} added vertices · active surface")
+            }
             Self::PanelSelection { count } => {
-                format!("{count} selected regions · Preview panels to build the shell")
+                format!("{count} selected regions · Preview to build the geometry")
             }
             Self::Panels { count, triangles } => {
                 format!("{count} closed panels · {triangles} triangles · source retained")

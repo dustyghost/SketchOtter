@@ -1,12 +1,16 @@
 //! Non-destructive polygon-group selection and perimeter reconstruction.
 use super::{Mesh, Vec3, edges::edge};
 use std::collections::{BTreeMap, BTreeSet};
+mod cuts;
+pub use cuts::PanelCutPreview;
 
 /// A selected group copied onto its own open surface. Coordinates and
 /// attributes are retained; perimeter cleanup and thickening are not applied.
 pub struct PanelRegion {
     pub group: usize,
     pub surface: Mesh,
+    source_vertices: Vec<usize>,
+    source_faces: Vec<usize>,
     /// Directed boundary cycles, including holes and disconnected islands.
     pub perimeters: Vec<Vec<usize>>,
 }
@@ -66,6 +70,17 @@ impl PanelRegion {
     ) -> Result<Mesh, String> {
         options.validate()?;
         check_cancel(cancelled)?;
+        let projection = super::projection::Surface::new(&self.surface, cancelled)?;
+        self.rebuild_border_on_surface(options, &projection, cancelled)
+    }
+    fn rebuild_border_on_surface(
+        &self,
+        options: PanelBorder,
+        surface: &super::projection::Surface<'_>,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<Mesh, String> {
+        options.validate()?;
+        check_cancel(cancelled)?;
         let source = &self.surface;
         let edges: usize = self.perimeters.iter().map(Vec::len).sum();
         let added = edges
@@ -78,7 +93,6 @@ impl PanelRegion {
         }
         let normals = source.angle_weighted_normals();
         let mut out = source.clone();
-        let surface = super::projection::Surface::new(source, cancelled)?;
         let mut budget = 10_000_000usize;
         let mut projected = |p: Vec3, origin: Vec3, strict: bool| -> Result<Vec3, String> {
             let distance = (p - origin).len().max(0.0001);
@@ -405,6 +419,8 @@ impl Mesh {
                 group,
                 surface,
                 perimeters,
+                source_vertices: old_vertices,
+                source_faces: old_faces,
             });
         }
         Ok(result)

@@ -52,7 +52,7 @@ impl App {
         self.ui.projection.mode = SurfaceMode::Panels;
         self.ui.projection.open = true;
         self.ui.status =
-            "Select polygon groups and preview panels. The source stays recoverable.".into();
+            "Choose Extract panels or Panel cut, then preview the selected mask or groups.".into();
         self.start_panel_selection()
     }
     pub(super) fn start_panel_selection(&mut self) -> Result<(), String> {
@@ -69,15 +69,16 @@ impl App {
             panel_work(gate, cancel, || {
                 let (mesh, groups, protect) = panel_input(mesh, &key, cancel)?;
                 let crate::sculpt::PanelSelection {
-                    display: mesh,
+                    display,
                     outlines,
                     count,
                 } = mesh.preview_panel_selection(&groups, protect, &key.symmetry, &cancel)?;
                 Ok(projection::SurfacePreview {
-                    mesh,
+                    mesh: if key.cut { mesh } else { display },
                     report: SurfaceReport::PanelSelection { count },
                     retopology_paths: Vec::new(),
                     panels: Some(projection::PanelDraft {
+                        cut: false,
                         panels: Vec::new(),
                         outlines,
                         key,
@@ -88,7 +89,7 @@ impl App {
         self.projection.worker = Some(projection::Worker {
             job,
             revision: self.document.display_revision(),
-            settings: self.document.capture_edit_settings(),
+            settings: self.capture_panel_edit_settings(),
             progress: None,
             panel_key: Some(worker_key),
         });
@@ -98,7 +99,9 @@ impl App {
     pub(super) fn start_panels(&mut self) -> Result<(), String> {
         self.document.require_panel_target()?;
         let key = self.ui.projection.panels.key(&self.document);
-        key.options.validate()?;
+        if !key.cut {
+            key.options.validate()?;
+        }
         self.invalidate_panel_preview();
         self.viewport.cancel(&mut self.document);
         let mesh = self.document.mesh().clone();
@@ -108,6 +111,29 @@ impl App {
         let job = BackgroundJob::start("sketchotter-panel-preview", move |cancel| {
             panel_work(gate, cancel, || {
                 let (mesh, groups, protect) = panel_input(mesh, &key, cancel)?;
+                if key.cut {
+                    let result = mesh.cut_panel_outlines(
+                        &groups,
+                        key.options.border,
+                        protect,
+                        &key.symmetry,
+                        &cancel,
+                    )?;
+                    return Ok(projection::SurfacePreview {
+                        report: SurfaceReport::PanelCut {
+                            groups: result.groups,
+                            vertices: result.added_vertices,
+                        },
+                        mesh: result.mesh,
+                        retopology_paths: Vec::new(),
+                        panels: Some(projection::PanelDraft {
+                            cut: true,
+                            panels: Vec::new(),
+                            outlines: result.outlines,
+                            key,
+                        }),
+                    });
+                }
                 let PanelPreview {
                     panels,
                     outlines,
@@ -128,6 +154,7 @@ impl App {
                     report,
                     retopology_paths: Vec::new(),
                     panels: Some(projection::PanelDraft {
+                        cut: false,
                         panels,
                         outlines,
                         key,
@@ -138,13 +165,28 @@ impl App {
         self.projection.worker = Some(projection::Worker {
             job,
             revision: self.document.display_revision(),
-            settings: self.document.capture_edit_settings(),
+            settings: self.capture_panel_edit_settings(),
             progress: None,
             panel_key: Some(worker_key),
         });
         self.ui.projection.busy = true;
-        self.ui.status = "Building panel borders, bevels and closed shells…".into();
+        self.ui.status = if self.ui.projection.panels.cut {
+            "Cutting outline and support loops into the active surface…"
+        } else {
+            "Building panel borders, bevels and closed shells…"
+        }
+        .into();
         Ok(())
+    }
+    fn capture_panel_edit_settings(&self) -> crate::diagnostics::EditSettings {
+        // Window controls may change after this frame's viewport diagnostic
+        // capture. Record the exact settings handed to this preview worker.
+        let mut settings = self.document.capture_edit_settings();
+        let view = settings
+            .view_input
+            .get_or_insert_with(|| serde_json::json!({}));
+        view["panel_generation"] = self.panel_diagnostic_settings();
+        settings
     }
     pub(super) fn invalidate_panel_preview(&mut self) {
         let retained = self
@@ -248,7 +290,7 @@ fn panel_input(
         return Err("Panel preview cancelled".into());
     }
     if let Some(threshold) = key.mask_threshold {
-        let name = mesh.unique_group_name("Mask panel");
+        let name = mesh.unique_group_name(if key.cut { "Mask cut" } else { "Mask panel" });
         let group = mesh.create_vertex_group(name, threshold, false)? + 1;
         if !mesh.polygroups.contains(&group) {
             return Err("No complete faces meet the mask threshold; mask more or lower the selection threshold".into());

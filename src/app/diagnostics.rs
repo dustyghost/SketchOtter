@@ -4,12 +4,12 @@ impl App {
         let options = self.ui.projection.layout;
         serde_json::json!({"backend":options.method.diagnostic_name(),"input_triangle_limit":options.input_triangle_limit,"target":options.target,"paths":self.ui.projection.flow_paths,"path_strength":options.flow,"path_reprojection_distance":self.paths.reproject_distance,"density_strength":options.density,"shape_adaptation":options.adaptive,"mirror_path_x":options.mirror_path_x,"preserve_sharp":options.preserve_sharp,"sharp_angle_degrees":options.sharp_angle_degrees,"symmetry_axis":options.symmetry_axis,"symmetry_center":options.symmetry_center,"symmetry_centreline":options.symmetry_centreline,"symmetry_source":options.symmetry_source,"target_model_id":self.document.active_model_id(),"source_vertices":self.document.mesh().vertices.len(),"source_triangles":self.document.mesh().triangles.len()})
     }
-    fn panel_diagnostic_settings(&self) -> serde_json::Value {
+    pub(super) fn panel_diagnostic_settings(&self) -> serde_json::Value {
         let panel = &self.ui.projection.panels;
         let o = panel.options;
         serde_json::json!({
             "open": self.ui.projection.open && self.ui.projection.mode == crate::ui::SurfaceMode::Panels,
-            "use_mask": panel.use_mask, "groups": panel.groups, "protect_mask": panel.protect,
+            "cut_surface": panel.cut, "use_mask": panel.use_mask, "groups": panel.groups, "protect_mask": panel.protect,
             "mask_threshold": self.document.model(self.document.active_model_index()).unwrap().metadata.mask_threshold,
             "thickness": o.thickness, "offset": o.offset, "bevel": o.bevel,
             "profile": format!("{:?}", o.profile), "segments": o.segments, "wall_loops": o.wall_loops,

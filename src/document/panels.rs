@@ -13,9 +13,6 @@ impl Document {
         if self.attached_array(self.active_model_index()).is_some() {
             return Err("Make the instance or array editable before generating panels".into());
         }
-        if self.model_count() >= 64 {
-            return Err("Free a submodel slot before generating panels".into());
-        }
         if !self.mesh().polygroups.iter().any(|&g| g > 0)
             && !self.mesh().mask.iter().any(|&m| m > 0.)
         {
@@ -95,5 +92,28 @@ impl Document {
         output.push(source);
         geometry.submodels.splice(active..active, output);
         self.replace_geometry_recorded(geometry, "Generate panels", settings)
+    }
+    pub(crate) fn apply_panel_cut(
+        &mut self,
+        mesh: Mesh,
+        revision: u64,
+        settings: Option<crate::diagnostics::EditSettings>,
+    ) -> Result<(), String> {
+        self.require_panel_target()?;
+        if revision != self.display_revision() {
+            return Err("The scene changed; preview the panel cut again".into());
+        }
+        mesh.validate()?;
+        crate::sculpt::fusion::validate_surface(&mesh)?;
+        if self.mesh().validate_closed().is_ok() {
+            mesh.validate_closed()?;
+        }
+        let mut geometry = self.geometry_snapshot();
+        geometry.mesh = mesh;
+        geometry.settings = crate::sculpt::MeshSettings {
+            resolution: geometry.settings.resolution,
+            ..Default::default()
+        };
+        self.replace_geometry_recorded(geometry, "Panel cut", settings)
     }
 }

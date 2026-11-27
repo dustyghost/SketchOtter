@@ -53,8 +53,8 @@ pub use primitive::{Primitive, PrimitiveKind};
 mod panels;
 mod thickness;
 pub use panels::{
-    GeneratedPanel, PanelBorder, PanelOptions, PanelPreview, PanelProfile, PanelRegion,
-    PanelSelection,
+    GeneratedPanel, PanelBorder, PanelCutPreview, PanelOptions, PanelPreview, PanelProfile,
+    PanelRegion, PanelSelection,
 };
 
 mod groups;

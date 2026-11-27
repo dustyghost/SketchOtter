@@ -313,3 +313,135 @@ fn panels_mask_and_painted_boundary_offscreen_review() {
     g.app.dispatch(Command::Undo, &g.ctx);
     assert_eq!(g.app.document.geometry_snapshot(), before);
 }
+
+#[test]
+#[ignore = "manual welded panel-cut UI review; requires Vulkan and CLAY_GUIDE_PREVIEW"]
+fn panels_cut_offscreen_review() {
+    let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut g = Guide::new(&directory, [1280, 1060]);
+    g.interactive = true;
+    g.toolbar = false;
+    if let Ok(path) = std::env::var("CLAY_PANEL_REPRO") {
+        g.app
+            .document
+            .replace_project(crate::persistence::load_project(&path).unwrap(), &path)
+            .unwrap();
+    } else {
+        let mut mesh = fixture("jagged");
+        mesh.mask = mesh
+            .vertices
+            .iter()
+            .map(|p| {
+                if p.0.abs() < 0.6 && p.1.abs() < 0.6 {
+                    0.8
+                } else {
+                    0.
+                }
+            })
+            .collect();
+        g.app
+            .document
+            .replace_geometry(Geometry::new(mesh))
+            .unwrap();
+    }
+    g.app.camera.yaw = 0.;
+    g.app.camera.pitch = 0.;
+    g.app.camera.zoom = 0.65;
+    g.app.camera.pan = Vec2::new(220., 0.);
+    let before = g.app.document.geometry_snapshot();
+    g.app.dispatch(Command::OpenPanels, &g.ctx);
+    crate::app::test_support::finish_projection(&mut g.app);
+    g.save("panels-cut-before");
+    click_guide_label(&mut g, "Panel cut");
+    crate::app::test_support::finish_projection(&mut g.app);
+    assert!(g.app.ui.projection.panels.cut);
+    assert!(g.app.ui.wire && g.app.ui.show_polygroups);
+    g.save("panels-cut-controls");
+    // A real pointer drag over a disabled shell control must do nothing.
+    let thickness = g.app.ui.projection.panels.options.thickness;
+    let point = g
+        .text_positions
+        .iter()
+        .find(|(text, _)| text.starts_with("Thickness "))
+        .expect("disabled thickness control visible")
+        .1;
+    g.frame(vec![
+        egui::Event::PointerMoved(point),
+        primary_event(point, true),
+    ]);
+    g.frame(vec![egui::Event::PointerMoved(point + Vec2::new(60., 0.))]);
+    g.frame(vec![
+        primary_event(point + Vec2::new(60., 0.), false),
+        egui::Event::PointerGone,
+    ]);
+    assert_eq!(g.app.ui.projection.panels.options.thickness, thickness);
+    let old_loops = g.app.ui.projection.panels.options.border.loops;
+    g.frame(Vec::new());
+    let label = g
+        .text_positions
+        .iter()
+        .find(|(text, _)| text == "Added loops")
+        .expect("Added loops visible above disabled controls")
+        .1;
+    let point = Pos2::new(label.x - 140., label.y);
+    g.frame(vec![
+        egui::Event::PointerMoved(point),
+        primary_event(point, true),
+    ]);
+    g.frame(vec![primary_event(point, false), egui::Event::PointerGone]);
+    assert!(
+        g.app.ui.projection.panels.options.border.loops > old_loops,
+        "actual Added loops slider changed"
+    );
+    click_guide_label(&mut g, "Round outline");
+    crate::app::test_support::finish_projection(&mut g.app);
+    let draft = g.app.projection.draft.as_ref().expect(&g.app.ui.status);
+    assert!(draft.panels.as_ref().unwrap().cut);
+    assert_eq!(g.app.document.geometry_snapshot(), before);
+    let boundary: usize = draft
+        .panels
+        .as_ref()
+        .unwrap()
+        .outlines
+        .iter()
+        .map(Vec::len)
+        .sum();
+    assert_eq!(
+        draft.mesh.vertices.len() - before.mesh.vertices.len(),
+        boundary * g.app.ui.projection.panels.options.border.loops as usize
+    );
+    g.save("panels-cut-wire");
+    g.app.camera.zoom = 1.6;
+    g.save("panels-cut-closeup-wire");
+    if std::env::var_os("CLAY_PANEL_REPRO").is_some() {
+        g.app.camera.zoom = 8.;
+        g.app.camera.pan = Vec2::new(220., 1000.);
+        g.save("panels-cut-detail-wire");
+        g.app.camera.zoom = 1.6;
+        g.app.camera.pan = Vec2::new(220., 0.);
+    }
+    g.app.ui.wire = false;
+    g.save("panels-cut-shaded");
+    let expected = (*g.app.projection.draft.as_ref().unwrap().mesh).clone();
+    click_guide_label(&mut g, "Apply cut");
+    assert_eq!(g.app.document.mesh(), &expected);
+    assert_eq!(g.app.document.model_count(), 1);
+    assert_eq!(g.app.document.undo_label(), Some("Panel cut"));
+    let after = g.app.document.geometry_snapshot();
+    g.app.dispatch(Command::ClearMask, &g.ctx);
+    g.save("panels-cut-clean-shaded");
+    g.app.dispatch(Command::Undo, &g.ctx);
+    assert_eq!(g.app.document.geometry_snapshot(), after);
+    g.app.dispatch(Command::Undo, &g.ctx);
+    assert_eq!(g.app.document.geometry_snapshot(), before);
+    g.app.dispatch(Command::Redo, &g.ctx);
+    assert_eq!(g.app.document.geometry_snapshot(), after);
+    g.app.dispatch(Command::Undo, &g.ctx);
+    g.app.dispatch(Command::OpenPanels, &g.ctx);
+    crate::app::test_support::finish_projection(&mut g.app);
+    g.save("panels-cut-cancel");
+    click_guide_label(&mut g, "Round outline");
+    click_guide_label(&mut g, "Cancel");
+    assert_eq!(g.app.document.geometry_snapshot(), before);
+}
