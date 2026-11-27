@@ -55,7 +55,16 @@ fn quarter_turn(app: &mut App, ctx: &egui::Context, center: Pos2) {
         output
             .shapes
             .iter()
-            .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "+45.0°"))
+            .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "+45.0°")),
+        "rotation at {center:?}: {:?}",
+        output
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::Shape::Text(t) => Some(t.galley.text()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
     );
     // The last movement exists only on release, and must still be applied.
     let end = arc(center, 3. * std::f32::consts::FRAC_PI_4);
@@ -468,5 +477,218 @@ fn universal_gizmo_pivot_moves_without_edit_and_rotation_and_scale_use_it() {
         assert_eq!(app.document.history_counts(), (1, 0));
         app.document.undo();
         assert_eq!(app.document.geometry_snapshot(), before);
+    }
+}
+
+#[test]
+fn gizmo_edit_rotation_preserves_model_history_and_adjusted_axes_drive_move_scale_and_rotation() {
+    for operation in [Op::Move, Op::Scale, Op::Rotate] {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        let rect = navigation_frame(&mut app, &ctx, vec![]);
+        app.document.invert_mask().unwrap();
+        app.document.undo();
+        app.document.mark_saved("gizmo.clay");
+        let before = app.document.geometry_snapshot();
+        app.dispatch(Command::TransformOperation(Op::Rotate), &ctx);
+        app.dispatch(Command::EditGizmo(true), &ctx);
+        quarter_turn(&mut app, &ctx, rect.center());
+        assert_eq!(app.document.geometry_snapshot(), before);
+        assert_eq!(app.document.history_counts(), (0, 1));
+        assert!(!app.document.is_dirty());
+        app.dispatch(Command::EditGizmo(false), &ctx);
+        app.dispatch(Command::TransformOperation(operation), &ctx);
+        let center = rect.center();
+        if operation == Op::Rotate {
+            // Rotated X points up; this edge-on ring rotates about world Y.
+            let start = center + Vec2::new(40., 0.);
+            drag_universal(&mut app, &ctx, start, start + Vec2::new(20., 0.));
+            for (a, b) in before
+                .mesh
+                .vertices
+                .iter()
+                .zip(&app.document.mesh().vertices)
+            {
+                assert!((a.1 - b.1).abs() < 1e-5);
+            }
+        } else {
+            let start = center + Vec2::new(0., -85.);
+            drag_universal(&mut app, &ctx, start, start + Vec2::new(0., -30.));
+            for (a, b) in before
+                .mesh
+                .vertices
+                .iter()
+                .zip(&app.document.mesh().vertices)
+            {
+                assert!((a.0 - b.0).abs() < 1e-5 && (a.2 - b.2).abs() < 1e-5);
+                if operation == Op::Scale {
+                    assert!((b.1 - a.1 * 0.3_f32.exp()).abs() < 1e-5);
+                } else {
+                    assert!(b.1 > a.1);
+                }
+            }
+        }
+        let after = app.document.geometry_snapshot();
+        assert_ne!(after, before);
+        assert_eq!(app.document.history_counts(), (1, 0));
+        app.dispatch(Command::Undo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        app.dispatch(Command::Redo, &ctx);
+        assert_eq!(app.document.geometry_snapshot(), after);
+    }
+}
+
+#[test]
+fn gizmo_edit_move_and_escape_restore_only_the_current_drag() {
+    let mut app = app();
+    let ctx = egui::Context::default();
+    let rect = navigation_frame(&mut app, &ctx, vec![]);
+    app.dispatch(Command::TransformOperation(Op::Universal), &ctx);
+    app.dispatch(Command::EditGizmo(true), &ctx);
+    let before = app.document.geometry_snapshot();
+    let center = rect.center();
+    // Axis move in edit mode changes only the session pivot.
+    drag_universal(
+        &mut app,
+        &ctx,
+        center + Vec2::new(130., 0.),
+        center + Vec2::new(160., 0.),
+    );
+    let moved = center + Vec2::new(30., 0.);
+    app.dispatch(Command::TransformOperation(Op::Rotate), &ctx);
+    let start = arc(moved, 0.5);
+    navigation_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), primary_event(start, true)],
+    );
+    navigation_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(arc(moved, 1.))],
+    );
+    navigation_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    );
+    navigation_frame(&mut app, &ctx, vec![primary_event(start, false)]);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    assert_eq!(app.document.history_counts(), (0, 0));
+    app.dispatch(Command::EditGizmo(false), &ctx);
+    app.dispatch(Command::TransformOperation(Op::Move), &ctx);
+    let start = moved + Vec2::new(85., 0.);
+    drag_universal(&mut app, &ctx, start, start + Vec2::new(20., 0.));
+    for (a, b) in before
+        .mesh
+        .vertices
+        .iter()
+        .zip(&app.document.mesh().vertices)
+    {
+        assert!(b.0 > a.0);
+        assert!((a.1 - b.1).abs() < 1e-5 && (a.2 - b.2).abs() < 1e-5);
+    }
+}
+
+#[test]
+fn gizmo_edit_reset_axes_space_and_submodel_restore_usual_axes() {
+    for reset in 0..4 {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        let rect = navigation_frame(&mut app, &ctx, vec![]);
+        app.dispatch(Command::TransformOperation(Op::Rotate), &ctx);
+        app.dispatch(Command::EditGizmo(true), &ctx);
+        quarter_turn(&mut app, &ctx, rect.center());
+        match reset {
+            0 => app.dispatch(Command::ResetTransformAxes, &ctx),
+            1 => app.dispatch(Command::ResetTransformGizmo, &ctx),
+            2 => app.dispatch(
+                Command::TransformSpace(crate::viewport::TransformSpace::Screen),
+                &ctx,
+            ),
+            _ => app.dispatch(Command::SelectSubmodel(0), &ctx),
+        }
+        app.dispatch(Command::EditGizmo(false), &ctx);
+        app.dispatch(Command::TransformOperation(Op::Move), &ctx);
+        let before = app.document.geometry_snapshot();
+        let start = rect.center() + Vec2::new(85., 0.);
+        drag_universal(&mut app, &ctx, start, start + Vec2::new(20., 0.));
+        for (a, b) in before
+            .mesh
+            .vertices
+            .iter()
+            .zip(&app.document.mesh().vertices)
+        {
+            assert!(b.0 > a.0);
+            assert!((a.1 - b.1).abs() < 1e-5 && (a.2 - b.2).abs() < 1e-5);
+        }
+    }
+}
+
+#[test]
+fn gizmo_edit_preserves_primitive_placement_and_scale_shortcut_cannot_edit_geometry() {
+    let mut app = app();
+    let ctx = egui::Context::default();
+    app.document.initialize_primitive().unwrap();
+    app.document.mark_saved("primitive.clay");
+    let rect = navigation_frame(&mut app, &ctx, vec![]);
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts();
+    app.dispatch(Command::TransformOperation(Op::Rotate), &ctx);
+    app.dispatch(Command::EditGizmo(true), &ctx);
+    quarter_turn(&mut app, &ctx, rect.center());
+    app.dispatch(Command::Action(Action::Scale), &ctx);
+    assert!(app.ui.edit_gizmo);
+    assert_eq!(app.ui.transform_operation, Op::Rotate);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    assert_eq!(app.document.history_counts(), history);
+    assert!(!app.document.is_dirty());
+    app.dispatch(Command::TransformMode(Mode::Sculpt), &ctx);
+    app.dispatch(Command::TransformOperation(Op::Universal), &ctx);
+    assert!(!app.ui.edit_gizmo);
+}
+
+#[test]
+fn gizmo_inline_affect_model_toggle_changes_target_without_starting_a_viewport_gesture() {
+    for operation in [
+        Op::Universal,
+        Op::Move,
+        Op::Scale,
+        Op::Rotate,
+        Op::PlacePivot,
+    ] {
+        let mut app = app();
+        let ctx = egui::Context::default();
+        app.dispatch(Command::TransformOperation(operation), &ctx);
+        navigation_frame(&mut app, &ctx, vec![]);
+        navigation_frame(&mut app, &ctx, vec![]);
+        let before = app.document.geometry_snapshot();
+        for edit in [true, false] {
+            let toggle = ctx
+                .data(|data| {
+                    data.get_temp::<egui::Rect>(egui::Id::new("gizmo_affect_model_toggle_response"))
+                })
+                .unwrap();
+            let point = toggle.center();
+            navigation_frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(point), primary_event(point, true)],
+            );
+            assert!(app.viewport.session.gesture.is_none());
+            navigation_frame(&mut app, &ctx, vec![primary_event(point, false)]);
+            assert_eq!(app.ui.edit_gizmo, edit);
+            assert!(app.viewport.session.gesture.is_none());
+            assert_eq!(app.document.geometry_snapshot(), before);
+            assert_eq!(app.document.history_counts(), (0, 0));
+            assert_eq!((app.camera.yaw, app.camera.pitch), (0., 0.));
+            navigation_frame(&mut app, &ctx, vec![]);
+        }
     }
 }

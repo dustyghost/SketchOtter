@@ -113,6 +113,9 @@ impl App {
         self.ui.selection_tool = None;
         self.ui.slice_active = false;
         self.viewport.finish_transform_drag(&mut self.document);
+        if mode != Mode::World || self.ui.transform_mode != Mode::World {
+            self.ui.edit_gizmo = false;
+        }
         self.ui.transform_mode = mode;
         self.ui.transform_operation = if mode == Mode::ActionLine {
             Op::PlaceLine
@@ -545,7 +548,7 @@ impl App {
             }
             Command::Undo => {
                 let dragging = self.viewport.session.gesture.is_some();
-                self.viewport.cancel(&mut self.document);
+                self.viewport.finish_transform_drag(&mut self.document);
                 if dragging {
                     self.viewport.wait_for_release();
                 }
@@ -559,7 +562,7 @@ impl App {
             }
             Command::Redo => {
                 let dragging = self.viewport.session.gesture.is_some();
-                self.viewport.cancel(&mut self.document);
+                self.viewport.finish_transform_drag(&mut self.document);
                 if dragging {
                     self.viewport.wait_for_release();
                 }
@@ -652,6 +655,34 @@ impl App {
                         "Primitive converted: geometry is now editable with sculpt brushes".into();
                 })
             }
+            Command::EditGizmo(edit) => {
+                self.viewport.finish_transform_drag(&mut self.document);
+                self.ui.edit_gizmo = edit;
+                self.ui.status = if edit {
+                    "Edit gizmo: move the pivot or rotate axes; geometry is unchanged. Esc cancels the current gizmo drag."
+                } else {
+                    "Affect model: transforms use the current gizmo pivot and axes"
+                }.into();
+                if edit
+                    && matches!(
+                        self.ui.transform_operation,
+                        crate::viewport::TransformOperation::Scale
+                            | crate::viewport::TransformOperation::Cage
+                    )
+                {
+                    self.ui.transform_operation = crate::viewport::TransformOperation::Universal;
+                }
+                Ok(())
+            }
+            Command::ResetTransformAxes | Command::ResetTransformGizmo => {
+                self.viewport.finish_transform_drag(&mut self.document);
+                self.viewport.reset_transform_axes();
+                if matches!(command, Command::ResetTransformGizmo) {
+                    self.viewport
+                        .reset_transform_pivot(&self.document, self.ui.transform_mode);
+                }
+                Ok(())
+            }
             Command::TransformSpace(space) => {
                 self.viewport.finish_transform_drag(&mut self.document);
                 self.ui.transform_space = space;
@@ -663,6 +694,11 @@ impl App {
             }
             Command::TransformOperation(operation) => {
                 use crate::viewport::{TransformMode as Mode, TransformOperation as Op};
+                if self.ui.edit_gizmo && operation == Op::Scale {
+                    self.ui.status =
+                        "Gizmos cannot be scaled; choose Affect model to scale geometry".into();
+                    return;
+                }
                 if operation == Op::Cage {
                     if !self.ui.boolean_enabled
                         && self.ui.transform_mode == Mode::World
@@ -692,6 +728,9 @@ impl App {
                     _ => self.ui.transform_mode,
                 };
                 self.activate_transform(mode);
+                if matches!(operation, Op::Scale | Op::Cage) {
+                    self.ui.edit_gizmo = false;
+                }
                 self.ui.transform_operation = operation;
                 self.ui.status = operation.hint().into();
                 Ok(())

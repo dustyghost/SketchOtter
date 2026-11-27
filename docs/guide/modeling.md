@@ -130,6 +130,32 @@ own direction/axis controls.
 
 Orbit to expose an axis facing the camera. Edge-on rotation rings accept a straight drag along the projected ring. Drag outside handles to orbit; choose **Done** to sculpt again.
 
+### Edit the gizmo without moving the model
+
+Choose **Edit gizmo** in World axes or Universal Transform, or use the compact
+icon selector beside the gizmo. The cube icon selects **Affect model**; the axes
+icon selects **Edit gizmo**. The active target is highlighted, and hovering an
+icon explains its action. The selector follows the pivot. Drag arrows to move
+the pivot or colored rings to rotate the axes. **Place pivot** reuses surface
+placement; **Move / rotate** returns to the combined controls. Scaling is hidden
+while editing the gizmo. Geometry, parametric primitive settings, saved project
+state and Undo/Redo history stay unchanged.
+
+Choose **Affect model** to move, rotate or scale the model using that pivot and
+those axes. Each geometry drag remains one Undo step; Undo/Redo retain the
+session gizmo. **Esc** during a gizmo drag restores its starting position and
+orientation; releasing, changing operation, camera or focus keeps the edit so
+far and requires a fresh press.
+
+**Reset… → Reset pivot** restores the active model's centre and keeps the axes.
+**Reset axes** restores the selected space's axes and keeps the pivot.
+**Reset gizmo** restores both. Changing space resets edited axes while preserving
+the pivot. Edited axes stay fixed in the scene when the camera moves, including
+axes edited from Screen space; reset axes to resume following the view. Changing
+submodel or opening a project discards the session pivot and axes. Action Line
+and Deformation frame keep their own controls; switching away from World axes
+leaves gizmo-edit mode.
+
 ### Deform a model with a frame
 
 Select a sculptable submodel and choose **Submodels → Deformation frame**. Convert a parametric primitive to a sculpting mesh first. Drag a teal corner in the view plane to pull or push the nearby surface. Orbit to pull in a different direction. Overlapping corner handles have short leader lines in face-on views.

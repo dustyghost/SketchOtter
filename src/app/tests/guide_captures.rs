@@ -5624,3 +5624,75 @@ fn interaction_batch_offscreen_review() {
     assert_eq!(g.app.ui.selected, 1);
     g.save("brush-switch-restored-sculpting");
 }
+
+#[test]
+#[ignore = "gizmo editing visual and interaction review; requires Vulkan and CLAY_GUIDE_PREVIEW"]
+fn gizmo_edit_offscreen_review() {
+    fn toggle_rect(g: &Guide) -> egui::Rect {
+        g.ctx
+            .data(|data| {
+                data.get_temp::<egui::Rect>(egui::Id::new("gizmo_affect_model_toggle_response"))
+            })
+            .unwrap()
+    }
+    fn click_inline_toggle(g: &mut Guide) {
+        let point = toggle_rect(g).center();
+        g.frame(vec![
+            egui::Event::PointerMoved(point),
+            primary_event(point, true),
+        ]);
+        assert!(g.app.viewport.session.gesture.is_none());
+        g.frame(vec![primary_event(point, false), egui::Event::PointerGone]);
+    }
+    let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    for size in [[1100, 800], [640, 480]] {
+        let mut g = Guide::new(&directory, size);
+        g.interactive = true;
+        g.app.camera.yaw = 0.;
+        g.app.camera.pitch = 0.;
+        g.app.dispatch(
+            Command::TransformOperation(crate::viewport::TransformOperation::Universal),
+            &g.ctx,
+        );
+        g.save(&format!("gizmo-initial-{}", size[0]));
+        click_inline_toggle(&mut g);
+        assert!(g.app.ui.edit_gizmo, "{}px: {}", size[0], g.app.ui.status);
+        let rect = g.frame(vec![]).0;
+        let before = g.app.document.geometry_snapshot();
+        let history = g.app.document.history_counts();
+        let center = rect.center();
+        // Rotate about Z on a visible part of the ring away from axis handles.
+        let radius = (rect.width().min(rect.height()) * 0.42).clamp(50., 130.) * (85. / 130.);
+        let point = |angle: f32| center + Vec2::new(angle.cos(), -angle.sin()) * radius;
+        let start = point(0.6);
+        g.frame(vec![
+            egui::Event::PointerMoved(start),
+            primary_event(start, true),
+        ]);
+        assert!(g.app.viewport.session.gesture == Some(Gesture::Transform));
+        g.frame(vec![egui::Event::PointerMoved(point(1.2))]);
+        g.frame(vec![primary_event(point(1.2), false)]);
+        assert_eq!(g.app.document.geometry_snapshot(), before);
+        assert_eq!(g.app.document.history_counts(), history);
+        let previous_toggle = toggle_rect(&g);
+        g.stroke(center, center + Vec2::new(20., 10.));
+        g.frame(vec![]);
+        assert!((toggle_rect(&g).min - previous_toggle.min - Vec2::new(20., 10.)).length() < 1.);
+        assert_eq!(g.app.document.geometry_snapshot(), before);
+        assert_eq!(g.app.document.history_counts(), history);
+        g.save(&format!("gizmo-edit-{}", size[0]));
+        click_inline_toggle(&mut g);
+        assert!(!g.app.ui.edit_gizmo);
+        g.save(&format!("gizmo-affect-model-{}", size[0]));
+        click_guide_label(&mut g, "Reset…");
+        click_guide_label(&mut g, "Reset axes");
+        click_guide_label(&mut g, "Edit gizmo");
+        click_guide_label(&mut g, "Place pivot");
+        click_guide_label(&mut g, "Move / rotate");
+        click_guide_label(&mut g, "Reset…");
+        click_guide_label(&mut g, "Reset gizmo");
+        assert_eq!(g.app.document.geometry_snapshot(), before);
+        g.app.viewport.destroy_renderer();
+    }
+}

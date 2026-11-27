@@ -673,6 +673,7 @@ impl App {
             enabled
                 && self.viewport.session.gesture.is_none()
                 && !self.viewport.modeling.dragging(),
+            toolbar_rect,
         );
         for command in controls.commands {
             self.dispatch(command, ui.ctx());
@@ -996,6 +997,7 @@ impl App {
                 },
                 transform_operation: self.ui.transform_operation,
                 transform_space: self.ui.transform_space,
+                edit_gizmo: self.ui.edit_gizmo,
                 invert_context: if self.ui.transform_mode != crate::viewport::TransformMode::Sculpt
                     || self.ui.slice_active
                     || temporary_slice
@@ -1119,6 +1121,9 @@ impl App {
         self.ui.instances.placing = self.viewport.object_brush.is_some();
         if std::mem::take(&mut self.viewport.array_selected) {
             self.ui.instances.array_edit = true;
+        }
+        if let Some(edit) = self.viewport.gizmo_edit_requested.take() {
+            self.dispatch(Command::EditGizmo(edit), ui.ctx());
         }
         if let Some(command) = self.viewport.array_command.take() {
             self.dispatch(Command::Instances(command), ui.ctx());

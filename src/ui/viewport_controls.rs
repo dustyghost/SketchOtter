@@ -298,6 +298,7 @@ impl UiState {
         rect: egui::Rect,
         document: &Document,
         enabled: bool,
+        transform_toolbar: Option<egui::Rect>,
     ) -> ControlsOutput {
         let enabled = enabled && !self.viewport_controls.editor_open && ctx.input(|i| i.focused);
         let mut output = ControlsOutput {
@@ -324,18 +325,32 @@ impl UiState {
         } else {
             rect.bottom() - 56.
         };
+        let mut launcher_position = compact
+            .as_ref()
+            .map_or(egui::pos2(rect.left() + 24., launcher_y), |layout| {
+                layout.launcher
+            });
+        // The launcher shares the foreground with the transform toolbar. Keep
+        // it from covering transform mode/space buttons as that toolbar grows.
+        if let Some(toolbar) = transform_toolbar
+            && toolbar.intersects(egui::Rect::from_min_size(
+                launcher_position,
+                egui::vec2(240., 40.),
+            ))
+        {
+            let right = toolbar.right() + 12.;
+            if right + 240. <= rect.right() - 146. {
+                launcher_position.x = right;
+            } else {
+                launcher_position.y = toolbar.bottom() + 8.;
+            }
+        }
         // Keep a route back to the editor even when all user controls have been removed.
         let launcher = egui::Area::new(egui::Id::new("viewport_controls_launcher"))
             .order(egui::Order::Foreground)
             .default_size(egui::vec2(240., 40.))
             .movable(false)
-            .fixed_pos(
-                compact
-                    .as_ref()
-                    .map_or(egui::pos2(rect.left() + 24., launcher_y), |layout| {
-                        layout.launcher
-                    }),
-            )
+            .fixed_pos(launcher_position)
             .constrain_to(rect)
             .show(ctx, |ui| {
                 ui.add_enabled_ui(enabled, |ui| {
@@ -689,7 +704,7 @@ mod compact_layout_tests {
                     ..Default::default()
                 },
                 |ctx| {
-                    state.viewport_controls(ctx, rect, &document, true);
+                    state.viewport_controls(ctx, rect, &document, true, None);
                 },
             );
         }
