@@ -32,8 +32,16 @@ pub(super) struct Worker {
     pub progress: Option<Arc<std::sync::Mutex<String>>>,
     pub panel_key: Option<crate::ui::PanelKey>,
 }
+pub(super) struct PanelDisplay {
+    pub key: crate::ui::PanelKey,
+    pub revision: u64,
+    pub mesh: Arc<Mesh>,
+    pub display: Option<crate::viewport::JoinDisplay>,
+    pub outlines: Vec<Vec<crate::sculpt::Vec3>>,
+}
 #[derive(Default)]
 pub(super) struct ProjectionState {
+    pub panel_display: Option<PanelDisplay>,
     pub panel_gate: Arc<std::sync::Mutex<()>>,
     pub worker: Option<Worker>,
     pub draft: Option<ProjectionDraft>,
@@ -72,6 +80,7 @@ impl App {
     pub(super) fn clear_projection_preview(&mut self) {
         self.projection.worker = None;
         self.projection.draft = None;
+        self.projection.panel_display = None;
         self.viewport.session.projection_preview = None;
         if self.ui.projection.mode == SurfaceMode::Panels {
             self.viewport.session.join_rims.clear();
@@ -150,7 +159,7 @@ impl App {
     }
     pub(super) fn poll_projection(&mut self) {
         if !self.panels_draft_current() {
-            self.clear_projection_preview();
+            self.invalidate_panel_preview();
             self.ui.status = "Scene or panel settings changed; preview the panels again".into();
         }
         if let Some(progress) = self
@@ -182,6 +191,7 @@ impl App {
                     retopology_paths,
                     panels,
                 }) => {
+                    self.projection.panel_display = None;
                     self.ui.status = report.summary();
                     self.ui.projection.report = Some(report);
                     self.projection.draft = Some(ProjectionDraft {
@@ -204,7 +214,7 @@ impl App {
     }
     pub(super) fn apply_projection(&mut self) -> Result<(), String> {
         if !self.panels_draft_current() {
-            self.clear_projection_preview();
+            self.invalidate_panel_preview();
             return Err(
                 "The scene changed or panel settings changed; preview the panels again".into(),
             );

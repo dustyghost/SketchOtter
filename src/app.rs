@@ -753,7 +753,7 @@ impl App {
             self.projection.density_display = None;
         }
         if !self.panels_draft_current() {
-            self.clear_projection_preview();
+            self.invalidate_panel_preview();
         }
         self.sync_panel_outlines();
         self.viewport.session.projection_preview = self
@@ -766,7 +766,14 @@ impl App {
                     .as_ref()
                     .map(|(_, mesh)| mesh.clone())
             })
-            .or_else(|| self.projection.draft.as_ref().map(|d| d.mesh.clone()));
+            .or_else(|| self.projection.draft.as_ref().map(|d| d.mesh.clone()))
+            .or_else(|| {
+                self.projection
+                    .panel_display
+                    .as_ref()
+                    .filter(|d| d.revision == self.document.display_revision())
+                    .map(|d| d.mesh.clone())
+            });
         self.viewport.session.projection_mode = self.ui.projection.open || self.ui.fusion.open;
         let layout_preview = self.ui.projection.open
             && self.ui.projection.mode == crate::ui::SurfaceMode::Retopology;
@@ -793,6 +800,13 @@ impl App {
                     .draft
                     .as_ref()
                     .and_then(|d| d.display.clone())
+                    .or_else(|| {
+                        self.projection
+                            .panel_display
+                            .as_ref()
+                            .filter(|d| d.revision == self.document.display_revision())
+                            .and_then(|d| d.display.clone())
+                    })
             }));
         self.viewport.session.show_join_patch = self.ui.fusion.show_patch;
         self.viewport.session.show_join_removed = self.ui.fusion.show_removed;

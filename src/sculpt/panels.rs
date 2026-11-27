@@ -807,6 +807,26 @@ impl PanelRegion {
     }
 }
 
+impl Mesh {
+    /// Conservative starting widths for dense painted boundaries. This never
+    /// relaxes validation or silently changes explicitly requested dimensions.
+    pub(crate) fn fit_panel_border(&self, mut options: PanelOptions) -> PanelOptions {
+        let shortest = self
+            .triangles
+            .iter()
+            .flat_map(|&[a, b, c]| [[a, b], [b, c], [c, a]])
+            .map(|[a, b]| (self.vertices[a] - self.vertices[b]).len())
+            .filter(|&length| length > 1e-6 && length.is_finite())
+            .fold(f32::INFINITY, f32::min);
+        let inset = options.border.width + options.border.gap * 0.5 + options.bevel;
+        let scale = (shortest * 0.18 / inset).min(1.);
+        options.border.width = (options.border.width * scale).max(0.00001);
+        options.border.gap *= scale;
+        options.bevel *= scale;
+        options
+    }
+}
+
 #[cfg(all(test, not(feature = "focused-retopology")))]
 mod tests {
     use super::*;

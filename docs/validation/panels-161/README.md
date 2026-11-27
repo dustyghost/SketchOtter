@@ -39,3 +39,11 @@ flock -n /home/mark/.cache/codex-build.lock env CLAY_GPU_SOFTWARE=1 WGPU_BACKEND
 ```
 
 The final focused run passed 22 checks selected by `panels`, all five Thickness tests and all seven existing projection/relaxation controller tests. Full formatting, lint, the full suite and other configured GPU regressions remain CI work. Local checks do not replace passing CI on the reviewed commit. Issue #161 remains **In progress** pending review and merge.
+
+## Painted-mask testing follow-up
+
+The direct mask workflow creates a new output vertex group and closed panel in a single Apply; it leaves the source mask and groups unchanged. Nine focused controller regressions cover it, including threshold selection, Cancel, stale settings, source retention, Undo/Redo and reopening. A geometry-only fixture retains the reported 174-vertex painted spherical boundary. The former fixed-width defaults exceed its first interior row; mesh-spacing defaults pass the existing winding, manifold and intersection checks. **Fit border to mesh** provides the same conservative reduction for explicitly chosen widths; oversized requests are still rejected.
+
+The full saved diagnostic stage before grouping was also checked with the real Vulkan viewport. [Shaded output](panels-painted-mask-shaded.png), [wireframe](panels-painted-mask-wire.png) and [changed thickness](panels-painted-mask-stale.png) show the generated panel and the retained view while settings are stale. Parameter changes disable Apply and retain the previous view until Preview panels updates it; the old view is ignored after source changes. These screenshots are a visual review, not an automatic pixel comparison. The original diagnostic bundle is not included in this change.
+
+To repeat the manual check, run `panels_mask_and_painted_boundary_offscreen_review` with the same GPU environment above. It uses the small regression fixture by default; optionally set `CLAY_PANEL_REPRO` to a saved project with a painted mask to review that complete source.

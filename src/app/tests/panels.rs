@@ -289,3 +289,163 @@ fn panels_seams_outside_selection_do_not_leak_from_retained_source_on_apply() {
     assert_eq!(app.document.mesh(), &expected);
     app.document.mesh().validate_closed().unwrap();
 }
+
+#[test]
+fn masked_region_becomes_group_and_panel_in_one_apply_without_changing_source() {
+    let (mut app, ctx) = setup();
+    let mut mesh = app.document.mesh().clone();
+    mesh.vertex_groups.clear();
+    mesh.polygroups.clear();
+    mesh.mask = mesh
+        .vertices
+        .iter()
+        .map(|p| if p.0 <= 0. { 0.8 } else { 0.2 })
+        .collect();
+    app.document.replace_geometry(Geometry::new(mesh)).unwrap();
+    let before = app.document.geometry_snapshot();
+    let history = app.document.history_counts();
+    app.dispatch(Command::OpenPanels, &ctx);
+    finish(&mut app);
+    assert!(app.ui.projection.panels.use_mask);
+    assert!(app.ui.projection.panels.protect); // Selection bypasses protection only in mask mode.
+    assert!(app.projection.draft.is_some(), "{}", app.ui.status);
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish(&mut app);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    assert_eq!(app.document.history_counts(), history);
+    let preview = app
+        .projection
+        .draft
+        .as_ref()
+        .expect(&app.ui.status)
+        .panels
+        .as_ref()
+        .unwrap();
+    assert_eq!(preview.panels.len(), 1);
+    let expected = preview.panels[0].mesh.clone();
+    assert_eq!(expected.vertex_groups[0].name, "Mask panel");
+    assert!(expected.vertices.iter().all(|p| p.0 < 0.01));
+    app.dispatch(Command::ApplyProjection, &ctx);
+    assert_eq!(app.document.model_count(), 2, "{}", app.ui.status);
+    assert_eq!(app.document.mesh(), &expected);
+    assert_eq!(app.document.model(1).unwrap().mesh, &before.mesh);
+    assert_eq!(app.document.history_counts().0, history.0 + 1);
+    let after = app.document.geometry_snapshot();
+    app.document.undo();
+    assert_eq!(app.document.geometry_snapshot(), before);
+    app.document.redo();
+    assert_eq!(app.document.geometry_snapshot(), after);
+    let project = serde_json::to_string(&app.document.project()).unwrap();
+    let mut reopened = Document::default();
+    reopened
+        .replace_project(serde_json::from_str(&project).unwrap(), "mask-panels.clay")
+        .unwrap();
+    assert_eq!(reopened.geometry_snapshot(), after);
+}
+
+#[test]
+fn mask_panel_selection_respects_threshold_cancel_staleness_and_group_protection() {
+    let (mut app, ctx) = setup();
+    let mut mesh = app.document.mesh().clone();
+    mesh.mask = vec![0.2; mesh.vertices.len()];
+    app.document.replace_geometry(Geometry::new(mesh)).unwrap();
+    let before = app.document.geometry_snapshot();
+    app.dispatch(Command::OpenPanels, &ctx);
+    finish(&mut app);
+    assert!(
+        app.ui
+            .projection
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("No complete faces")
+    );
+    app.dispatch(Command::CancelProjection, &ctx);
+    assert_eq!(app.document.geometry_snapshot(), before);
+    app.document.set_mask_threshold(0.1).unwrap();
+    app.dispatch(Command::OpenPanels, &ctx);
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish(&mut app);
+    assert!(app.projection.draft.is_some(), "{}", app.ui.status);
+    app.ui.projection.panels.use_mask = false;
+    app.dispatch(Command::ApplyProjection, &ctx);
+    assert!(
+        app.ui.status.contains("settings changed"),
+        "{}",
+        app.ui.status
+    );
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish(&mut app);
+    assert!(
+        app.ui
+            .projection
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("masked vertices")
+    );
+    app.dispatch(Command::CancelProjection, &ctx);
+    assert_eq!(app.document.model_count(), 1);
+    assert_eq!(app.document.mesh(), &before.mesh);
+}
+
+#[test]
+fn panel_parameter_changes_retain_the_last_view_without_allowing_stale_apply() {
+    let (mut app, ctx) = setup();
+    app.dispatch(Command::OpenPanels, &ctx);
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish(&mut app);
+    let expected = app.projection.draft.as_ref().unwrap().mesh.clone();
+    for thickness in [0.09, 0.1, 0.11] {
+        app.ui.projection.panels.options.thickness = thickness;
+        app.dispatch(Command::ClearProjectionPreview, &ctx);
+        app.poll_projection();
+        assert!(app.projection.draft.is_none());
+        assert!(app.projection.worker.is_none());
+        assert_eq!(
+            *app.projection.panel_display.as_ref().unwrap().mesh,
+            *expected
+        );
+        assert!(app.ui.projection.report.is_none());
+    }
+    app.dispatch(Command::PreviewProjection, &ctx);
+    assert_eq!(
+        *app.projection.panel_display.as_ref().unwrap().mesh,
+        *expected
+    );
+    finish(&mut app);
+    assert!(app.projection.panel_display.is_none());
+    assert!(app.projection.draft.is_some());
+    app.ui.projection.panels.options.thickness = 0.12;
+    app.dispatch(Command::ClearProjectionPreview, &ctx);
+    app.document.duplicate_model(false).unwrap();
+    app.poll_projection();
+    // Even cached views may never replace a changed source.
+    assert!(
+        app.projection
+            .panel_display
+            .as_ref()
+            .is_none_or(|d| d.revision != app.document.display_revision())
+    );
+    app.dispatch(Command::CancelProjection, &ctx);
+    assert!(app.projection.panel_display.is_none());
+}
+
+#[test]
+fn painted_sphere_boundary_uses_density_appropriate_initial_widths() {
+    let (mut app, ctx) = setup();
+    let mesh: crate::sculpt::Mesh = serde_json::from_str(include_str!(
+        "../../sculpt/fixtures/panel-painted-boundary.json"
+    ))
+    .unwrap();
+    app.document.replace_geometry(Geometry::new(mesh)).unwrap();
+    app.dispatch(Command::OpenPanels, &ctx);
+    let options = app.ui.projection.panels.options;
+    assert!(options.border.width < crate::sculpt::PanelOptions::default().border.width);
+    app.dispatch(Command::PreviewProjection, &ctx);
+    finish(&mut app);
+    let draft = app.projection.draft.as_ref().expect(&app.ui.status);
+    draft.mesh.validate_closed().unwrap();
+    app.dispatch(Command::ApplyProjection, &ctx);
+    assert_eq!(app.document.model_count(), 2, "{}", app.ui.status);
+}

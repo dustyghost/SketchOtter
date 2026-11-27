@@ -16,6 +16,11 @@ impl App {
         }
         self.viewport.cancel(&mut self.document);
         self.clear_projection_preview();
+        if self.ui.projection.panels.options == Default::default() {
+            self.ui.projection.panels.options =
+                self.document.mesh().fit_panel_border(Default::default());
+        }
+        self.ui.projection.panels.use_mask = self.document.mesh().mask.iter().any(|&m| m > 0.);
         let polygons = self.document.mesh().polygons();
         let selected: std::collections::BTreeSet<_> = self
             .viewport
@@ -53,8 +58,8 @@ impl App {
     pub(super) fn start_panel_selection(&mut self) -> Result<(), String> {
         self.document.require_panel_target()?;
         let key = self.ui.projection.panels.key(&self.document);
-        self.clear_projection_preview();
-        if key.groups.is_empty() {
+        self.invalidate_panel_preview();
+        if key.groups.is_empty() && key.mask_threshold.is_none() {
             return Ok(());
         }
         let mesh = self.document.mesh().clone();
@@ -62,12 +67,12 @@ impl App {
         let gate = self.projection.panel_gate.clone();
         let job = BackgroundJob::start("sketchotter-panel-selection", move |cancel| {
             panel_work(gate, cancel, || {
+                let (mesh, groups, protect) = panel_input(mesh, &key, cancel)?;
                 let crate::sculpt::PanelSelection {
                     display: mesh,
                     outlines,
                     count,
-                } =
-                    mesh.preview_panel_selection(&key.groups, key.protect, &key.symmetry, &cancel)?;
+                } = mesh.preview_panel_selection(&groups, protect, &key.symmetry, &cancel)?;
                 Ok(projection::SurfacePreview {
                     mesh,
                     report: SurfaceReport::PanelSelection { count },
@@ -94,7 +99,7 @@ impl App {
         self.document.require_panel_target()?;
         let key = self.ui.projection.panels.key(&self.document);
         key.options.validate()?;
-        self.clear_projection_preview();
+        self.invalidate_panel_preview();
         self.viewport.cancel(&mut self.document);
         let mesh = self.document.mesh().clone();
         let slots = 64 - self.document.model_count();
@@ -102,17 +107,12 @@ impl App {
         let gate = self.projection.panel_gate.clone();
         let job = BackgroundJob::start("sketchotter-panel-preview", move |cancel| {
             panel_work(gate, cancel, || {
+                let (mesh, groups, protect) = panel_input(mesh, &key, cancel)?;
                 let PanelPreview {
                     panels,
                     outlines,
                     display,
-                } = mesh.generate_panels(
-                    &key.groups,
-                    key.options,
-                    key.protect,
-                    &key.symmetry,
-                    &cancel,
-                )?;
+                } = mesh.generate_panels(&groups, key.options, protect, &key.symmetry, &cancel)?;
                 if panels.len() > slots {
                     return Err(
                         "Panels plus the retained source exceed 64 submodels; select fewer groups"
@@ -146,6 +146,30 @@ impl App {
         self.ui.status = "Building panel borders, bevels and closed shells…".into();
         Ok(())
     }
+    pub(super) fn invalidate_panel_preview(&mut self) {
+        let retained = self
+            .projection
+            .draft
+            .take()
+            .filter(|d| d.revision == self.document.display_revision())
+            .and_then(|d| {
+                d.panels.map(|p| projection::PanelDisplay {
+                    key: p.key,
+                    revision: d.revision,
+                    mesh: d.mesh,
+                    display: d.display,
+                    outlines: p.outlines,
+                })
+            })
+            .or_else(|| {
+                self.projection
+                    .panel_display
+                    .take()
+                    .filter(|d| d.revision == self.document.display_revision())
+            });
+        self.clear_projection_preview();
+        self.projection.panel_display = retained;
+    }
     pub(super) fn panels_draft_current(&self) -> bool {
         self.projection.draft.as_ref().is_none_or(|d| {
             d.panels.as_ref().is_none_or(|p| {
@@ -161,9 +185,17 @@ impl App {
                 .draft
                 .as_ref()
                 .and_then(|d| d.panels.as_ref())
+                .map(|p| &p.outlines)
+                .or_else(|| {
+                    self.projection
+                        .panel_display
+                        .as_ref()
+                        .filter(|d| d.revision == self.document.display_revision())
+                        .map(|d| &d.outlines)
+                })
                 .filter(|_| self.ui.projection.panels.outline)
-                .map(|p| {
-                    p.outlines
+                .map(|outlines| {
+                    outlines
                         .iter()
                         .enumerate()
                         .map(|(i, points)| crate::viewport::JoinRim {
@@ -203,5 +235,26 @@ fn panel_work<T>(
                 return run();
             }
         }
+    }
+}
+
+// Mask-derived groups exist only on the private worker mesh until Apply.
+fn panel_input(
+    mut mesh: crate::sculpt::Mesh,
+    key: &crate::ui::PanelKey,
+    cancel: &dyn Fn() -> bool,
+) -> Result<(crate::sculpt::Mesh, Vec<usize>, bool), String> {
+    if cancel() {
+        return Err("Panel preview cancelled".into());
+    }
+    if let Some(threshold) = key.mask_threshold {
+        let name = mesh.unique_group_name("Mask panel");
+        let group = mesh.create_vertex_group(name, threshold, false)? + 1;
+        if !mesh.polygroups.contains(&group) {
+            return Err("No complete faces meet the mask threshold; mask more or lower the selection threshold".into());
+        }
+        Ok((mesh, vec![group], false))
+    } else {
+        Ok((mesh, key.groups.clone(), key.protect))
     }
 }

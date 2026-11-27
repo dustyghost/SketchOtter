@@ -16,8 +16,12 @@ impl Document {
         if self.model_count() >= 64 {
             return Err("Free a submodel slot before generating panels".into());
         }
-        if !self.mesh().polygroups.iter().any(|&g| g > 0) {
-            return Err("Assign faces to a polygon group before generating panels".into());
+        if !self.mesh().polygroups.iter().any(|&g| g > 0)
+            && !self.mesh().mask.iter().any(|&m| m > 0.)
+        {
+            return Err(
+                "Mask a region or assign faces to a polygon group before generating panels".into(),
+            );
         }
         Ok(())
     }
@@ -50,8 +54,8 @@ impl Document {
         let mut output = Vec::new();
         for panel in panels {
             panel.mesh.validate_closed()?;
-            let label = self
-                .mesh()
+            let label = panel
+                .mesh
                 .vertex_groups
                 .get(panel.group.saturating_sub(1))
                 .ok_or("Panel group no longer exists")?;

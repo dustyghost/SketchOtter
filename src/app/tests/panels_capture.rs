@@ -210,3 +210,74 @@ fn panels_controls_offscreen_review() {
     std::fs::create_dir_all(&directory).unwrap();
     review_small_window(&directory);
 }
+
+#[test]
+#[ignore = "manual mask and painted-boundary visual regression; requires Vulkan and CLAY_GUIDE_PREVIEW"]
+fn panels_mask_and_painted_boundary_offscreen_review() {
+    let directory = std::path::PathBuf::from(std::env::var("CLAY_GUIDE_PREVIEW").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut g = Guide::new(&directory, [1220, 920]);
+    g.interactive = true;
+    g.toolbar = false;
+    let mut mesh: crate::sculpt::Mesh = serde_json::from_str(include_str!(
+        "../../sculpt/fixtures/panel-painted-boundary.json"
+    ))
+    .unwrap();
+    mesh.vertex_groups.clear();
+    mesh.polygroups.clear();
+    mesh.mask = vec![0.8; mesh.vertices.len()];
+    if let Ok(path) = std::env::var("CLAY_PANEL_REPRO") {
+        let project = crate::persistence::load_project(&path).unwrap();
+        g.app.document.replace_project(project, &path).unwrap();
+    } else {
+        g.app
+            .document
+            .replace_geometry(Geometry::new(mesh))
+            .unwrap();
+    }
+    g.app.camera.yaw = 0.;
+    g.app.camera.pitch = 0.;
+    g.app.camera.zoom = 1.1;
+    g.app.camera.pan = Vec2::new(210., 0.);
+    let before = g.app.document.geometry_snapshot();
+    g.app.dispatch(Command::OpenPanels, &g.ctx);
+    crate::app::test_support::finish_projection(&mut g.app);
+    assert!(g.app.ui.projection.panels.use_mask);
+    assert!(g.app.ui.projection.open, "{}", g.app.ui.status);
+    g.save("panels-painted-mask-initial");
+    click_guide_label(&mut g, "Preview panels");
+    crate::app::test_support::finish_projection(&mut g.app);
+    assert!(g.app.projection.draft.is_some(), "{}", g.app.ui.status);
+    g.save("panels-painted-mask-shaded");
+    click_guide_label(&mut g, "Wireframe");
+    g.save("panels-painted-mask-wire");
+    let old = g.app.projection.draft.as_ref().unwrap().mesh.clone();
+    for thickness in [0.09, 0.1, 0.11] {
+        g.app.ui.projection.panels.options.thickness = thickness;
+        g.app.dispatch(Command::ClearProjectionPreview, &g.ctx);
+        g.frame(Vec::new());
+        assert_eq!(*g.app.projection.panel_display.as_ref().unwrap().mesh, *old);
+        assert!(g.app.ui.projection.report.is_none());
+    }
+    g.save("panels-painted-mask-stale");
+    click_guide_label(&mut g, "Preview panels");
+    crate::app::test_support::finish_projection(&mut g.app);
+    assert!(g.app.projection.draft.is_some(), "{}", g.app.ui.status);
+    let expected = g
+        .app
+        .projection
+        .draft
+        .as_ref()
+        .unwrap()
+        .panels
+        .as_ref()
+        .unwrap()
+        .panels[0]
+        .mesh
+        .clone();
+    click_guide_label(&mut g, "Apply panels");
+    assert_eq!(g.app.document.mesh(), &expected);
+    assert_eq!(g.app.document.model(1).unwrap().mesh, &before.mesh);
+    g.app.dispatch(Command::Undo, &g.ctx);
+    assert_eq!(g.app.document.geometry_snapshot(), before);
+}

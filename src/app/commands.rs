@@ -818,12 +818,31 @@ impl App {
             }
             Command::PreviewProjection => self.start_projection(),
             Command::ClearProjectionPreview => {
-                self.clear_projection_preview();
                 if self.ui.projection.open
                     && self.ui.projection.mode == crate::ui::SurfaceMode::Panels
                 {
-                    self.start_panel_selection()
+                    let current = self.ui.projection.panels.key(&self.document);
+                    let selection_changed = self
+                        .projection
+                        .draft
+                        .as_ref()
+                        .and_then(|d| d.panels.as_ref().map(|p| &p.key))
+                        .or_else(|| {
+                            self.projection
+                                .worker
+                                .as_ref()
+                                .and_then(|w| w.panel_key.as_ref())
+                        })
+                        .or_else(|| self.projection.panel_display.as_ref().map(|d| &d.key))
+                        .is_some_and(|old| !old.same_selection(&current));
+                    self.invalidate_panel_preview();
+                    if selection_changed {
+                        self.start_panel_selection()
+                    } else {
+                        Ok(())
+                    }
                 } else {
+                    self.clear_projection_preview();
                     Ok(())
                 }
             }

@@ -3,12 +3,22 @@ use super::*;
 use crate::sculpt::{PanelOptions, PanelProfile, Symmetry};
 #[derive(Clone, PartialEq)]
 pub(crate) struct PanelKey {
+    pub mask_threshold: Option<f32>,
     pub groups: Vec<usize>,
     pub options: PanelOptions,
     pub protect: bool,
     pub symmetry: Symmetry,
 }
+impl PanelKey {
+    pub fn same_selection(&self, other: &Self) -> bool {
+        self.groups == other.groups
+            && self.mask_threshold == other.mask_threshold
+            && self.protect == other.protect
+            && self.symmetry == other.symmetry
+    }
+}
 pub(crate) struct PanelControls {
+    pub use_mask: bool,
     pub groups: Vec<usize>,
     pub options: PanelOptions,
     pub protect: bool,
@@ -17,6 +27,7 @@ pub(crate) struct PanelControls {
 impl Default for PanelControls {
     fn default() -> Self {
         Self {
+            use_mask: false,
             groups: Vec::new(),
             options: Default::default(),
             protect: true,
@@ -27,6 +38,13 @@ impl Default for PanelControls {
 impl PanelControls {
     pub fn key(&self, document: &Document) -> PanelKey {
         PanelKey {
+            mask_threshold: self.use_mask.then(|| {
+                document
+                    .model(document.active_model_index())
+                    .unwrap()
+                    .metadata
+                    .mask_threshold
+            }),
             groups: self.groups.clone(),
             options: self.options,
             protect: self.protect,
@@ -54,7 +72,7 @@ impl UiState {
                 let old=state.panels.key(document);
                 ui.label("One editable submodel per group. Source kept hidden below the panels.");
                 ui.horizontal_wrapped(|ui| {
-                    if ui.add_enabled(!state.busy && !state.panels.groups.is_empty(), egui::Button::new("Preview panels")).clicked() {
+                    if ui.add_enabled(!state.busy && (state.panels.use_mask || !state.panels.groups.is_empty()), egui::Button::new("Preview panels")).clicked() {
                         commands.push(Command::PreviewProjection);
                     }
                     if ui.add_enabled(!state.busy && state.report.as_ref().is_some_and(SurfaceReport::can_apply), egui::Button::new("Apply panels")).clicked() {
@@ -69,9 +87,15 @@ impl UiState {
                 if state.busy { ui.horizontal(|ui| { ui.spinner(); ui.label("Building and checking panels… Cancel remains available."); }); }
                 if let Some(error)=&state.error { ui.colored_label(Color32::from_rgb(240,130,110), error); }
                 if let Some(report)=&state.report { ui.label(report.summary()); }
+                if !state.busy && state.report.is_none() { ui.weak("Preview needs updating. The previous view stays visible; Apply is disabled."); }
                 egui::ScrollArea::vertical().max_height((ctx.content_rect().height()-230.).max(120.)).show(ui, |ui| {
                     ui.add_enabled_ui(!state.busy, |ui| {
                         let panel=&mut state.panels;
+                        ui.checkbox(&mut panel.use_mask, "Use mask as panel selection").on_hover_text("Create a vertex group from complete masked faces at the selection threshold, then generate panels in the same Apply step. The source mask stays intact.");
+                        if panel.use_mask {
+                            ui.label("Masked faces become a new Mask panel group on the output. Disconnected islands share that group.");
+                            ui.weak("The mask selects the panel here; it does not protect those faces from generation. Hidden faces remain protected.");
+                        } else {
                         ui.label("Polygon groups");
                         let available: std::collections::BTreeSet<_> = document.mesh().polygroups.iter().copied().filter(|&g| g>0).collect();
                         ui.horizontal(|ui| {
@@ -86,8 +110,12 @@ impl UiState {
                             }
                         }
                         ui.checkbox(&mut panel.protect, "Protect mask").on_hover_text("Reject selected regions touching masked or protected vertices. Hidden faces are always protected.");
+                        }
                         ui.weak(if document.symmetry().enabled { "Symmetry includes matching whole groups. Mismatched groups are rejected." } else { "Symmetry is off. Only the checked groups are generated." });
                         ui.separator();
+                        if ui.button("Fit border to mesh").on_hover_text("Reduce gap, border width and bevel together to fit the source edge spacing. Thickness and offset stay unchanged. Preview again to validate.").clicked() {
+                            panel.options = document.mesh().fit_panel_border(panel.options);
+                        }
                         let o=&mut panel.options;
                         ui.add(egui::DragValue::new(&mut o.thickness).range(0.00001..=100.).speed(0.001).prefix("Thickness "));
                         ui.add(egui::DragValue::new(&mut o.offset).range(-100. ..=100.).speed(0.001).prefix("Normal offset "));
