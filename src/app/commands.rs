@@ -794,6 +794,7 @@ impl App {
                 Ok(())
             }
             Command::OpenProjection => self.open_projection(),
+            Command::OpenPanels => self.open_panels(),
             Command::OpenRetopology => self.open_retopology(),
             Command::OpenFusion => self.open_fusion(),
             Command::DiscoverFusion => self.discover_fusion(),
@@ -817,8 +818,33 @@ impl App {
             }
             Command::PreviewProjection => self.start_projection(),
             Command::ClearProjectionPreview => {
-                self.clear_projection_preview();
-                Ok(())
+                if self.ui.projection.open
+                    && self.ui.projection.mode == crate::ui::SurfaceMode::Panels
+                {
+                    let current = self.ui.projection.panels.key(&self.document);
+                    let selection_changed = self
+                        .projection
+                        .draft
+                        .as_ref()
+                        .and_then(|d| d.panels.as_ref().map(|p| &p.key))
+                        .or_else(|| {
+                            self.projection
+                                .worker
+                                .as_ref()
+                                .and_then(|w| w.panel_key.as_ref())
+                        })
+                        .or_else(|| self.projection.panel_display.as_ref().map(|d| &d.key))
+                        .is_some_and(|old| !old.same_selection(&current));
+                    self.invalidate_panel_preview();
+                    if selection_changed {
+                        self.start_panel_selection()
+                    } else {
+                        Ok(())
+                    }
+                } else {
+                    self.clear_projection_preview();
+                    Ok(())
+                }
             }
             Command::ApplyProjection => self.apply_projection(),
             Command::CancelProjection => {
@@ -892,6 +918,10 @@ impl App {
         }
         if let Err(error) = result {
             self.diagnostic_warning("An application command failed; detailed error text withheld to exclude personal paths");
+            if self.ui.projection.open && self.ui.projection.mode == crate::ui::SurfaceMode::Panels
+            {
+                self.ui.projection.error = Some(error.clone());
+            }
             if self.ui.fusion.open {
                 self.ui.fusion.show_error(error.clone());
             }

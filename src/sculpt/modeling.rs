@@ -66,7 +66,7 @@ fn normal(mesh: &Mesh, polygon: &Polygon) -> Vec3 {
 }
 
 /// Check surface fans, orientation, duplicate faces and area as well as schema limits.
-fn manifold(mesh: &Mesh) -> Result<(), String> {
+pub(crate) fn manifold(mesh: &Mesh) -> Result<(), String> {
     mesh.validate()?;
     let mut incidence = BTreeMap::<_, Vec<_>>::new();
     let mut unique = BTreeSet::new();

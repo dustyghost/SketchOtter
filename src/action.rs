@@ -116,6 +116,7 @@ pub(crate) enum Action {
     JoinMeshes,
     RelaxMesh,
     GuidedRetopology,
+    GeneratePanels,
     KeepProjectionReference,
     EditPaths,
     TogglePathGuides,
@@ -569,6 +570,7 @@ impl Action {
         Self::ModelAxis(crate::viewport::ModelAxis::Uniform),
         Self::RelaxMesh,
         Self::GuidedRetopology,
+        Self::GeneratePanels,
         Self::Search,
         Self::ToggleZen,
     ];
@@ -610,6 +612,9 @@ impl Action {
             }
             Self::DeleteSubmodel => {
                 "Confirm removal of the selected submodel, including hidden geometry, masks, levels and modifiers. Undo restores it. Deleting the last model leaves an empty model slot."
+            }
+            Self::GeneratePanels => {
+                "Extract thickened panels or cut cleaned outline/support loops into the active surface from a mask or polygon groups. Preview, then Apply."
             }
             Self::GuidedRetopology => {
                 "Preview a quad-dominant layout. A saved path guides edges and painted mask weights retain local density. Apply keeps the original as a hidden reference."
@@ -797,6 +802,7 @@ impl Action {
             Self::JoinMeshes => "Join meshes",
             Self::RelaxMesh => "Relax mesh",
             Self::GuidedRetopology => "Guided retopology",
+            Self::GeneratePanels => "Generate panels",
             Self::KeepProjectionReference => "Keep projection reference",
             Self::LowerLevel => "Lower subdivision level",
             Self::HigherLevel => "Higher subdivision level",

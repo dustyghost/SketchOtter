@@ -21,6 +21,8 @@ mod modeling_notes_capture;
 mod move_snap_capture;
 #[path = "object_kits.rs"]
 mod object_kits;
+#[path = "panels_capture.rs"]
+mod panels_capture;
 #[path = "path_assembly.rs"]
 mod path_assembly;
 #[path = "precision_capture.rs"]
@@ -1659,6 +1661,7 @@ impl Guide {
     }
     fn frame(&mut self, events: Vec<egui::Event>) -> (egui::Rect, Vec<u8>) {
         self.app.poll_fusion();
+        self.app.poll_projection();
         self.time += 0.1;
         let mut rect = egui::Rect::NOTHING;
         let mut commands = Vec::new();

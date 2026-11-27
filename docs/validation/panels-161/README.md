@@ -1,0 +1,81 @@
+# Polygon-group panels — issue #161
+
+This review covers local perimeter reconstruction, closed shells and the complete preview/commit workflow. Input extraction alone is not treated as a completed panel.
+
+## Geometry and interaction evidence
+
+The focused panel regressions cover curved adjacent groups (including a closed sphere), holes, disconnected islands, concave corners, narrow strips, excessive widths, crossings, hidden/masked inputs, stale UVs, symmetry, combined mesh capacity, cancellation and folded normal offsets. They compare dimensions across loop counts and flat/rounded bevel profiles, preserve retained front UV corners and vertex attributes, and check manifold closure, winding and smooth subdivision. A 20,000-triangle source cancellation completed in under one second in the local debug run; this is a measured example, not a universal timing guarantee.
+
+Controller regressions cover the initial region highlight, mouse and classified native-pen group selection, explicit Preview/Apply/Cancel, navigation without sculpting, stale settings and scene changes, source retention, one labelled Undo/Redo step, and save/reopen. A seam-only source regression checks that unselected source UV seam indices cannot leak into the applied panel.
+
+The manual GPU review uses the real window and viewport with software Vulkan. It clicks the controls, compares the committed mesh with the private preview, and exercises Undo/Redo. The separate `panels_controls_offscreen_review` checks accessible Apply/Cancel at 800 × 560 and is included in GPU CI. The larger image gallery remains a manual review tool.
+
+## Visual examples
+
+| Example | Inspection |
+| --- | --- |
+| [Adjacent, shaded](panels-adjacent-shaded.png) / [wireframe](panels-adjacent-wire.png) | Curved surfaces, gap, welded surface strips and bevels. Gold is the original source perimeter. |
+| [Jagged source](panels-jagged-initial.png) / [cleaned shading](panels-jagged-shaded.png) / [cleaned wireframe](panels-jagged-wire.png) | Mixed triangle/quad source; shallow zigzags are smoothed while right-angle turns remain pinned. Interior connectivity remains visible. |
+| [Hole](panels-hole-wire.png) | Independent inner and outer cycles, with continuous quad strips around both. |
+| [Concave corner](panels-concave-wire.png) | Border flow through a re-entrant corner. |
+| [Narrow strip](panels-narrow-wire.png) | Small surviving interior with independent front/back bevel and surface support. Excessive width is a regression-tested error. |
+| [Disconnected islands](panels-islands-wire.png) | Both islands belong to one editable panel submodel and remain independently closed. |
+| [One loop, flat profile](panels-profile-flat-1.png) / [four loops, rounded profile](panels-profile-round-4.png) | Same source and dimensions, different border resolution and bevel shape. |
+| [Smooth subdivision, shaded](panels-subdivided-shaded.png) / [wireframe](panels-subdivided-wire.png) | The applied panel under one Catmull–Clark subdivision step. |
+| [Short viewport](panels-small-window.png) | Apply/Cancel stay above the scroll area. |
+
+The reconstruction is deliberately local: the original perimeter vertices become an inset ring, their incident faces form the inner transition, and welded quad strips fill the border. It preserves triangles and any irregular valence already present farther inside the panel. A rectangular all-quad shell has eight valence-three poles at the inset cap corners; the support strips separate those corner fans from the bevel. It does not promise a new all-quad interior for a mixed source. Smooth subdivision rounds uncreased corners; use the border spacing and existing crease controls to suit the desired result.
+
+Supported input and failure behavior are described in the [modelling guide](../../guide/modeling.md#generate-panels-from-polygon-groups). Branching/touching outlines, fully closed groups without a perimeter, invalid UV layouts and geometry that cannot accommodate the requested offsets are rejected. The source stays recoverable. Intersection checks cover panel self-intersections, panel-to-panel crossings and nearby **unselected faces of the same source**; they do not evaluate other independent scene submodels.
+
+## Reproduce
+
+Observe `AGENTS.md` memory checks and the shared build lock first. Use one compiler job when available RAM is below 2 GiB or memory pressure is present.
+
+```sh
+flock -n /home/mark/.cache/codex-build.lock cargo test -j 1 --lib panels -- --nocapture --test-threads=1
+flock -n /home/mark/.cache/codex-build.lock cargo test -j 1 --lib sculpt::thickness::tests -- --test-threads=1
+flock -n /home/mark/.cache/codex-build.lock env CLAY_GPU_SOFTWARE=1 WGPU_BACKEND=vulkan LP_NUM_THREADS=1 CLAY_GUIDE_PREVIEW=/tmp/panels-review cargo test -j 1 --lib panels_offscreen_review -- --ignored --nocapture --test-threads=1
+```
+
+The final focused run passed 22 checks selected by `panels`, all five Thickness tests and all seven existing projection/relaxation controller tests. Full formatting, lint, the full suite and other configured GPU regressions remain CI work. Local checks do not replace passing CI on the reviewed commit. Issue #161 remains **In progress** pending review and merge.
+
+## Painted-mask testing follow-up
+
+The direct mask workflow creates a new output vertex group and closed panel in a single Apply; it leaves the source mask and groups unchanged. Nine focused controller regressions cover it, including threshold selection, Cancel, stale settings, source retention, Undo/Redo and reopening. A geometry-only fixture retains the reported 174-vertex painted spherical boundary. The former fixed-width defaults exceed its first interior row; mesh-spacing defaults pass the existing winding, manifold and intersection checks. **Fit border to mesh** provides the same conservative reduction for explicitly chosen widths; oversized requests are still rejected.
+
+The full saved diagnostic stage before grouping was also checked with the real Vulkan viewport. [Shaded output](panels-painted-mask-shaded.png), [wireframe](panels-painted-mask-wire.png) and [changed thickness](panels-painted-mask-stale.png) show the generated panel and the retained view while settings are stale. Parameter changes disable Apply and retain the previous view until Preview panels updates it; the old view is ignored after source changes. These screenshots are a visual review, not an automatic pixel comparison. The original diagnostic bundle is not included in this change.
+
+To repeat the manual check, run `panels_mask_and_painted_boundary_offscreen_review` with the same GPU environment above. It uses the small regression fixture by default; optionally set `CLAY_PANEL_REPRO` to a saved project with a painted mask to review that complete source.
+
+## Rounded-outline review
+
+**Round outline** selects smoothing 1 and corner preservation 120°, hides the original gold boundary overlay, and starts a fresh preview. The original outline remains available for comparison. Manual slider changes still require Preview panels; the preserved view is explicitly stale until that succeeds.
+
+The saved painted sphere was reviewed through the actual button in the Vulkan viewport: [rounded shading](panels-rounded-mask-shaded.png) and [rounded wireframe](panels-rounded-mask-wire.png). The geometry regression compares five smoothing strengths at 120° and 150° and checks closed-shell generation; on this boundary, its summed turning measure falls from about 25.55 to 1.48 at full smoothing.
+
+A separate full-sphere regression reproduces a real source collision with smoothing 1, thickness 0.11 and offset 0.05. Offset 0.065 passes the same checks. The [rejection screenshot](panels-rounded-mask-source-intersection.png) shows the corrected offset guidance and disabled Apply. The manual review exercises the rejection, changes offset, then verifies Apply and Undo without altering the source. This is a demonstrated clearance value for this source, not a universal offset formula.
+
+The original diagnostic export did not retain panel controls, so its exact failed settings cannot be recovered. New diagnostic manifests include panel selection, dimensions, smoothing, corner preservation and preview state, without model names or paths in that settings block. All 29 focused checks passed; the full-project Vulkan interaction review passed. Full CI remains pending.
+
+For the additional manual comparison, set `CLAY_PANEL_ROUND_OUTLINE=1` alongside `CLAY_PANEL_REPRO` when running `panels_mask_and_painted_boundary_offscreen_review`.
+
+## Panel cut (EMB-style topology)
+
+The new **Panel cut** option takes the cleaned mask/group outline and welds it and its support loops into the active mesh. The reference is ZBrush’s [Edgeloop Masked Border and GroupsLoops](https://help.maxon.net/zbr/en-us/Content/html/reference-guide/tool/polymesh/geometry/geometry.html). The workflow retains SketchOtter’s complete-face threshold selection. **Added loops** selects 1–8 new rows, with independent support width and spacing. Shell-only thickness, offset, gap, bevel/profile/segments and wall controls are disabled and ignored by the cut preview key. The original extraction mode stays available.
+
+| Review | What it shows |
+| --- | --- |
+| [Whole-surface wireframe](panels-cut-wire.png) | Original model present around the rounded cut, four added loops selected and shell controls disabled. |
+| [Support-row detail](panels-cut-detail-wire.png) | Four continuous quad rows welded between the cut boundary and the retained panel interior. |
+| [Applied surface, mask cleared](panels-cut-clean-shaded.png) | The blue PolyGroup remains part of the same flush surface. Clearing the selection mask is a separate, undoable operation used only to remove mask shading for this image. |
+
+The local patch retains original vertices outside the outline exactly. Smoothing can make an old adjoining diagonal fold; safe edge flips repair those faces locally, preserving vertex attributes and compatible corner UVs. The repair refuses cut/support edges, existing UV/shading/crease seams, hidden faces and category boundaries. Necessary adjoining triangles are explicitly permitted; no whole-model remesh occurs. New support faces have unmapped UVs. Unsupported folds, crossings and incompatible shared corners fail without editing the scene.
+
+Apply edits one active model in place with one **Panel cut** Undo step. No panel or backing copy is added, so cuts can be applied at the 64-submodel limit. Like Slice, the topology edit resets the active subdivision stack; Undo restores the source stack. The preview remains private, cancellable and guarded by scene revision and enabled controls. The history diagnostic captures the exact cut/loop settings handed to its preview worker.
+
+The focused `panels` selection passed 37 tests (four GPU/manual tools ignored), covering the existing extraction mode plus cut closure/winding, holes, islands, shared boundaries, protected inputs, UV seams, symmetry, working budgets, stale controls, Cancel, Undo/Redo and persistence. Twelve controller checks also passed after the diagnostic snapshot change. The Vulkan interaction review on the saved sphere passed a real Added loops slider change from 2 to 4, a drag over disabled thickness, Round outline, Apply, Undo/Redo and Cancel. The same interaction test is now called by GPU CI with its small built-in fixture. Full CI remains pending.
+
+Manual source review uses the same software-Vulkan environment as above, with `CLAY_PANEL_REPRO` pointing to the saved masked project, and test filter `panels_cut_offscreen_review`. Omit that variable for the built-in CI fixture. Original diagnostic bundles remain local and are not included in this change.
+
+The built-in CI fixture and existing 800 × 560 Apply/Cancel GPU review also passed locally on the final UI. Full remote CI is still pending.

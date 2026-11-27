@@ -20,6 +20,7 @@ mod path_stroke;
 mod paths;
 mod primitive;
 pub use path_stroke::{PathStrokeOptions, PathStrokePreview, PathStrokeRequest, PathStrokeSession};
+mod panels;
 mod projection;
 mod retopology;
 pub use projection::ProjectionSource;

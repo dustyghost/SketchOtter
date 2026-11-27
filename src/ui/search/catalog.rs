@@ -485,6 +485,9 @@ fn action_aliases(action: &Action) -> &'static str {
             "customise customize layout panels shelves menus appearance colours recover reset"
         }
         Action::GuidedRetopology => "retopo topology quads remesh",
+        Action::GeneratePanels => {
+            "armour plates polygon groups panel border loops bevel thickness gap cuts surface emb masked border"
+        }
         Action::BrushSize => "radius diameter brush size",
         Action::BrushStrength => "intensity power brush strength",
         Action::OpenColours => "color colors colour palette paint",
