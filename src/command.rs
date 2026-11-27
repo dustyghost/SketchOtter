@@ -64,6 +64,7 @@ pub(crate) enum Command {
     FillMaterial(Brush),
     FillAllMaterial(Brush),
     OpenProjection,
+    OpenPanels,
     OpenFusion,
     DiscoverFusion,
     PreviewFusion,

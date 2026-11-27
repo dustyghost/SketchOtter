@@ -6,19 +6,41 @@ use super::{
 use std::collections::HashMap;
 impl Mesh {
     pub fn solidify(&self, thickness: f32) -> Result<Self, String> {
-        self.solidify_impl(thickness, None)
+        self.solidify_impl(thickness, None, None, &|| false)
     }
     pub fn solidify_with_metadata(&self, metadata: &super::ModelMetadata) -> Result<Self, String> {
         metadata.validate()?;
-        self.solidify_impl(metadata.temporary_thickness, Some(metadata))
+        self.solidify_impl(metadata.temporary_thickness, Some(metadata), None, &|| {
+            false
+        })
+    }
+    /// Panel profiles need independently sampled bevels and wall support loops.
+    pub(crate) fn solidify_panel(
+        &self,
+        thickness: f32,
+        loops: usize,
+        cancel: &impl Fn() -> bool,
+    ) -> Result<Self, String> {
+        if loops > 32 {
+            return Err("Panel wall exceeds 32 intermediate loops".into());
+        }
+        self.solidify_impl(thickness, None, Some(loops), cancel)
     }
     fn solidify_impl(
         &self,
         thickness: f32,
         metadata: Option<&super::ModelMetadata>,
+        panel_loops: Option<usize>,
+        cancel: &impl Fn() -> bool,
     ) -> Result<Self, String> {
+        if cancel() {
+            return Err("Thickness cancelled".into());
+        }
         self.validate()?;
         self.require_surface_topology()?;
+        if !self.uv.corners.is_empty() && !self.uv.current(self) {
+            return Err("Restore or clear inactive UVs before applying thickness".into());
+        }
         if !thickness.is_finite() || thickness <= 0. || thickness > 100. {
             return Err("Thickness must be greater than zero and at most 100 model units".into());
         }
@@ -64,7 +86,8 @@ impl Mesh {
             return Err("Thickness requires nonbranching boundary loops".into());
         }
         boundary.sort_unstable();
-        let rim_loops = metadata.map_or(0, |m| m.thickness_loops as usize);
+        let rim_loops =
+            panel_loops.unwrap_or_else(|| metadata.map_or(0, |m| m.thickness_loops as usize));
         let n = self.vertices.len();
         if n * 2 + boundary.len() * rim_loops > max_vertices()
             || self.triangles.len() * 2 + boundary.len() * 2 * (rim_loops + 1) > max_triangles()
@@ -90,6 +113,9 @@ impl Mesh {
             .collect();
         normal_edges.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
         for _ in 0..64 {
+            if cancel() {
+                return Err("Thickness cancelled".into());
+            }
             let mut changed = false;
             let mut corrections = vec![super::Vec3::default(); normals.len()];
             let mut counts = vec![0_u32; normals.len()];
@@ -127,6 +153,9 @@ impl Mesh {
         // Relax only normals incident to a folded face/rim, then recheck the
         // complete surface. Simultaneous updates preserve symmetric results.
         for _ in 0..64 {
+            if cancel() {
+                return Err("Thickness cancelled".into());
+            }
             let point = |v: usize, offset: f32| self.vertices[v] + normals[v] * offset;
             let mut corrections = vec![super::Vec3::default(); normals.len()];
             let mut counts = vec![0_u32; normals.len()];
@@ -259,6 +288,9 @@ impl Mesh {
         let mut layers = HashMap::new();
         let mut source_vertex: Vec<_> = (0..n).chain(0..n).collect();
         for &v in &boundary_vertices {
+            if cancel() {
+                return Err("Thickness cancelled".into());
+            }
             let mut ids = vec![v];
             for layer in 1..=rim_loops {
                 let t = layer as f32 / (rim_loops + 1) as f32;
@@ -283,6 +315,9 @@ impl Mesh {
             .chain(self.creases.iter().map(|&[a, b]| [a + n, b + n]))
             .collect();
         for (a, b) in boundary {
+            if cancel() {
+                return Err("Thickness cancelled".into());
+            }
             if !self.hidden_faces.is_empty() {
                 shell.hidden_faces.extend(vec![
                     hidden_edges.contains(&edge_key(a, b));
@@ -308,6 +343,54 @@ impl Mesh {
                 shell.polygroups.extend(vec![0; 2 * (rim_loops + 1)]);
             }
         }
+        if self.uv.current(self) {
+            shell.uv = self.uv.clone();
+            let faces = self.triangles.len();
+            shell
+                .uv
+                .corners
+                .extend(self.uv.corners.iter().map(|&[a, b, c]| [a, c, b]));
+            if !self.uv.masks.is_empty() {
+                shell
+                    .uv
+                    .masks
+                    .extend(self.uv.masks.iter().map(|&[a, b, c]| [a, c, b]));
+            }
+            if !self.uv.removed.is_empty() {
+                shell.uv.removed.extend_from_within(0..faces);
+            } else {
+                shell.uv.removed.resize(faces * 2, false);
+            }
+            let rim_faces = shell.triangles.len() - faces * 2;
+            shell.uv.corners.extend(vec![[[0.; 2]; 3]; rim_faces]);
+            if !shell.uv.masks.is_empty() {
+                shell.uv.masks.extend(vec![[0.; 3]; rim_faces]);
+            }
+            shell.uv.removed.extend(vec![true; rim_faces]);
+            shell
+                .uv
+                .seams
+                .extend(self.uv.seams.iter().map(|&[a, b]| [a + n, b + n]));
+            shell.uv.seams.sort_unstable();
+            shell.uv.seams.dedup();
+            shell.uv.topology = shell.triangles.clone();
+        }
+        if self.uv.corners.is_empty() {
+            shell.uv.textures = self.uv.textures.clone();
+            shell.uv.seams = self
+                .uv
+                .seams
+                .iter()
+                .flat_map(|&[a, b]| [[a, b], [a + n, b + n]])
+                .collect();
+            shell.uv.seams.sort_unstable();
+        }
+        shell.set_shading_seams(
+            self.shading_edges()
+                .iter()
+                .flat_map(|&[a, b]| [[a, b], [a + n, b + n]])
+                .collect(),
+        );
         if let Some(options) = metadata {
             if options.thickness_mask_rim {
                 for ids in layers.values() {
@@ -483,6 +566,33 @@ mod tests {
             (volume - 0.8).abs() < 1e-5,
             "shell winding must point outward"
         );
+    }
+    #[test]
+    fn thickness_keeps_front_and_back_uv_corners_and_marks_rim_unmapped() {
+        let mut mesh = Primitive::for_kind(PrimitiveKind::Plane).mesh().unwrap();
+        mesh.uv.topology = mesh.triangles.clone();
+        mesh.uv.corners = vec![
+            [[0., 0.], [1., 0.], [1., 1.]],
+            [[0., 0.], [1., 1.], [0., 1.]],
+        ];
+        mesh.uv.masks = vec![[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]];
+        mesh.uv.seams = vec![[0, 1]];
+        let shell = mesh.solidify(0.2).unwrap();
+        assert!(shell.uv.current(&shell));
+        assert_eq!(&shell.uv.corners[..2], &mesh.uv.corners);
+        assert_eq!(
+            shell.uv.corners[2],
+            [
+                mesh.uv.corners[0][0],
+                mesh.uv.corners[0][2],
+                mesh.uv.corners[0][1]
+            ]
+        );
+        assert_eq!(shell.uv.masks[2], [0.1, 0.3, 0.2]);
+        assert_eq!(shell.uv.seams, [[0, 1], [4, 5]]);
+        assert!(shell.uv.removed[..4].iter().all(|&r| !r));
+        assert!(shell.uv.removed[4..].iter().all(|&r| r));
+        shell.validate_closed().unwrap();
     }
     #[test]
     fn thickness_rejects_offsets_lost_to_coordinate_precision() {

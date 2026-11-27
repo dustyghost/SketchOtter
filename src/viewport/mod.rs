@@ -53,6 +53,7 @@ pub(crate) use visibility::SelectionTool;
 pub(crate) const AXIS_COLORS: [Color32; 3] = controls::AXES;
 use scene::Scene;
 pub(crate) struct JoinRim {
+    pub label: Option<String>,
     pub side: usize,
     pub index: usize,
     pub selected: bool,
@@ -62,6 +63,11 @@ pub(crate) struct JoinRim {
 #[derive(Clone)]
 pub(crate) struct JoinDisplay(std::sync::Arc<gpu::DisplayMesh>);
 impl JoinDisplay {
+    pub(crate) fn with_active_mesh(document: &Document, mesh: &crate::sculpt::Mesh) -> Self {
+        Self(std::sync::Arc::new(gpu::DisplayMesh::with_active_mesh(
+            document, mesh,
+        )))
+    }
     pub(crate) fn new(document: &Document) -> Self {
         Self(std::sync::Arc::new(gpu::DisplayMesh::new(document)))
     }
@@ -556,7 +562,9 @@ impl Viewport {
                     painter.text(
                         scene.project(point),
                         egui::Align2::LEFT_BOTTOM,
-                        format!("{} · hole {}", rim.side + 1, rim.index + 1),
+                        rim.label.clone().unwrap_or_else(|| {
+                            format!("{} · hole {}", rim.side + 1, rim.index + 1)
+                        }),
                         egui::FontId::proportional(13.),
                         color,
                     );

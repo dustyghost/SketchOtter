@@ -1,3 +1,4 @@
+mod panels;
 use super::test_support::*;
 use super::*;
 use crate::viewport::Gesture;

@@ -341,6 +341,7 @@ impl App {
                         .session
                         .join_rims
                         .push(crate::viewport::JoinRim {
+                            label: None,
                             side,
                             index,
                             selected: self.ui.fusion.selected[side] == Some(index),

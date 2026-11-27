@@ -11,9 +11,21 @@ pub(crate) enum SurfaceMode {
     Projection,
     Relaxation,
     Retopology,
+    Panels,
 }
 
 pub(crate) enum SurfaceReport {
+    PanelCut {
+        groups: usize,
+        vertices: usize,
+    },
+    Panels {
+        count: usize,
+        triangles: usize,
+    },
+    PanelSelection {
+        count: usize,
+    },
     Retopology {
         quads: usize,
         polygons: usize,
@@ -27,12 +39,24 @@ impl SurfaceReport {
     pub fn can_apply(&self) -> bool {
         match self {
             Self::Retopology { changed, .. } => *changed,
+            Self::PanelCut { vertices, .. } => *vertices > 0,
+            Self::Panels { count, .. } => *count > 0,
+            Self::PanelSelection { .. } => false,
             Self::Projection(r) => r.moved > 0,
             Self::Relaxation(r) => r.moved > 0,
         }
     }
     pub fn summary(&self) -> String {
         match self {
+            Self::PanelCut { groups, vertices } => {
+                format!("{groups} cut groups · {vertices} added vertices · active surface")
+            }
+            Self::PanelSelection { count } => {
+                format!("{count} selected regions · Preview to build the geometry")
+            }
+            Self::Panels { count, triangles } => {
+                format!("{count} closed panels · {triangles} triangles · source retained")
+            }
             Self::Retopology {
                 quads, polygons, ..
             } => format!(
@@ -48,6 +72,7 @@ impl SurfaceReport {
 pub(crate) struct ProjectionControls {
     pub open: bool,
     pub mode: SurfaceMode,
+    pub panels: super::panels::PanelControls,
     pub layout: crate::sculpt::retopology::Options,
     pub flow_paths: Vec<u64>,
     pub density_paint: Option<crate::sculpt::retopology::DensityPaint>,
@@ -71,6 +96,19 @@ impl UiState {
     ) {
         if search::requested_section(ui.ctx(), "retopology_options").is_some() {
             ui.label("Open Guided retopology below to inspect layout, path and density controls. Opening a preview does not replace the sculpt; Apply is a separate step.");
+        }
+        let panel_availability = document.require_panel_target();
+        if ui
+            .add_enabled(
+                !self.mesh_busy && panel_availability.is_ok(),
+                design::button(ui, Glyph::Mesh, "Generate panels…"),
+            )
+            .on_hover_text(Action::GeneratePanels.help().unwrap())
+            .on_disabled_hover_text(panel_availability.err().unwrap_or_default())
+            .customize(Action::GeneratePanels)
+            .clicked()
+        {
+            commands.push(Command::OpenPanels);
         }
         let enabled = !self.mesh_busy && document.require_projection_target().is_ok();
         if design::help(ui.add_enabled(enabled, design::button(ui, Glyph::Mesh, "Relax mesh…")), "Redistribute vertices along the surface. Mask areas to protect them; preview before applying.").customize(Action::RelaxMesh).clicked() {
@@ -113,6 +151,9 @@ impl UiState {
         let mut commands = Vec::new();
         if !self.projection.open {
             return commands;
+        }
+        if self.projection.mode == SurfaceMode::Panels {
+            return self.panels_window(ctx, document);
         }
         if self.projection.mode == SurfaceMode::Retopology {
             return self.retopology_window(ctx, document, camera);

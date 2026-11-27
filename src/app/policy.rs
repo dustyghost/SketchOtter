@@ -292,7 +292,8 @@ impl<'a> EditorPolicy<'a> {
         }
         if matches!(
             action,
-            Action::GuidedRetopology
+            Action::GeneratePanels
+                | Action::GuidedRetopology
                 | Action::ProjectDetails
                 | Action::RelaxMesh
                 | Action::KeepProjectionReference
@@ -717,6 +718,7 @@ impl<'a> EditorPolicy<'a> {
                 sculpt && document.mesh_settings().level() < document.mesh_settings().levels()
             }
             Action::GuidedRetopology => document.require_retopology_target().is_ok(),
+            Action::GeneratePanels => document.require_panel_target().is_ok(),
             Action::ProjectDetails | Action::RelaxMesh => {
                 document.require_projection_target().is_ok()
             }
@@ -902,6 +904,7 @@ impl<'a> EditorPolicy<'a> {
             Command::ConvertPrimitive => Some(Action::ConvertPrimitive),
             Command::OpenProjection => Some(Action::ProjectDetails),
             Command::OpenRetopology => Some(Action::GuidedRetopology),
+            Command::OpenPanels => Some(Action::GeneratePanels),
             Command::OpenRelaxation => Some(Action::RelaxMesh),
             Command::OpenFusion => Some(Action::JoinMeshes),
             Command::KeepProjectionReference => Some(Action::KeepProjectionReference),

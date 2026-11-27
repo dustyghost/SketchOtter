@@ -568,6 +568,8 @@ fn dismissing_search_does_not_discard_an_existing_surface_preview() {
     // than spending time on an unrelated geometry solver.
     let mesh = std::sync::Arc::new(app.document.mesh().clone());
     app.projection.draft = Some(crate::app::projection::ProjectionDraft {
+        panels: None,
+        display: None,
         mesh: mesh.clone(),
         revision: app.document.display_revision(),
         settings: app.document.capture_edit_settings(),

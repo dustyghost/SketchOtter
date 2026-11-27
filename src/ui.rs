@@ -40,7 +40,9 @@ pub(crate) mod paths;
 mod primitive;
 mod visibility;
 pub(crate) use visibility::SurfaceEditWarning;
+mod panels;
 mod projection;
+pub(crate) use panels::PanelKey;
 mod retopology;
 pub(crate) use fusion::FusionKey;
 pub(crate) use projection::{SurfaceMode, SurfaceReport};
@@ -1550,6 +1552,7 @@ impl UiState {
                             if ui.button("Delete group").customize(Action::DeleteGroup).clicked() { commands.push(Command::DeleteVertexGroup(g)); }
                         });
                 }
+                if ui.add_enabled(!self.mesh_busy && document.require_panel_target().is_ok(), egui::Button::new("Generate panels…")).customize(Action::GeneratePanels).clicked() { commands.push(Command::OpenPanels); }
                 ui.weak("Vertex groups store soft weights independently of the mask. Complete selected faces receive the group’s color and visibility; each face is assigned to at most one group.");
             });
             ui.separator();

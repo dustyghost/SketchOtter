@@ -25,6 +25,8 @@
     "shared_selection_offscreen_review",
     "mesh_refinement_offscreen_review",
     "native_retopology_controls_offscreen_review",
+    "panels_controls_offscreen_review",
+    "panels_cut_offscreen_review",
     "surface_boolean_method_offscreen_review",
     "reusable_models_offscreen_review",
     "reusable_path_bend_join_offscreen_review",
