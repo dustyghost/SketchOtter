@@ -226,6 +226,9 @@ fn workflow_tap_threshold_and_same_frame_out_and_back_drag_do_not_conflict() {
 fn workflow_text_entry_and_quick_menu_clicks_never_invert_the_surface() {
     let mut app = fixture();
     let ctx = egui::Context::default();
+    let mut geometry = app.document.geometry_snapshot();
+    geometry.mesh.mask.fill(0.2); // Detect accidental clearing as well as inversion.
+    app.document.replace_geometry(geometry).unwrap();
     app.ui.preferences.selection_mode = preferences::SelectionMode::Mask;
     let modifiers = egui::Modifiers::CTRL | egui::Modifiers::SHIFT;
     app.ui.viewport_menu.context = Some(crate::ui::context_menu::ViewportMenuContext::Mask);
@@ -278,6 +281,708 @@ fn fixture() -> App {
         .replace_geometry(Geometry::new(p.mesh().unwrap()))
         .unwrap();
     app
+}
+
+fn vertex_group_fixture() -> App {
+    let mut app = fixture();
+    let mut geometry = app.document.geometry_snapshot();
+    geometry
+        .mesh
+        .create_vertex_group("Left".into(), 0.5, true)
+        .unwrap();
+    geometry.mesh.mask = geometry
+        .mesh
+        .vertices
+        .iter()
+        .map(|p| if p.0 >= 0. { 1. } else { 0. })
+        .collect();
+    geometry
+        .mesh
+        .create_vertex_group("Right".into(), 0.5, false)
+        .unwrap();
+    geometry.mesh.mask.fill(0.2);
+    app.document.replace_geometry(geometry).unwrap();
+    app
+}
+
+#[test]
+fn workflow_vertex_group_mask_click_overrides_invert_and_is_atomic() {
+    for fast in [false, true] {
+        let mut app = vertex_group_fixture();
+        let ctx = egui::Context::default();
+        app.execute_action(Action::MaskVertexGroup, &ctx);
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let before = app.document.geometry_snapshot();
+        let count = app.document.history_counts().0;
+        tap(
+            &mut app,
+            &ctx,
+            Pos2::new(650., 400.),
+            egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+            fast,
+        );
+        let mut expected = before.clone();
+        for (f, triangle) in before.mesh.triangles.iter().enumerate() {
+            if before.mesh.polygroups[f] == 2 {
+                for &v in triangle {
+                    expected.mesh.mask[v] = 1.;
+                }
+            }
+        }
+        assert_eq!(
+            app.document.geometry_snapshot(),
+            expected,
+            "{}",
+            app.ui.status
+        );
+        roundtrip(&mut app, &before, count);
+        let after = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        tap(
+            &mut app,
+            &ctx,
+            Pos2::new(120., 120.),
+            egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+            fast,
+        );
+        assert!(
+            app.document.mesh().mask.iter().all(|&m| m == 0.),
+            "empty-space shortcut clears rather than inverts"
+        );
+        roundtrip(&mut app, &after, history.0);
+    }
+}
+
+#[test]
+fn workflow_vertex_group_visibility_hides_last_group_without_inverting() {
+    for fast in [false, true] {
+        let mut app = vertex_group_fixture();
+        let ctx = egui::Context::default();
+        app.execute_action(Action::VisibilityVertexGroup, &ctx);
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let before = app.document.geometry_snapshot();
+        let count = app.document.history_counts().0;
+        tap(
+            &mut app,
+            &ctx,
+            Pos2::new(650., 400.),
+            egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+            fast,
+        );
+        assert!(
+            (0..app.document.mesh().triangles.len())
+                .all(|f| app.document.mesh().face_visible(f) == (before.mesh.polygroups[f] != 2)),
+            "{}",
+            app.ui.status
+        );
+        assert_eq!(app.document.mesh().mask, before.mesh.mask);
+        roundtrip(&mut app, &before, count);
+        let before_last = app.document.geometry_snapshot();
+        let count = app.document.history_counts().0;
+        tap(
+            &mut app,
+            &ctx,
+            Pos2::new(350., 400.),
+            egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+            fast,
+        );
+        assert_eq!(
+            app.document.mesh().hidden_face_count(),
+            before.mesh.triangles.len(),
+            "the last group must hide, not flip"
+        );
+        roundtrip(&mut app, &before_last, count);
+    }
+}
+
+#[test]
+fn workflow_vertex_group_component_click_selects_whole_group_in_each_mode() {
+    use crate::viewport::{Component, ComponentMode};
+    for mode in [
+        ComponentMode::Vertex,
+        ComponentMode::Edge,
+        ComponentMode::Face,
+    ] {
+        let mut app = vertex_group_fixture();
+        let ctx = egui::Context::default();
+        app.dispatch(Command::ModelingMode(true), &ctx);
+        app.dispatch(Command::ModelingComponent(mode), &ctx);
+        app.ui.modeling.protect_mask = false;
+        app.execute_action(Action::ModelVertexGroup, &ctx);
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        let mut expected = std::collections::BTreeSet::new();
+        let faces = crate::sculpt::uv::polygon_triangles(&before.mesh);
+        for (i, p) in before.mesh.polygons().iter().enumerate() {
+            if !faces[i].iter().any(|&f| before.mesh.polygroups[f] == 2) {
+                continue;
+            }
+            match mode {
+                ComponentMode::Vertex => {
+                    expected.extend(p.vertices.iter().copied().map(Component::Vertex))
+                }
+                ComponentMode::Edge => expected.extend(
+                    p.edges()
+                        .map(|(a, b)| Component::Edge([a.min(b), a.max(b)])),
+                ),
+                ComponentMode::Face => {
+                    expected.insert(Component::Face(i));
+                }
+            }
+        }
+        tap(
+            &mut app,
+            &ctx,
+            Pos2::new(650., 400.),
+            egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+            false,
+        );
+        assert_eq!(
+            app.viewport.modeling.selected, expected,
+            "{mode:?}: {}",
+            app.ui.status
+        );
+        assert_eq!(app.document.geometry_snapshot(), before);
+        assert_eq!(app.document.history_counts(), history);
+        app.execute_action(Action::ModelUndoSelection, &ctx);
+        assert!(app.viewport.modeling.selected.is_empty());
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        app.execute_action(Action::ModelRedoSelection, &ctx);
+        assert_eq!(app.viewport.modeling.selected, expected);
+    }
+}
+
+#[test]
+fn workflow_vertex_group_options_are_clickable_saved_and_restore_shapes() {
+    use crate::ui::context_menu::ViewportMenuContext as Menu;
+    for (mode, menu, action, shape) in [
+        (
+            preferences::SelectionMode::Mask,
+            Menu::Mask,
+            Action::MaskVertexGroup,
+            Action::TemporaryMaskRectangle,
+        ),
+        (
+            preferences::SelectionMode::Visibility,
+            Menu::Visibility,
+            Action::VisibilityVertexGroup,
+            Action::TemporaryVisibilityLasso,
+        ),
+        (
+            preferences::SelectionMode::Components,
+            Menu::Components,
+            Action::ModelVertexGroup,
+            Action::ModelRegionShape(crate::viewport::RegionShape::Line),
+        ),
+    ] {
+        let mut app = vertex_group_fixture();
+        let ctx = egui::Context::default();
+        app.dispatch(Command::ModelingMode(true), &ctx);
+        app.ui.preferences.selection_mode = mode;
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        app.open_quick_menu(&ctx, Action::MaskVisibilityMenu);
+        app.ui.viewport_menu.position = Some(Pos2::new(20., 20.));
+        for _ in 0..6 {
+            frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        }
+        let output = frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let point = text_point(&output, "Vertex Group");
+        assert!(output.shapes.iter().any(|shape| shape.clip_rect.contains(point)
+            && matches!(&shape.shape, egui::Shape::Text(t) if t.galley.text() == "Vertex Group")));
+        tap(&mut app, &ctx, point, egui::Modifiers::NONE, false);
+        assert!(app.ui.viewport_menu.context.is_none());
+        let saved: preferences::Preferences =
+            serde_json::from_str(&serde_json::to_string(&app.ui.preferences).unwrap()).unwrap();
+        assert_eq!(
+            saved.mask_vertex_group,
+            mode == preferences::SelectionMode::Mask
+        );
+        assert_eq!(
+            saved.visibility_vertex_group,
+            mode == preferences::SelectionMode::Visibility
+        );
+        assert_eq!(
+            saved.component_vertex_group,
+            mode == preferences::SelectionMode::Components
+        );
+        assert_eq!(app.document.geometry_snapshot(), before);
+        assert_eq!(app.document.history_counts(), history);
+        let entries = app.ui.viewport_menu_entries(menu, &app.document);
+        assert!(entries.iter().any(|e| e.action == action && e.selected));
+
+        #[cfg(target_os = "linux")]
+        if let Some(dir) = std::env::var_os("CLAY_WORKFLOW_CAPTURES") {
+            let mut visual = vertex_group_fixture();
+            let visual_ctx = egui::Context::default();
+            visual.dispatch(Command::ModelingMode(true), &visual_ctx);
+            visual.ui.preferences = saved;
+            visual.ui.viewport_menu.context = Some(menu);
+            visual.ui.viewport_menu.position = Some(Pos2::new(20., 20.));
+            visual.ui.viewport_menu.selected =
+                entries.iter().position(|e| e.action == action).unwrap();
+            let mut capture = crate::viewport::UiCapture::new([1000, 800]);
+            for _ in 0..6 {
+                let output = frame(&mut visual, &visual_ctx, vec![], egui::Modifiers::NONE);
+                let rgba = capture.render(&visual_ctx, output);
+                capture.save(
+                    std::path::PathBuf::from(&dir).join(format!("vertex-group-{menu:?}.png")),
+                    &rgba,
+                );
+            }
+        }
+        app.execute_action(shape, &ctx);
+        assert!(
+            !app.ui.preferences.mask_vertex_group
+                && !app.ui.preferences.visibility_vertex_group
+                && !app.ui.preferences.component_vertex_group
+        );
+    }
+    let old: preferences::Preferences = serde_json::from_str(
+        r#"{"mask_preset":{"shape":"Lasso"},"component_region_shape":"Line"}"#,
+    )
+    .unwrap();
+    assert!(!old.mask_vertex_group && !old.visibility_vertex_group && !old.component_vertex_group);
+    assert_eq!(old.mask_preset.shape, preferences::MaskShape::Lasso);
+    assert_eq!(
+        old.component_region_shape,
+        crate::viewport::RegionShape::Line
+    );
+}
+
+#[test]
+fn workflow_vertex_group_reverse_and_component_change_respect_scope() {
+    let hold = egui::Modifiers::CTRL | egui::Modifiers::SHIFT;
+    for alt in [false, true] {
+        let mut app = vertex_group_fixture();
+        let ctx = egui::Context::default();
+        app.execute_action(Action::MaskVertexGroup, &ctx);
+        if !alt {
+            app.execute_action(Action::TemporaryMaskErase, &ctx);
+        }
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let before = app.document.geometry_snapshot();
+        let count = app.document.history_counts().0;
+        tap(
+            &mut app,
+            &ctx,
+            Pos2::new(650., 400.),
+            if alt {
+                hold | egui::Modifiers::ALT
+            } else {
+                hold
+            },
+            false,
+        );
+        let mut expected = before.clone();
+        for (f, t) in before.mesh.triangles.iter().enumerate() {
+            if before.mesh.polygroups[f] == 2 {
+                for &v in t {
+                    expected.mesh.mask[v] = 0.;
+                }
+            }
+        }
+        assert_eq!(
+            app.document.geometry_snapshot(),
+            expected,
+            "{}",
+            app.ui.status
+        );
+        roundtrip(&mut app, &before, count);
+    }
+    let mut app = vertex_group_fixture();
+    let ctx = egui::Context::default();
+    app.dispatch(Command::ModelingMode(true), &ctx);
+    app.dispatch(
+        Command::ModelingComponent(crate::viewport::ComponentMode::Face),
+        &ctx,
+    );
+    app.ui.modeling.protect_mask = false;
+    app.execute_action(Action::ModelVertexGroup, &ctx);
+    frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+    let before = app.document.geometry_snapshot();
+    tap(&mut app, &ctx, Pos2::new(650., 400.), hold, false);
+    app.execute_action(
+        Action::ModelRegionChange(crate::viewport::SelectionChange::Add),
+        &ctx,
+    );
+    tap(&mut app, &ctx, Pos2::new(350., 400.), hold, false);
+    assert_eq!(
+        app.viewport.modeling.selected_faces().len(),
+        before.mesh.polygons().len()
+    );
+    app.execute_action(
+        Action::ModelRegionChange(crate::viewport::SelectionChange::Remove),
+        &ctx,
+    );
+    tap(&mut app, &ctx, Pos2::new(650., 400.), hold, false);
+    assert_eq!(
+        app.viewport.modeling.selected_faces().len(),
+        before.mesh.polygons().len() / 2
+    );
+    app.ui.modeling.protect_mask = true; // Every vertex has a deliberate soft mask.
+    app.execute_action(
+        Action::ModelRegionChange(crate::viewport::SelectionChange::Replace),
+        &ctx,
+    );
+    tap(&mut app, &ctx, Pos2::new(650., 400.), hold, false);
+    assert!(app.viewport.modeling.selected.is_empty());
+    assert_eq!(app.document.geometry_snapshot(), before);
+}
+
+#[test]
+fn workflow_vertex_group_remapped_hold_pen_and_cancellation_do_not_invert() {
+    for cancel in [
+        None,
+        Some(egui::Event::PointerGone),
+        Some(egui::Event::WindowFocused(false)),
+        Some(egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }),
+    ] {
+        let mut app = vertex_group_fixture();
+        let ctx = egui::Context::default();
+        app.ui.preferences.visibility_hold = preferences::HoldBinding {
+            key: Some("F2".into()),
+            ..Default::default()
+        };
+        app.execute_action(Action::MaskVertexGroup, &ctx);
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        let point = Pos2::new(650., 400.);
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::Key {
+                    key: egui::Key::F2,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerMoved(point),
+                button(point, true, egui::Modifiers::NONE),
+            ],
+            egui::Modifiers::NONE,
+        );
+        assert_eq!(
+            app.document.geometry_snapshot(),
+            before,
+            "commit only on release"
+        );
+        if let Some(cancel) = cancel {
+            frame(&mut app, &ctx, vec![cancel], egui::Modifiers::NONE);
+            frame(
+                &mut app,
+                &ctx,
+                vec![button(point, false, egui::Modifiers::NONE)],
+                egui::Modifiers::NONE,
+            );
+            assert_eq!(app.document.geometry_snapshot(), before);
+            assert_eq!(app.document.history_counts(), history);
+        } else {
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    button(point, false, egui::Modifiers::NONE),
+                    egui::Event::PointerGone,
+                ],
+                egui::Modifiers::NONE,
+            );
+            assert!(app.document.mesh().mask.contains(&1.));
+            assert!(app.document.mesh().mask.contains(&0.2));
+            roundtrip(&mut app, &before, history.0);
+        }
+    }
+}
+
+#[test]
+fn workflow_vertex_group_navigation_and_unassigned_clicks_preserve_document() {
+    for remapped in [false, true] {
+        let mut app = vertex_group_fixture();
+        let ctx = egui::Context::default();
+        app.ui.preferences.visibility_hold = preferences::HoldBinding {
+            key: Some("F2".into()),
+            ..Default::default()
+        };
+        if remapped {
+            app.ui.preferences.pan_hold = preferences::Hold::Ctrl;
+            app.ui.preferences.zoom_hold = preferences::Hold::Alt;
+        }
+        app.execute_action(Action::MaskVertexGroup, &ctx);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::F2,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            egui::Modifiers::NONE,
+        );
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        let camera = app.camera;
+        let a = Pos2::new(650., 450.);
+        let b = a + Vec2::new(30., 35.);
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(a),
+                button(a, true, egui::Modifiers::CTRL),
+                egui::Event::PointerMoved(b),
+                button(b, false, egui::Modifiers::CTRL),
+            ],
+            egui::Modifiers::CTRL,
+        );
+        if remapped {
+            assert_ne!(app.camera.pan, camera.pan);
+        } else {
+            assert_ne!(app.camera.zoom, camera.zoom);
+        }
+        assert_eq!(app.document.geometry_snapshot(), before);
+        assert_eq!(app.document.history_counts(), history);
+    }
+    for action in [
+        Action::MaskVertexGroup,
+        Action::VisibilityVertexGroup,
+        Action::ModelVertexGroup,
+    ] {
+        let mut app = vertex_group_fixture();
+        let ctx = egui::Context::default();
+        let mut geometry = app.document.geometry_snapshot();
+        for label in &mut geometry.mesh.polygroups {
+            if *label == 2 {
+                *label = 0;
+            }
+        }
+        app.document.replace_geometry(geometry).unwrap();
+        app.dispatch(Command::ModelingMode(true), &ctx);
+        app.execute_action(action, &ctx);
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        tap(
+            &mut app,
+            &ctx,
+            Pos2::new(650., 400.),
+            egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+            true,
+        );
+        assert_eq!(app.document.geometry_snapshot(), before);
+        assert_eq!(app.document.history_counts(), history);
+        assert!(app.viewport.modeling.selected.is_empty());
+    }
+}
+
+#[test]
+fn workflow_vertex_group_attribute_edits_cover_levels_and_protect_hidden_vertices() {
+    let mut app = vertex_group_fixture();
+    let mut geometry = app.document.geometry_snapshot();
+    geometry.subdivide().unwrap();
+    for mesh in std::iter::once(&mut geometry.mesh).chain(geometry.settings.lower.iter_mut()) {
+        mesh.hidden_faces = mesh
+            .triangles
+            .iter()
+            .enumerate()
+            .map(|(f, t)| {
+                mesh.polygroups[f] == 2 && t.iter().map(|&v| mesh.vertices[v].1).sum::<f32>() > 0.
+            })
+            .collect();
+    }
+    app.document.replace_geometry(geometry).unwrap();
+    app.document.duplicate_model(false).unwrap();
+    let before = app.document.geometry_snapshot();
+    let count = app.document.history_counts().0;
+    let mut expected = before.clone();
+    for mesh in std::iter::once(&mut expected.mesh).chain(expected.settings.lower.iter_mut()) {
+        let editable = mesh.sculptable_vertices();
+        for (f, t) in mesh.triangles.iter().enumerate() {
+            if mesh.face_visible(f) && mesh.polygroups[f] == 2 {
+                for &v in t {
+                    if editable[v] {
+                        mesh.mask[v] = 1.;
+                    }
+                }
+            }
+        }
+    }
+    app.document.mask_polygroup(2, false).unwrap();
+    assert_eq!(app.document.geometry_snapshot(), expected);
+    roundtrip(&mut app, &before, count);
+    app.document.undo();
+    assert_eq!(app.document.geometry_snapshot(), before);
+    let count = app.document.history_counts().0;
+    let mut expected = before.clone();
+    for mesh in std::iter::once(&mut expected.mesh).chain(expected.settings.lower.iter_mut()) {
+        let visible = (0..mesh.triangles.len())
+            .map(|f| mesh.face_visible(f) && mesh.polygroups[f] != 2)
+            .collect();
+        mesh.set_face_visibility(visible);
+    }
+    app.document.hide_polygroup(2, true).unwrap();
+    assert_eq!(app.document.geometry_snapshot(), expected);
+    roundtrip(&mut app, &before, count);
+}
+
+#[test]
+fn workflow_context_clear_empty_space_uses_active_tab_with_or_without_group_mode() {
+    let hold = egui::Modifiers::CTRL | egui::Modifiers::SHIFT;
+    for group in [false, true] {
+        for fast in [false, true] {
+            for (context, (action, shape)) in [
+                (Action::MaskVertexGroup, Action::TemporaryMaskBrush),
+                (
+                    Action::VisibilityVertexGroup,
+                    Action::TemporaryVisibilityRectangle,
+                ),
+                (
+                    Action::ModelVertexGroup,
+                    Action::ModelRegionShape(crate::viewport::RegionShape::Rectangle),
+                ),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let mut app = vertex_group_fixture();
+                let ctx = egui::Context::default();
+                app.dispatch(Command::ModelingMode(true), &ctx);
+                app.dispatch(
+                    Command::ModelingComponent(crate::viewport::ComponentMode::Face),
+                    &ctx,
+                );
+                app.ui.modeling.protect_mask = false;
+                app.execute_action(action, &ctx);
+                if context == 1 {
+                    app.document.hide_polygroup(2, true).unwrap();
+                }
+                frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+                if context == 2 {
+                    tap(&mut app, &ctx, Pos2::new(650., 400.), hold, fast);
+                } else {
+                    app.viewport
+                        .modeling
+                        .selected
+                        .insert(crate::viewport::Component::Face(0));
+                }
+                if !group {
+                    app.execute_action(shape, &ctx);
+                }
+                frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+                let before = app.document.geometry_snapshot();
+                let history = app.document.history_counts();
+                let selected = app.viewport.modeling.selected.clone();
+                assert!(!selected.is_empty());
+                tap(&mut app, &ctx, Pos2::new(120., 120.), hold, fast);
+                let mut expected = before.clone();
+                match context {
+                    0 => expected.mesh.mask.fill(0.),
+                    1 => expected.mesh.show_all_faces(),
+                    _ => (),
+                }
+                assert_eq!(
+                    app.document.geometry_snapshot(),
+                    expected,
+                    "context {context}, group {group}: {}",
+                    app.ui.status
+                );
+                if context == 2 {
+                    assert!(app.viewport.modeling.selected.is_empty());
+                    assert_eq!(app.document.history_counts(), history);
+                    frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+                    app.execute_action(Action::ModelUndoSelection, &ctx);
+                    assert_eq!(app.viewport.modeling.selected, selected);
+                    frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+                    app.execute_action(Action::ModelRedoSelection, &ctx);
+                    assert!(app.viewport.modeling.selected.is_empty());
+                } else {
+                    assert_eq!(
+                        app.viewport.modeling.selected, selected,
+                        "clear only the active context"
+                    );
+                    roundtrip(&mut app, &before, history.0);
+                }
+                let after = app.document.geometry_snapshot();
+                let history = app.document.history_counts();
+                tap(&mut app, &ctx, Pos2::new(120., 120.), hold, fast);
+                assert_eq!(app.document.geometry_snapshot(), after);
+                assert_eq!(
+                    app.document.history_counts(),
+                    history,
+                    "clearing an empty context is a no-op"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn workflow_context_clear_is_explicit_remappable_safe_and_cancelable() {
+    let hold = egui::Modifiers::CTRL | egui::Modifiers::SHIFT;
+    let mut app = vertex_group_fixture();
+    let ctx = egui::Context::default();
+    app.ui.preferences.visibility_hold = preferences::HoldBinding {
+        key: Some("F2".into()),
+        ..Default::default()
+    };
+    app.ui.preferences.selection_mode = preferences::SelectionMode::Mask;
+    frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+    tap(&mut app, &ctx, Pos2::new(120., 120.), hold, true);
+    assert!(
+        app.document.mesh().mask.iter().all(|&m| m == 0.),
+        "the explicit shortcut survives hold remapping"
+    );
+    // Showing everything must recover a completely hidden active mesh too.
+    app.document.invert_visibility().unwrap();
+    app.ui.preferences.selection_mode = preferences::SelectionMode::Visibility;
+    frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+    assert_eq!(
+        app.document.mesh().hidden_face_count(),
+        app.document.mesh().triangles.len()
+    );
+    tap(&mut app, &ctx, Pos2::new(500., 400.), hold, false);
+    assert_eq!(app.document.mesh().hidden_face_count(), 0);
+    for cancel in [
+        egui::Event::PointerGone,
+        egui::Event::WindowFocused(false),
+        egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: hold,
+        },
+    ] {
+        let mut app = vertex_group_fixture();
+        let ctx = egui::Context::default();
+        app.execute_action(Action::MaskVertexGroup, &ctx);
+        frame(&mut app, &ctx, vec![], egui::Modifiers::NONE);
+        let before = app.document.geometry_snapshot();
+        let history = app.document.history_counts();
+        let point = Pos2::new(120., 120.);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true, hold)],
+            hold,
+        );
+        frame(&mut app, &ctx, vec![cancel], hold);
+        frame(&mut app, &ctx, vec![button(point, false, hold)], hold);
+        assert_eq!(app.document.geometry_snapshot(), before);
+        assert_eq!(app.document.history_counts(), history);
+    }
 }
 fn button(pos: Pos2, pressed: bool, modifiers: egui::Modifiers) -> egui::Event {
     egui::Event::PointerButton {

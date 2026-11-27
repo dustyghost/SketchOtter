@@ -198,10 +198,20 @@ fn component_selection_choices(
         (3, "Selection history"),
         (4, "Split"),
     ] {
+        if section == 2
+            && !entries
+                .iter()
+                .any(|e| matches!(e.action, Action::ModelSelectThrough(_)))
+        {
+            continue;
+        }
         ui.strong(title);
         ui.horizontal_wrapped(|ui| {
             for (i, e) in entries.iter().enumerate().filter(|(_, e)| match section {
-                0 => matches!(e.action, Action::ModelRegionShape(_)),
+                0 => matches!(
+                    e.action,
+                    Action::ModelRegionShape(_) | Action::ModelVertexGroup
+                ),
                 1 => matches!(e.action, Action::ModelRegionChange(_)),
                 2 => matches!(e.action, Action::ModelSelectThrough(_)),
                 3 => matches!(
@@ -448,13 +458,18 @@ impl UiState {
                     (Action::TemporaryVisibilityLasso, "Lasso", settings.shape == VisibilityShape::Lasso),
                     (Action::SelectVisibilityLine, "Line", settings.shape == VisibilityShape::Line),
                     (Action::SelectVisibilityPath, "Closed path", settings.shape == VisibilityShape::Path),
+                    (Action::VisibilityVertexGroup, "Vertex Group", self.preferences.visibility_vertex_group),
                     (Action::VisibilityHide, "Hide selected region", settings.hide),
                     (Action::VisibilityIsolate, "Isolate selected region", !settings.hide),
                     (Action::FlipVisibilitySide, "Flip side / region", settings.flip),
-                ].into_iter().map(|(action,label,selected)| ViewportMenuEntry {
-                    action, label: label.into(), selected,
+                ].into_iter().filter(|(action, _, _)| !self.preferences.visibility_vertex_group
+                    || *action != Action::FlipVisibilitySide).map(|(action,label,selected)| ViewportMenuEntry {
+                    selected: selected && (!matches!(action, Action::TemporaryVisibilityRectangle
+                        | Action::TemporaryVisibilityLasso | Action::SelectVisibilityLine | Action::SelectVisibilityPath)
+                        || !self.preferences.visibility_vertex_group),
                     enabled: document.primitive().is_none() && document.active_visible(),
-                    hint: "Remembered for the next hold. Red faces preview the result; no geometry is cut.".into(),
+                    hint: action.help().unwrap_or("Remembered for the next hold. Red faces preview the result; no geometry is cut.").into(),
+                    action, label: label.into(),
                 }).collect()
             }
             ViewportMenuContext::Slice => {
@@ -512,7 +527,7 @@ impl UiState {
             let index = if context == ViewportMenuContext::Components {
                 entries.len()
             } else {
-                4.min(entries.len())
+                5.min(entries.len())
             };
             entries.insert(index, entry);
         }
@@ -537,9 +552,15 @@ impl UiState {
             choices.push((
                 Action::ModelRegionShape(shape),
                 shape.label().into(),
-                self.preferences.component_region_shape == shape,
+                !self.preferences.component_vertex_group
+                    && self.preferences.component_region_shape == shape,
             ));
         }
+        choices.push((
+            Action::ModelVertexGroup,
+            "Vertex Group".into(),
+            self.preferences.component_vertex_group,
+        ));
         choices.extend([
             (
                 Action::ModelRegionChange(SelectionChange::Replace),
@@ -578,9 +599,11 @@ impl UiState {
                 false,
             ),
         ]);
-        choices.into_iter().map(|(action,label,selected)| ViewportMenuEntry {
-            enabled: self.modeling.active && self.action_enabled(&action, document), action, label, selected,
-            hint: "Select vertices, edge midpoints or face centres. Hidden and protected geometry stays excluded.".into(),
+        choices.into_iter().filter(|(action, _, _)| !self.preferences.component_vertex_group
+            || !matches!(action, Action::ModelSelectThrough(_))).map(|(action,label,selected)| ViewportMenuEntry {
+            enabled: self.modeling.active && self.action_enabled(&action, document),
+            hint: action.help().unwrap_or("Select vertices, edge midpoints or face centres. Hidden and protected geometry stays excluded.").into(),
+            action, label, selected,
         }).collect()
     }
 
@@ -954,6 +977,38 @@ impl UiState {
                         component_selection_choices(ui, &entries, index, navigated)
                     {
                         action = Some(chosen);
+                    }
+                } else if matches!(
+                    context,
+                    ViewportMenuContext::Mask | ViewportMenuContext::Visibility
+                ) {
+                    let is_shape = |entry: &ViewportMenuEntry| {
+                        matches!(
+                            entry.action,
+                            Action::TemporaryMaskBrush
+                                | Action::TemporaryMaskRectangle
+                                | Action::TemporaryMaskLasso
+                                | Action::TemporaryMaskLine
+                                | Action::MaskVertexGroup
+                                | Action::TemporaryVisibilityRectangle
+                                | Action::TemporaryVisibilityLasso
+                                | Action::SelectVisibilityLine
+                                | Action::SelectVisibilityPath
+                                | Action::VisibilityVertexGroup
+                        )
+                    };
+                    ui.strong("Shape");
+                    ui.horizontal_wrapped(|ui| {
+                        for (i, entry) in entries.iter().enumerate().filter(|(_, e)| is_shape(e)) {
+                            if menu_entry(ui, entry, i == index, true, navigated, true) {
+                                action = Some(entry.action.clone());
+                            }
+                        }
+                    });
+                    for (i, entry) in entries.iter().enumerate().filter(|(_, e)| !is_shape(e)) {
+                        if menu_entry(ui, entry, i == index, false, navigated, true) {
+                            action = Some(entry.action.clone());
+                        }
                     }
                 } else {
                     for (i, entry) in entries.iter().enumerate() {

@@ -108,6 +108,49 @@ correct split control inside the menu.
 - The island attribute regression distinguishes coincident unwelded vertices
   by their retained mask values rather than assuming every position is unique.
 
+## Vertex Group click option follow-up
+
+All **33** focused workflow checks passed with optional GPU captures in
+88.90 seconds including compilation; peak process-tree RSS was 1,723,008 KiB.
+The actual tests took 51.03 seconds. Full default tests/lint and configured GPU
+regressions remain with final-head PR CI.
+
+- Each Z selection context offers **Vertex Group** as an alternative to drawing
+  a region. Saved per-context options default off in old preferences; the
+  remembered drawing shapes are retained and selecting one exits group mode.
+- The shared deferred-tap path handles group clicks before global inversion,
+  using the active visible face's saved group. The group operation itself ignores background,
+  unassigned faces and hits belonging to another submodel. Ctrl model taps,
+  edit handles and navigation borders keep their priorities.
+- Masking edits only visible, editable group vertices and leaves other masks
+  intact. Visibility hides the group even when it is the last visible group;
+  it never invokes the legacy last-group inversion shortcut. Alt reverses
+  Add/Erase or Hide/Isolate.
+- Component selection gathers the group's visible faces/edges/vertices in the
+  current mode, respecting Replace/Add/Remove and mask protection, and uses
+  the existing selection-history mechanism.
+- Focused regressions cover ordinary/same-frame clicks, exact mask scope,
+  last-group hiding, geometry history/save-reopen, all component modes and
+  selection Undo/Redo, actual Z buttons, saved flags and old preferences,
+  reverse operations, remapped holds, pen-tip release and cancellation.
+- Optional captures: `vertex-group-Mask.png`, `vertex-group-Visibility.png`,
+  and `vertex-group-Components.png`.
+  All three were visually reviewed with the remembered group option highlighted;
+  the compacted shape rows also keep **Split masked** reachable.
+- Group mode retains configured zoom/pan holds; painting and drawing regions
+  keep their existing navigation suppression. The same-frame navigation check
+  covers both default Ctrl zoom and remapped Ctrl pan without geometry edits.
+- Ctrl+Shift-click on genuinely empty viewport space clears the active Z
+  context instead of inverting: clear Mask, show all faces, or clear component
+  selection. The explicit chord survives hold remapping; ordinary group clicks
+  and surface inversion remain distinct. The press and release must both be
+  off every visible model, and moving beyond click tolerance replays a drag.
+- Clear regressions cover all three tabs with and without group mode, normal
+  and same-frame mouse/pen events, one geometry/selection Undo/Redo, other
+  attribute preservation, already-clear no-ops, fully hidden mesh recovery,
+  remapped holds and cancellation. Text/menu isolation now uses nonzero soft
+  masks so an accidental clear is detectable as well as an accidental invert.
+
 ## Optional visual review
 
 Set `CLAY_WORKFLOW_CAPTURES` to an existing output directory to render the

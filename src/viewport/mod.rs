@@ -10,7 +10,9 @@ mod edges;
 mod interaction;
 mod modeling;
 mod modifier_click;
+mod vertex_group;
 pub(crate) use modifier_click::Tap as ModifierTap;
+pub(crate) use vertex_group::VertexGroupTool;
 pub(crate) mod objects;
 mod retopology_density;
 pub(crate) use modeling::{
@@ -143,6 +145,7 @@ pub(crate) struct ViewportOptions {
     pub transform_operation: TransformOperation,
     pub transform_space: TransformSpace,
     pub invert_context: Option<ModifierTap>,
+    pub clear_context: Option<ModifierTap>,
     pub boolean_enabled: bool,
     pub cage_axis: crate::sculpt::Axis,
     pub respect_mask: bool,
@@ -1030,6 +1033,7 @@ impl Viewport {
             && options.enabled
             && let Some(pos) = pointer
             && (options.select.is_none()
+                || matches!(options.select, Some(SelectionTool::VertexGroup(_)))
                 || gizmo_rect.contains(pos)
                 || (matches!(options.select, Some(SelectionTool::MaskLine { .. }))
                     && (zoom_held || pan_held)))
@@ -1037,6 +1041,7 @@ impl Viewport {
             self.session.gesture = Some(if gizmo_rect.contains(pos) {
                 Gesture::Gizmo
             } else if navigation::contains(rect, pos)
+                || matches!(options.select, Some(SelectionTool::VertexGroup(_)))
                 || zoom_held
                 || (pan_held
                     && (scene.pick_model(pos).is_none()

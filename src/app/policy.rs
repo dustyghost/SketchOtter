@@ -471,6 +471,8 @@ impl<'a> EditorPolicy<'a> {
                         .any(|brush| brush.kind == Kind::Mask && brush.identity() == *id)
             }
             Action::TemporaryMaskRectangle
+            | Action::MaskVertexGroup
+            | Action::VisibilityVertexGroup
             | Action::TemporaryMaskVisibleOnly(_)
             | Action::TemporaryMaskBrush
             | Action::TemporaryMaskLasso
@@ -579,6 +581,7 @@ impl<'a> EditorPolicy<'a> {
                 self.edge_unavailable(action).is_none()
             }
             Action::ModelRegionShape(_)
+            | Action::ModelVertexGroup
             | Action::ModelSelectThrough(_)
             | Action::ModelRegionChange(_) => {
                 self.ui.modeling.active && self.edge_unavailable(action).is_none()

@@ -83,7 +83,13 @@ impl App {
             .viewport_menu_entries(context, &self.document)
             .iter()
             .position(|entry| {
-                if context == ViewportMenuContext::Slice {
+                if matches!(
+                    context,
+                    ViewportMenuContext::Slice
+                        | ViewportMenuContext::Mask
+                        | ViewportMenuContext::Visibility
+                        | ViewportMenuContext::Components
+                ) {
                     entry.selected
                 } else {
                     matches!(entry.action, Action::ModelTool(_))
@@ -114,6 +120,7 @@ impl App {
                     Action::SelectVisibilityLine | Action::SelectVisibilityPath
                 )
             {
+                self.ui.preferences.visibility_vertex_group = false;
                 // The popup may already be closed. Its choices configure the hold,
                 // whereas the same actions elsewhere start persistent selection tools.
                 self.ui.preferences.visibility_selection.shape =

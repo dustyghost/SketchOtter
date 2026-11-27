@@ -898,6 +898,7 @@ impl App {
         };
         let selected_mask =
             selected.is_some_and(|i| self.document.brushes()[i].kind == crate::sculpt::Kind::Mask);
+        let clear_available = self.document.primitive().is_none() && self.document.active_visible();
         self.viewport.show(
             ui,
             &mut self.document,
@@ -929,27 +930,61 @@ impl App {
                 select: if temporary_slice {
                     None
                 } else if temporary_visibility {
-                    Some(self.ui.preferences.visibility_selection.tool())
+                    Some(if self.ui.preferences.visibility_vertex_group {
+                        crate::viewport::SelectionTool::VertexGroup(
+                            crate::viewport::VertexGroupTool::Visibility {
+                                hide: self.ui.preferences.visibility_selection.hide,
+                            },
+                        )
+                    } else {
+                        self.ui.preferences.visibility_selection.tool()
+                    })
                 } else if self.ui.mask_active {
-                    self.ui.preferences.mask_preset.selection_tool()
+                    if self.ui.preferences.mask_vertex_group {
+                        Some(crate::viewport::SelectionTool::VertexGroup(
+                            crate::viewport::VertexGroupTool::Mask {
+                                erase: self.ui.preferences.mask_preset.erase,
+                            },
+                        ))
+                    } else {
+                        self.ui.preferences.mask_preset.selection_tool()
+                    }
                 } else if temporary_components {
-                    Some(crate::viewport::SelectionTool::Region(
-                        crate::viewport::RegionTool {
-                            shape: self.ui.preferences.component_region_shape,
-                            through: self.ui.preferences.component_select_through,
-                            flip: false,
-                            operation: crate::viewport::RegionOperation::Components {
+                    if self.ui.preferences.component_vertex_group {
+                        Some(crate::viewport::SelectionTool::VertexGroup(
+                            crate::viewport::VertexGroupTool::Components {
                                 mode: self.ui.modeling.mode,
                                 change: self.ui.preferences.component_region_change,
                                 protect: self.ui.modeling.protect_mask,
                             },
-                        },
-                    ))
+                        ))
+                    } else {
+                        Some(crate::viewport::SelectionTool::Region(
+                            crate::viewport::RegionTool {
+                                shape: self.ui.preferences.component_region_shape,
+                                through: self.ui.preferences.component_select_through,
+                                flip: false,
+                                operation: crate::viewport::RegionOperation::Components {
+                                    mode: self.ui.modeling.mode,
+                                    change: self.ui.preferences.component_region_change,
+                                    protect: self.ui.modeling.protect_mask,
+                                },
+                            },
+                        ))
+                    }
                 } else if matches!(
                     self.ui.selection_tool,
                     Some(crate::viewport::SelectionTool::Visibility(_))
                 ) {
-                    Some(self.ui.preferences.visibility_selection.tool())
+                    Some(if self.ui.preferences.visibility_vertex_group {
+                        crate::viewport::SelectionTool::VertexGroup(
+                            crate::viewport::VertexGroupTool::Visibility {
+                                hide: self.ui.preferences.visibility_selection.hide,
+                            },
+                        )
+                    } else {
+                        self.ui.preferences.visibility_selection.tool()
+                    })
                 } else {
                     self.ui.selection_tool
                 },
@@ -994,6 +1029,36 @@ impl App {
                 } else {
                     None
                 },
+                clear_context: if self.ui.transform_mode != crate::viewport::TransformMode::Sculpt
+                    || !clear_available
+                    || self.ui.slice_active
+                    || temporary_slice
+                    || self.ui.paths_active
+                    || self.viewport.paths.active
+                    || self.ui.arrange_references
+                    || instance_editor.is_some()
+                {
+                    None
+                } else if temporary_visibility {
+                    Some(crate::viewport::ModifierTap::ClearVisibility)
+                } else if self.ui.mask_active {
+                    Some(crate::viewport::ModifierTap::ClearMask)
+                } else if temporary_components {
+                    Some(crate::viewport::ModifierTap::ClearSelection)
+                } else {
+                    match self.ui.preferences.selection_mode {
+                        preferences::SelectionMode::Mask => {
+                            Some(crate::viewport::ModifierTap::ClearMask)
+                        }
+                        preferences::SelectionMode::Visibility => {
+                            Some(crate::viewport::ModifierTap::ClearVisibility)
+                        }
+                        preferences::SelectionMode::Components if self.ui.modeling.active => {
+                            Some(crate::viewport::ModifierTap::ClearSelection)
+                        }
+                        _ => None,
+                    }
+                },
                 boolean_enabled: self.ui.boolean_enabled,
                 cage_axis: self.ui.cage_axis,
                 respect_mask: self.ui.respect_transform_mask,
@@ -1028,12 +1093,18 @@ impl App {
                 } else {
                     self.ui.preferences.reverse
                 },
-                zoom_hold: if self.ui.mask_active || temporary_slice || temporary_components {
+                zoom_hold: if (self.ui.mask_active && !self.ui.preferences.mask_vertex_group)
+                    || temporary_slice
+                    || (temporary_components && !self.ui.preferences.component_vertex_group)
+                {
                     preferences::Hold::Disabled
                 } else {
                     self.ui.preferences.zoom_hold
                 },
-                pan_hold: if self.ui.mask_active || temporary_slice || temporary_components {
+                pan_hold: if (self.ui.mask_active && !self.ui.preferences.mask_vertex_group)
+                    || temporary_slice
+                    || (temporary_components && !self.ui.preferences.component_vertex_group)
+                {
                     preferences::Hold::Disabled
                 } else {
                     self.ui.preferences.pan_hold

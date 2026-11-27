@@ -348,6 +348,7 @@ fn action_destination(action: &Action) -> Destination {
             Destination::Menu(BuiltinMenu::References)
         }
         ClearMask
+        | MaskVertexGroup
         | InvertMask
         | DeleteMasked
         | SplitMasked
@@ -366,6 +367,7 @@ fn action_destination(action: &Action) -> Destination {
         | TemporaryMaskFlip
         | TemporaryMaskPreset(_) => Destination::Menu(BuiltinMenu::Mask),
         MaskVisibilityMenu
+        | VisibilityVertexGroup
         | TemporaryVisibilityRectangle
         | TemporaryVisibilityLasso
         | SelectVisibilityLine

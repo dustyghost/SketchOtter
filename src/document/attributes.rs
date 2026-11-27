@@ -214,6 +214,56 @@ impl Document {
             Ok(())
         })
     }
+    /// Explicit group clicks never use the legacy last-group inversion shortcut.
+    pub(crate) fn hide_polygroup(&mut self, id: usize, hide: bool) -> Result<(), String> {
+        let index = id.checked_sub(1).ok_or("This face has no vertex group")?;
+        self.edit_visibility_meshes(
+            if hide {
+                "Hide vertex group"
+            } else {
+                "Isolate vertex group"
+            },
+            |mesh| {
+                mesh.require_selection_group(index)?;
+                let visible = (0..mesh.triangles.len())
+                    .map(|f| {
+                        let member = mesh.polygroups.get(f).copied().unwrap_or(0) == id;
+                        mesh.face_visible(f) && if hide { !member } else { member }
+                    })
+                    .collect();
+                mesh.set_face_visibility(visible);
+                Ok(())
+            },
+        )
+    }
+    pub(crate) fn mask_polygroup(&mut self, id: usize, erase: bool) -> Result<(), String> {
+        let index = id.checked_sub(1).ok_or("This face has no vertex group")?;
+        self.edit_group_meshes(
+            if erase {
+                "Erase vertex group mask"
+            } else {
+                "Mask vertex group"
+            },
+            |mesh| {
+                mesh.require_selection_group(index)?;
+                let editable = mesh.sculptable_vertices();
+                let mut members = vec![false; mesh.vertices.len()];
+                for (f, triangle) in mesh.triangles.iter().enumerate() {
+                    if mesh.face_visible(f) && mesh.polygroups.get(f).copied().unwrap_or(0) == id {
+                        for &v in triangle {
+                            members[v] = true;
+                        }
+                    }
+                }
+                for (v, member) in members.into_iter().enumerate() {
+                    if member && editable[v] {
+                        mesh.mask[v] = if erase { 0. } else { 1. };
+                    }
+                }
+                Ok(())
+            },
+        )
+    }
     /// The same view-space region is applied to every stored subdivision level.
     /// Quads are selected as a whole, using their center, through all depths.
     pub fn select_face_region(

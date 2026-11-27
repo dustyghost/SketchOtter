@@ -10,6 +10,9 @@ pub(crate) enum Action {
     TemporaryMaskVisibleOnly(bool),
     TemporaryMaskLasso,
     TemporaryMaskLine,
+    MaskVertexGroup,
+    VisibilityVertexGroup,
+    ModelVertexGroup,
     TemporaryMaskAdd,
     TemporaryMaskErase,
     TemporaryMaskFlip,
@@ -554,6 +557,9 @@ impl Action {
         Self::ModelRegionShape(crate::viewport::RegionShape::Rectangle),
         Self::ModelRegionShape(crate::viewport::RegionShape::Lasso),
         Self::ModelRegionShape(crate::viewport::RegionShape::Line),
+        Self::MaskVertexGroup,
+        Self::VisibilityVertexGroup,
+        Self::ModelVertexGroup,
         Self::ModelRegionChange(crate::viewport::SelectionChange::Replace),
         Self::ModelRegionChange(crate::viewport::SelectionChange::Add),
         Self::ModelRegionChange(crate::viewport::SelectionChange::Remove),
@@ -592,6 +598,15 @@ impl Action {
             }
             Self::GroupAll => {
                 "Group visible faces on the active model across stored subdivision levels. Hidden memberships and face labels stay intact; shared boundary vertices also join the new group. Undo restores the previous groups."
+            }
+            Self::MaskVertexGroup => {
+                "Click a visible face to mask its whole vertex group. Add/Erase and Alt apply to that group only; group clicks replace surface tap-to-invert. Ctrl+Shift-click empty space clears the mask."
+            }
+            Self::VisibilityVertexGroup => {
+                "Click a visible face to hide its whole vertex group. Hide/Isolate and Alt apply to that group only; even the last group hides without inverting. Ctrl+Shift-click empty space shows all faces."
+            }
+            Self::ModelVertexGroup => {
+                "Click a visible face to select its whole vertex group in the current component mode. Replace/Add/Remove still apply. Group clicks replace tap-to-invert; hidden/protected components remain excluded."
             }
             Self::SplitHidden => {
                 "Move hidden faces inside the active mesh into a new visible, unmasked, unselected submodel. Review the subdivision/settings reset before applying. Boundaries stay open; Undo restores both pieces."
@@ -696,6 +711,9 @@ impl Action {
             Self::ModelRegionShape(crate::viewport::RegionShape::Rectangle) => "Select rectangle",
             Self::ModelRegionShape(crate::viewport::RegionShape::Lasso) => "Select lasso",
             Self::ModelRegionShape(crate::viewport::RegionShape::Line) => "Select by line",
+            Self::MaskVertexGroup => "Mask by vertex group",
+            Self::VisibilityVertexGroup => "Visibility by vertex group",
+            Self::ModelVertexGroup => "Select by vertex group",
             Self::ModelRegionChange(crate::viewport::SelectionChange::Replace) => {
                 "Region selection: Replace"
             }

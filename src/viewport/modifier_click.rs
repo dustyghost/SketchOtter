@@ -6,6 +6,10 @@ pub(crate) enum Tap {
     Model,
     Mask,
     Visibility,
+    VertexGroup(VertexGroupTool),
+    ClearMask,
+    ClearVisibility,
+    ClearSelection,
 }
 pub(super) struct Pending {
     start: Pos2,
@@ -13,6 +17,7 @@ pub(super) struct Pending {
     action: Tap,
     revision: u64,
     events: Vec<egui::Event>,
+    group: Option<usize>,
 }
 
 impl Viewport {
@@ -44,7 +49,9 @@ impl Viewport {
             && !ui.ctx().wants_keyboard_input()
             && !egui::Popup::is_any_open(ui.ctx())
             && let Some((pos, modifiers)) = press
-            && modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd
+            && !modifiers.mac_cmd
+            && ((modifiers.ctrl && !modifiers.alt)
+                || matches!(options.select, Some(SelectionTool::VertexGroup(_))))
             && response.rect.contains(pos)
             && !navigation::contains(response.rect, pos)
             && !gizmo.contains(pos)
@@ -55,7 +62,17 @@ impl Viewport {
             && !(options.transform_mode == TransformMode::Sculpt && self.session.primitive.can_drag(document, scene, pos))
             && !self.modeling.modifier_handle(document, scene, options.modeling, pos, ui.painter())
         {
-            let action = if modifiers.shift {
+            let action = if modifiers.ctrl
+                && modifiers.shift
+                && !modifiers.alt
+                && scene.pick_model(pos).is_none()
+            {
+                options.clear_context
+            } else if let Some(SelectionTool::VertexGroup(tool)) = options.select
+                && (!modifiers.ctrl || modifiers.shift || modifiers.alt)
+            {
+                Some(Tap::VertexGroup(tool.reversed(modifiers.alt)))
+            } else if modifiers.shift {
                 options.invert_context
             } else {
                 Some(Tap::Model)
@@ -67,6 +84,11 @@ impl Viewport {
                     action,
                     revision: document.display_revision(),
                     events: Vec::new(),
+                    group: if matches!(action, Tap::VertexGroup(_)) {
+                        scene.pick_polygroup(pos, document)
+                    } else {
+                        None
+                    },
                 });
             }
         }
@@ -152,12 +174,39 @@ impl Viewport {
                 && ui.ctx().layer_id_at(pos) == Some(response.layer_id)
                 && released.ctrl == pending.modifiers.ctrl
                 && released.shift == pending.modifiers.shift
-                && !released.alt
+                && (!matches!(
+                    pending.action,
+                    Tap::ClearMask | Tap::ClearVisibility | Tap::ClearSelection
+                ) || scene.pick_model(pos).is_none())
+                && if matches!(pending.action, Tap::VertexGroup(_)) {
+                    released.alt == pending.modifiers.alt
+                } else {
+                    !released.alt
+                }
                 && !released.mac_cmd;
             if valid {
                 let result = match pending.action {
                     Tap::Mask => document.invert_mask(),
                     Tap::Visibility => document.invert_visibility(),
+                    Tap::ClearMask => {
+                        document.clear_mask();
+                        self.modeling.accept_attribute_revision(document);
+                        self.status = Some("Mask cleared".into());
+                        Ok(())
+                    }
+                    Tap::ClearVisibility => document.show_all_faces().map(|()| {
+                        self.modeling.accept_attribute_revision(document);
+                        self.status = Some("All faces shown".into());
+                    }),
+                    Tap::ClearSelection => {
+                        self.modeling.sync(document);
+                        self.modeling.record_selection(document, Default::default());
+                        self.status = Some("Component selection cleared".into());
+                        Ok(())
+                    }
+                    Tap::VertexGroup(tool) => {
+                        self.click_vertex_group(document, tool, pending.group)
+                    }
                     Tap::Model => {
                         if let Some((owner, _, _)) = scene.pick_model(pos)
                             && let Some(index) = document.display_owner_model(owner)

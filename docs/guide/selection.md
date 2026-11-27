@@ -9,6 +9,8 @@
 - [Edit a mask](#mask-operations)
 - [Split masked faces](#split-masked-geometry)
 - [Save a region as a group](#vertex-groups)
+- [Select, mask or hide a group by clicking](#click-a-vertex-group)
+- [Modifier-click inversion and clearing](#modifier-taps-and-drags)
 - [Hide or isolate faces](#selection-and-visibility)
 - [Split off hidden faces](#split-hidden-faces)
 
@@ -24,7 +26,7 @@ Slice cuts through all depths and uses the existing [Slice rules](modeling.md#sl
 ## Hold to mask
 
 1. New preferences default to **Mask → Surface brush**: hold **Ctrl+Shift** and drag to paint immediately, without opening Z first. Press **Z** to choose **Mask**, **Visibility** or **Slice**. While Modeling is enabled, **Select** also offers [component region selection](modeling.md#select-many-components-with-a-region). That tab determines what **Ctrl+Shift** does. The selected mode is remembered after restarting; existing saved choices are preserved. Mask and Visibility also remember their shape and operation; Slice reuses the current Slice settings.
-2. For Mask, choose **Surface brush**, **Rectangle**, **Lasso** or **Line**, then **Add mask** or **Erase mask**. For region shapes, choose **Visible only** to affect the visible surface, or **Through mesh** to include the back and occluded parts. Line also offers **Flip side**. Visibility offers Rectangle, Lasso, Line and Closed path with Hide/Isolate.
+2. For Mask, choose **Surface brush**, **Rectangle**, **Lasso**, **Line** or **Vertex Group**, then **Add mask** or **Erase mask**. For region shapes, choose **Visible only** to affect the visible surface, or **Through mesh** to include the back and occluded parts. Line also offers **Flip side**. Visibility offers Rectangle, Lasso, Line, Closed path and Vertex Group with Hide/Isolate.
 3. Hold **Ctrl+Shift** over the model. All brush highlights clear while the hold is active, and brush names stay unchanged. Mask painting still uses the remembered Mask brush preset. The viewport shows the active mode and shape.
 4. Paint or draw, release the pen to commit, then release Ctrl+Shift to restore the original brush highlight and sculpt or Modeling tool. **Alt** reverses the operation while held.
 
@@ -100,10 +102,19 @@ submodel in Sculpt, Modeling, Mask, Slice and Transform. Empty space and the
 already-active model leave the target unchanged. This uses the same undoable
 selection as the Submodels panel and does not modify geometry.
 
-**Ctrl+Shift-click** in Mask inverts soft mask weights; in Visibility it inverts
-face visibility. One tap is one Undo/Redo operation. The active temporary
+**Ctrl+Shift-click on a surface** in Mask inverts soft mask weights; in
+Visibility it inverts face visibility, unless Vertex Group is enabled.
+One tap is one Undo/Redo operation. The active temporary
 selection context takes priority; Slice, component selection and Transform do
 not invert. Menu/popup controls and text entry do not perform viewport taps.
+
+**Ctrl+Shift-click empty viewport space** clears the active Z context on the
+active submodel: **Mask → clear all masks**, **Visibility → show all faces**,
+or **Select → deselect all components**. This also works in Vertex Group mode
+and when the selection hold has been remapped. Any visible submodel under the
+pointer counts as a surface, not empty space. Showing all faces also recovers
+a fully hidden mesh. Geometry edits use one Undo/Redo; component clearing uses
+selection Undo/Redo. Clearing an already empty context adds no history.
 
 Taps are resolved on release. Moving beyond the normal click tolerance instead
 uses the existing drag gesture: Ctrl zoom by default, or the configured
@@ -111,6 +122,33 @@ navigation/selection hold bindings. Navigation borders, the view gizmo and edit
 handles keep their own interactions. Remapping drag holds does not remap these
 explicit Ctrl/Ctrl+Shift tap shortcuts. Escape, focus loss or a disappearing
 pointer cancels a pending tap.
+
+### Click a vertex group
+
+In **Z → Mask**, **Visibility** or **Select**, choose **Vertex Group** instead
+of a drawing shape. Use the selection hold as usual and click a visible face:
+
+- **Mask** adds a mask to that whole face group, or erases it when **Erase** is
+  chosen. Other masks remain unchanged. Hidden geometry stays protected.
+- **Visibility** starts with **Hide**: the clicked group is hidden, including
+  the last visible group. **Isolate** keeps that group instead.
+- **Select** selects the group's faces, edges or vertices according to the
+  current Modeling component mode. **Replace / Add / Remove**, hidden geometry
+  and mask protection work as for region selection.
+
+**Alt** reverses the operation. Group clicks take priority over surface
+tap-to-invert. Unassigned faces and inactive submodels do nothing; empty-space
+clicks do nothing unless using the explicit Ctrl+Shift clear shortcut above.
+Explicit **Invert mask / Invert visibility** menu controls still work. Picking
+Rectangle, Lasso or another drawing shape restores ordinary region/invert
+behavior. Each tab remembers its group option independently; older preferences
+keep their existing shape and behavior.
+
+Group operations use the active model's saved face-group labels, not brush
+symmetry or camera occlusion to expand the group. Mask/visibility edits apply
+across stored subdivision levels and use one Undo/Redo; component selections
+use their existing selection Undo/Redo history. Group boundaries and geometry
+are not changed.
 
 ### Split the current selection or split to parts
 
