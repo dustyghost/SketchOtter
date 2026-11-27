@@ -99,6 +99,15 @@ impl App {
             self.viewport.wait_for_release();
         }
         let preset = &mut self.ui.preferences.mask_preset;
+        if matches!(
+            action,
+            Action::TemporaryMaskRectangle
+                | Action::TemporaryMaskBrush
+                | Action::TemporaryMaskLasso
+                | Action::TemporaryMaskLine
+        ) {
+            self.ui.preferences.mask_vertex_group = false;
+        }
         match action {
             Action::TemporaryMaskRectangle => preset.shape = MaskShape::Rectangle,
             Action::TemporaryMaskVisibleOnly(visible) => preset.visible_only = visible,
@@ -127,7 +136,11 @@ impl App {
         let text = format!(
             "Selection · Mask · {} · {} · {} · release to restore tool",
             self.temporary_mask_binding(ui.ctx()).label(),
-            preset.shape.label(),
+            if self.ui.preferences.mask_vertex_group {
+                "Vertex Group"
+            } else {
+                preset.shape.label()
+            },
             if preset.erase ^ ui.input(|i| i.modifiers.alt) {
                 "Erase"
             } else {
@@ -503,6 +516,7 @@ mod tests {
             vec![button(p, false), key(Key::M, false)],
         );
         assert_eq!(app.document.geometry_snapshot(), before);
+        app.ui.preferences.selection_mode = preferences::SelectionMode::Visibility;
         app.ui.preferences.mask_hold = HoldBinding {
             ctrl: true,
             ..Default::default()

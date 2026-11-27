@@ -8,6 +8,8 @@ pub(super) struct SnakeStroke {
 }
 #[derive(Default)]
 pub(crate) struct InteractionSession {
+    pub(super) modifier_click: Option<modifier_click::Pending>,
+    pub(super) resumed_drag: Option<Pos2>,
     pub(super) sculpt: SculptSession,
     pub(crate) visibility_hold: Option<crate::preferences::HoldBinding>,
     pub(crate) guided: guided::GuidedPaths,

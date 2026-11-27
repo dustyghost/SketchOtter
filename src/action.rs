@@ -10,6 +10,9 @@ pub(crate) enum Action {
     TemporaryMaskVisibleOnly(bool),
     TemporaryMaskLasso,
     TemporaryMaskLine,
+    MaskVertexGroup,
+    VisibilityVertexGroup,
+    ModelVertexGroup,
     TemporaryMaskAdd,
     TemporaryMaskErase,
     TemporaryMaskFlip,
@@ -26,6 +29,8 @@ pub(crate) enum Action {
     MaskVisibilityMenu,
     TransformMenu,
     UniversalTransform,
+    TransformWorldSpace,
+    TransformScreenSpace,
     ModelAxis(crate::viewport::ModelAxis),
     TemporaryVisibilityRectangle,
     TemporaryVisibilityLasso,
@@ -130,6 +135,8 @@ pub(crate) enum Action {
     InvertMask,
     DeleteMasked,
     SplitMasked,
+    SplitSelectedFaces,
+    SplitDisconnectedIslands,
     ExpandMask,
     ContractMask,
     BlurMask,
@@ -149,6 +156,7 @@ pub(crate) enum Action {
     FlipMaskLine,
     ShowAllFaces,
     InvertVisibility,
+    #[serde(alias = "SplitVisible")]
     SplitHidden,
     DeleteHidden,
     Slice,
@@ -320,6 +328,8 @@ impl Action {
         Self::InvertMask,
         Self::DeleteMasked,
         Self::SplitMasked,
+        Self::SplitSelectedFaces,
+        Self::SplitDisconnectedIslands,
         Self::ExpandMask,
         Self::ContractMask,
         Self::BlurMask,
@@ -547,6 +557,9 @@ impl Action {
         Self::ModelRegionShape(crate::viewport::RegionShape::Rectangle),
         Self::ModelRegionShape(crate::viewport::RegionShape::Lasso),
         Self::ModelRegionShape(crate::viewport::RegionShape::Line),
+        Self::MaskVertexGroup,
+        Self::VisibilityVertexGroup,
+        Self::ModelVertexGroup,
         Self::ModelRegionChange(crate::viewport::SelectionChange::Replace),
         Self::ModelRegionChange(crate::viewport::SelectionChange::Add),
         Self::ModelRegionChange(crate::viewport::SelectionChange::Remove),
@@ -563,6 +576,8 @@ impl Action {
         Self::MaskVisibilityMenu,
         Self::TransformMenu,
         Self::UniversalTransform,
+        Self::TransformWorldSpace,
+        Self::TransformScreenSpace,
         Self::ModelAxis(crate::viewport::ModelAxis::X),
         Self::ModelAxis(crate::viewport::ModelAxis::Y),
         Self::ModelAxis(crate::viewport::ModelAxis::Z),
@@ -577,17 +592,36 @@ impl Action {
     /// Help shared by the built-in controls, custom menus, and shelves.
     pub fn help(&self) -> Option<&'static str> {
         Some(match self {
+            Self::TransformWorldSpace => "Use fixed scene axes without moving the model or pivot.",
+            Self::TransformScreenSpace => {
+                "Align X/Y with the viewport and Z with view depth, including camera roll. The diagonal Z handle moves in depth."
+            }
             Self::GroupAll => {
                 "Group visible faces on the active model across stored subdivision levels. Hidden memberships and face labels stay intact; shared boundary vertices also join the new group. Undo restores the previous groups."
             }
+            Self::MaskVertexGroup => {
+                "Click a visible face to mask its whole vertex group. Add/Erase and Alt apply to that group only; group clicks replace surface tap-to-invert. Ctrl+Shift-click empty space clears the mask."
+            }
+            Self::VisibilityVertexGroup => {
+                "Click a visible face to hide its whole vertex group. Hide/Isolate and Alt apply to that group only; even the last group hides without inverting. Ctrl+Shift-click empty space shows all faces."
+            }
+            Self::ModelVertexGroup => {
+                "Click a visible face to select its whole vertex group in the current component mode. Replace/Add/Remove still apply. Group clicks replace tap-to-invert; hidden/protected components remain excluded."
+            }
             Self::SplitHidden => {
-                "Move hidden faces inside the active mesh into a new visible submodel. Review the subdivision/settings reset before applying. Boundaries stay open; Undo restores both pieces."
+                "Move hidden faces inside the active mesh into a new visible, unmasked, unselected submodel. Review the subdivision/settings reset before applying. Boundaries stay open; Undo restores both pieces."
             }
             Self::DeleteHidden => {
                 "Delete hidden faces inside the active mesh, preserving the visible surface and its attributes. Review the subdivision/settings reset before applying. Other submodels stay intact; boundaries remain open."
             }
             Self::SplitMasked => {
-                "Move faces whose corners all meet Mask → Selection threshold into a new submodel. Includes masked hidden faces; preserves masks and visibility. Review the threshold and subdivision/settings reset before applying."
+                "Move faces whose corners all meet Mask → Selection threshold into a new visible, unmasked, unselected submodel. Includes masked hidden faces. Review the threshold and subdivision/settings reset before applying."
+            }
+            Self::SplitSelectedFaces => {
+                "Move the Modeling face selection to a new visible, unmasked, unselected submodel in place. Use Connected selection for a connected part. Preserves groups, paint, UVs and open boundaries; resets subdivision/adaptive/voxel settings to the current surface. One Undo restores both parts."
+            }
+            Self::SplitDisconnectedIslands => {
+                "Separate every disconnected part of the active mesh (including hidden faces) into independently editable submodels in place. Preserves surface attributes; resets subdivision/adaptive/voxel settings. One Undo restores all parts."
             }
             Self::DeleteMasked => {
                 "Remove faces meeting the mask threshold at every vertex. Creates open boundaries and resets subdivision levels and closed-surface modes. Undo restores everything."
@@ -677,6 +711,9 @@ impl Action {
             Self::ModelRegionShape(crate::viewport::RegionShape::Rectangle) => "Select rectangle",
             Self::ModelRegionShape(crate::viewport::RegionShape::Lasso) => "Select lasso",
             Self::ModelRegionShape(crate::viewport::RegionShape::Line) => "Select by line",
+            Self::MaskVertexGroup => "Mask by vertex group",
+            Self::VisibilityVertexGroup => "Visibility by vertex group",
+            Self::ModelVertexGroup => "Select by vertex group",
             Self::ModelRegionChange(crate::viewport::SelectionChange::Replace) => {
                 "Region selection: Replace"
             }
@@ -819,6 +856,8 @@ impl Action {
             Self::InvertMask => "Invert mask",
             Self::DeleteMasked => "Delete masked",
             Self::SplitMasked => "Split masked",
+            Self::SplitSelectedFaces => "Split selected",
+            Self::SplitDisconnectedIslands => "Split to parts",
             Self::ExpandMask => "Expand mask",
             Self::ContractMask => "Contract mask",
             Self::BlurMask => "Blur mask",
@@ -882,6 +921,8 @@ impl Action {
             Self::DeformationFrame => "Deformation frame",
             Self::PlacePivot => "Place transform pivot",
             Self::ResetPivot => "Reset transform pivot",
+            Self::TransformWorldSpace => "World space",
+            Self::TransformScreenSpace => "Screen space",
             Self::RespectMask => "Toggle transform mask protection",
             Self::PolygroupColors => "Toggle vertex group colors",
             Self::Backfaces => "Toggle back-facing surfaces",

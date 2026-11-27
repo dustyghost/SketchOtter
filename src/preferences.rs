@@ -377,9 +377,9 @@ pub(crate) struct ModelingPreset {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum SelectionMode {
     Components,
+    #[default]
     Mask,
     Slice,
-    #[default]
     Visibility,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -402,6 +402,9 @@ pub(crate) struct Preferences {
     pub brush_controls_version: u32,
     pub selection_mode: SelectionMode,
     pub component_region_shape: crate::viewport::RegionShape,
+    pub component_vertex_group: bool,
+    pub mask_vertex_group: bool,
+    pub visibility_vertex_group: bool,
     pub component_select_through: bool,
     pub component_region_change: crate::viewport::SelectionChange,
     pub visibility_selection: VisibilitySettings,
@@ -475,6 +478,9 @@ impl Default for Preferences {
                 .collect(),
             selection_mode: SelectionMode::default(),
             component_region_shape: Default::default(),
+            component_vertex_group: false,
+            mask_vertex_group: false,
+            visibility_vertex_group: false,
             component_select_through: false,
             component_region_change: Default::default(),
             mask_hold: HoldBinding::default(),

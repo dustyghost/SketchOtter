@@ -416,8 +416,10 @@ pub(super) fn icon_button(ui: &mut egui::Ui, glyph: Glyph, label: &str) -> egui:
         egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
     });
     #[cfg(test)]
-    ui.ctx()
-        .data_mut(|d| d.insert_temp(egui::Id::new(("icon_button", label)), response.rect));
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(egui::Id::new(("icon_button", label)), response.rect);
+        d.insert_temp(egui::Id::new(("icon_button_id", label)), response.id);
+    });
     response.on_hover_text(label)
 }
 

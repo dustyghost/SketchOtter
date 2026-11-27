@@ -401,6 +401,26 @@ impl App {
                 self.viewport.cancel(&mut self.document);
                 self.document.invert_visibility()
             }
+            Command::SplitSelectedFaces | Command::SplitDisconnectedIslands => {
+                self.viewport.modeling.sync(&self.document);
+                let faces = self.viewport.modeling.selected_faces();
+                self.viewport.cancel(&mut self.document);
+                let result = if matches!(command, Command::SplitSelectedFaces) {
+                    self.document.split_selected_faces(&faces)
+                } else {
+                    self.document.split_disconnected_islands()
+                };
+                if result.is_ok() {
+                    self.viewport.modeling.sync(&self.document);
+                    self.ui.selected_vertex_group = None;
+                    self.ui.status = if matches!(command, Command::SplitSelectedFaces) {
+                        "Selected faces moved to a new visible, unmasked, unselected submodel in place. Subdivision/adaptive/voxel settings reset to the current surface. Undo restores both parts."
+                    } else {
+                        "Split into submodels in place. Surface attributes preserved; subdivision/adaptive/voxel settings reset to the current surface. Undo restores all parts."
+                    }.into();
+                }
+                result
+            }
             Command::SplitHidden | Command::DeleteHidden | Command::SplitMasked => {
                 self.viewport.cancel(&mut self.document);
                 let action = match command {
@@ -428,10 +448,11 @@ impl App {
                             _ => self.document.delete_hidden(),
                         };
                         result.map(|()| {
+                            self.viewport.modeling.sync(&self.document);
                             self.ui.selected_vertex_group = None;
                             self.ui.status = match warning.action {
-                                Action::SplitHidden => "Hidden faces moved to a new visible submodel. Undo restores the original.",
-                                Action::SplitMasked => "Masked faces moved to a new submodel; masks and visibility preserved. Undo restores the original.",
+                                Action::SplitHidden => "Hidden faces moved to a new visible, unmasked, unselected submodel. Undo restores the original.",
+                                Action::SplitMasked => "Masked faces moved to a new visible, unmasked, unselected submodel. Undo restores the original.",
                                 _ => "Hidden faces deleted; cut boundaries remain open. Undo restores the original.",
                             }.into();
                         })
@@ -630,6 +651,11 @@ impl App {
                     self.ui.status =
                         "Primitive converted: geometry is now editable with sculpt brushes".into();
                 })
+            }
+            Command::TransformSpace(space) => {
+                self.viewport.finish_transform_drag(&mut self.document);
+                self.ui.transform_space = space;
+                Ok(())
             }
             Command::TransformMode(mode) => {
                 self.activate_transform(mode);

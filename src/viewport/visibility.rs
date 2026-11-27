@@ -6,6 +6,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Stroke, StrokeKind};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SelectionTool {
+    VertexGroup(super::VertexGroupTool),
     Region(super::RegionTool),
     Rectangle,
     Lasso,
@@ -51,6 +52,7 @@ impl SelectionTool {
     }
     pub(crate) fn label(self) -> &'static str {
         match self {
+            Self::VertexGroup(_) => "Vertex Group",
             Self::Region(_) => "Region selection",
             Self::Rectangle => "Select rectangle",
             Self::Lasso => "Select lasso",
@@ -60,6 +62,9 @@ impl SelectionTool {
         }
     }
     pub(crate) fn instructions(self) -> &'static str {
+        if matches!(self, Self::VertexGroup(_)) {
+            return "Click a vertex group · Alt reverses · Ctrl+Shift-click empty space clears";
+        }
         if matches!(self, Self::Region(_)) {
             return "Drag a region · release to apply · Escape cancels";
         }
@@ -336,6 +341,11 @@ impl Viewport {
         select: Option<SelectionTool>,
         navigate: bool,
     ) -> bool {
+        if matches!(select, Some(SelectionTool::VertexGroup(_))) {
+            self.session.selection = None;
+            self.session.visibility_path = None;
+            return false;
+        }
         let select = select.map(|tool| tool.with_reverse(ui.input(|i| i.modifiers.alt)));
         if matches!(
             select,

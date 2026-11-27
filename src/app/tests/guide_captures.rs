@@ -52,6 +52,7 @@ struct Guide {
     modifiers: egui::Modifiers,
     directory: std::path::PathBuf,
     text_positions: Vec<(String, Pos2)>,
+    visible_text_positions: Vec<(String, Pos2)>,
 }
 
 #[test]
@@ -1641,6 +1642,7 @@ impl Guide {
             modifiers: egui::Modifiers::NONE,
             directory: directory.into(),
             text_positions: Vec::new(),
+            visible_text_positions: Vec::new(),
         }
     }
     fn panel(&mut self, tool: Tool, dock: Dock) {
@@ -1742,8 +1744,18 @@ impl Guide {
             }
         }
         self.text_positions.clear();
+        self.visible_text_positions.clear();
         for shape in &output.shapes {
-            collect_text(&shape.shape, &mut self.text_positions);
+            let mut text = Vec::new();
+            collect_text(&shape.shape, &mut text);
+            self.visible_text_positions.extend(
+                text.iter()
+                    .filter(|(_, point)| {
+                        shape.clip_rect.contains(*point) && self.ctx.content_rect().contains(*point)
+                    })
+                    .cloned(),
+            );
+            self.text_positions.extend(text);
         }
         let rgba = if readback {
             self.capture.render(&self.ctx, output)
@@ -2263,6 +2275,38 @@ fn click_guide_label(g: &mut Guide, label: &str) {
         primary_event(point, true),
     ]);
     g.frame(vec![primary_event(point, false), egui::Event::PointerGone]);
+}
+
+/// Scroll real menu content into view before clicking. Text emitted outside a
+/// ScrollArea's clip is not an accessible control, even if its galley exists.
+fn click_viewport_menu_label(g: &mut Guide, label: &str) {
+    for _ in 0..16 {
+        g.frame(vec![]);
+        let rect = g.app.ui.viewport_menu.rect.expect("viewport menu is open");
+        if let Some((_, point)) = g
+            .visible_text_positions
+            .iter()
+            .rev()
+            .find(|(text, point)| text == label && rect.contains(*point))
+        {
+            let point = *point;
+            g.frame(vec![
+                egui::Event::PointerMoved(point),
+                primary_event(point, true),
+            ]);
+            g.frame(vec![primary_event(point, false), egui::Event::PointerGone]);
+            return;
+        }
+        g.frame(vec![
+            egui::Event::PointerMoved(rect.center()),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: Vec2::new(0., -60.),
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]);
+    }
+    panic!("Viewport menu control not reachable: {label}");
 }
 
 #[test]
@@ -3811,21 +3855,7 @@ fn viewport_context_menu_offscreen_review() {
                 .iter()
                 .any(|(t, _)| t.starts_with("Surface brush"))
         );
-        let visibility = g
-            .text_positions
-            .iter()
-            .rev()
-            .find(|(t, _)| t == "Visibility")
-            .unwrap()
-            .1;
-        g.frame(vec![
-            egui::Event::PointerMoved(visibility),
-            primary_event(visibility, true),
-        ]);
-        g.frame(vec![
-            primary_event(visibility, false),
-            egui::Event::PointerGone,
-        ]);
+        click_viewport_menu_label(&mut g, "Visibility");
         g.save(&format!("quick-visibility-{}", size[0]));
         assert_eq!(
             g.app.ui.viewport_menu.context,

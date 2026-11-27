@@ -133,6 +133,15 @@ Higher limits allow more geometry; they do not reserve RAM or guarantee smooth e
 
 The crossed-pin icon returns it to a drop-down. Closing a built-in window also returns it to the toolbar; closing a custom window hides it.
 
+The Z selection/mask/visibility/slice chooser, Q Modeling functions and E
+Transform options share the same **Pin menu open** / **Unpin menu** icons near
+their headers. **Pinned** beside the icon confirms the state. These quick-menu
+pins last for the session; they do not change saved toolbar/sidebar placements.
+Tab focuses the pin button; Space or Enter activates it. Escape and focus loss
+retain the quick menus' normal dismissal behaviour.
+
+![The Transform quick menu pinned at a compact viewport size](../images/quick-menu-pin.png)
+
 ### Dock a menu in a sidebar
 
 Click **Make collapsible on left/right** in an open or pinned menu. Click the resulting section header to collapse or expand it.

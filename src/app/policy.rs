@@ -432,6 +432,9 @@ impl<'a> EditorPolicy<'a> {
             Action::SplitMasked => document
                 .split_masked_unavailable()
                 .unwrap_or("Choose an editable mesh with a partial mask selection"),
+            Action::SplitSelectedFaces | Action::SplitDisconnectedIslands => document
+                .surface_partition_unavailable()
+                .unwrap_or("Split needs a free submodel slot (maximum 64)"),
             Action::GroupAll => document
                 .group_all_unavailable()
                 .unwrap_or("Choose an editable mesh first"),
@@ -468,6 +471,8 @@ impl<'a> EditorPolicy<'a> {
                         .any(|brush| brush.kind == Kind::Mask && brush.identity() == *id)
             }
             Action::TemporaryMaskRectangle
+            | Action::MaskVertexGroup
+            | Action::VisibilityVertexGroup
             | Action::TemporaryMaskVisibleOnly(_)
             | Action::TemporaryMaskBrush
             | Action::TemporaryMaskLasso
@@ -576,6 +581,7 @@ impl<'a> EditorPolicy<'a> {
                 self.edge_unavailable(action).is_none()
             }
             Action::ModelRegionShape(_)
+            | Action::ModelVertexGroup
             | Action::ModelSelectThrough(_)
             | Action::ModelRegionChange(_) => {
                 self.ui.modeling.active && self.edge_unavailable(action).is_none()
@@ -710,6 +716,9 @@ impl<'a> EditorPolicy<'a> {
                 .hidden_faces_unavailable(*action == Action::SplitHidden)
                 .is_none(),
             Action::SplitMasked => document.split_masked_unavailable().is_none(),
+            Action::SplitSelectedFaces | Action::SplitDisconnectedIslands => {
+                document.surface_partition_unavailable().is_none() && document.model_count() < 64
+            }
             Action::GroupAll => sculpt && document.group_all_unavailable().is_none(),
             Action::LowerLevel | Action::DeleteLowerLevels => {
                 sculpt && document.mesh_settings().level() > 1
@@ -900,6 +909,8 @@ impl<'a> EditorPolicy<'a> {
             Command::SplitHidden => Some(Action::SplitHidden),
             Command::DeleteHidden => Some(Action::DeleteHidden),
             Command::SplitMasked => Some(Action::SplitMasked),
+            Command::SplitSelectedFaces => Some(Action::SplitSelectedFaces),
+            Command::SplitDisconnectedIslands => Some(Action::SplitDisconnectedIslands),
             Command::CreateVertexGroup(_, true) => Some(Action::GroupAll),
             Command::ConvertPrimitive => Some(Action::ConvertPrimitive),
             Command::OpenProjection => Some(Action::ProjectDetails),

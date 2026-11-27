@@ -210,13 +210,20 @@ fn visibility_split_and_delete_preserve_survivors_and_exact_history() {
                 let mesh = d.model(i).unwrap().mesh;
                 assert_eq!(mesh.triangles.len(), before.mesh.triangles.len() / 2);
                 assert_eq!(mesh.quads.len() * 2, mesh.triangles.len());
-                assert_eq!(mesh.has_hidden_faces(), masked && i != active);
+                assert!(!mesh.has_hidden_faces());
                 assert!(mesh.uv.current(mesh));
                 assert_eq!(mesh.creases.len(), mesh.polygon_edges().len());
                 assert_eq!(mesh.uv.seams.len(), mesh.polygon_edges().len());
                 for (v, p) in mesh.vertices.iter().enumerate() {
                     let old = before.mesh.vertices.iter().position(|q| q == p).unwrap();
-                    assert_eq!(mesh.mask[v], before.mesh.mask[old]);
+                    assert_eq!(
+                        mesh.mask[v],
+                        if split && i != active {
+                            0.
+                        } else {
+                            before.mesh.mask[old]
+                        }
+                    );
                     assert_eq!(mesh.materials[v], before.mesh.materials[old]);
                     for (group, source) in mesh.vertex_groups.iter().zip(&before.mesh.vertex_groups)
                     {
@@ -232,9 +239,7 @@ fn visibility_split_and_delete_preserve_survivors_and_exact_history() {
                         .position(|t| t.map(|v| before.mesh.vertices[v]) == positions)
                         .unwrap();
                     assert_eq!(before.mesh.face_visible(old), i == active);
-                    if masked {
-                        assert_eq!(mesh.face_visible(f), before.mesh.face_visible(old));
-                    }
+                    assert!(mesh.face_visible(f));
                     assert_eq!(mesh.uv.corners[f], before.mesh.uv.corners[old]);
                     assert_eq!(mesh.uv.masks[f], before.mesh.uv.masks[old]);
                     assert_eq!(mesh.uv.removed[f], before.mesh.uv.removed[old]);
@@ -289,7 +294,7 @@ fn visibility_split_masked_uses_blurred_threshold_and_invalidates_cached_counts(
     assert_eq!(d.model(1).unwrap().mesh.triangles.len(), expected);
     assert_eq!(d.masked_face_count(), 0);
     d.select_submodel(1).unwrap();
-    assert_eq!(d.masked_face_count(), expected);
+    assert_eq!(d.masked_face_count(), 0);
     d.undo(); // Restore the active model before checking the split's history.
     roundtrip(&mut d, &before);
 

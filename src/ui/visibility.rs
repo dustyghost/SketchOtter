@@ -59,18 +59,22 @@ impl UiState {
             });
             if let Some(threshold) = warning.threshold {
                 ui.label(format!("{} triangles inside “{}” meet the {:.0}% mask threshold at every corner.", warning.faces, warning.name, threshold * 100.));
-                ui.label("Move these faces to a new submodel; keep the other faces in the original. Includes masked hidden faces. Both pieces keep their mask values, visibility and positions.");
+                ui.label("Move these faces to a new visible, unmasked, unselected submodel; keep the other faces and their mask/visibility in the original. Includes masked hidden faces. Both pieces stay in place.");
             } else {
                 ui.label(format!("{} hidden triangles inside “{}”.", warning.faces, warning.name));
                 ui.label(if split {
-                "Move these faces into a new visible submodel. Keep the visible faces in the original model. Both pieces stay in place."
+                 "Move these faces into a new visible, unmasked, unselected submodel. Keep the visible faces and their mask/visibility in the original model. Both pieces stay in place."
             } else if warning.all_hidden {
                 "Every face is hidden. Delete the entire surface and keep an empty editable model in the scene."
             } else {
                 "Remove these faces from the active model. Keep its visible faces in place."
             });
             }
-            ui.label("Other submodels are unchanged. Cut boundaries stay open. Masks, groups, paint, UVs and surviving seams are preserved.");
+            ui.label(if split {
+                "Other submodels are unchanged. Cut boundaries stay open. Groups/weights, paint, UVs and surviving seams are preserved; the new part's working mask and face hiding are cleared."
+            } else {
+                "Other submodels are unchanged. Cut boundaries stay open. Masks, groups, paint, UVs and surviving seams are preserved."
+            });
             if warning.levels > 1 {
                 ui.label(format!("Use the current subdivision level; discard the other {} stored levels on the edited model.", warning.levels - 1));
             }

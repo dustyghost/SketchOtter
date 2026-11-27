@@ -176,6 +176,7 @@ fn visibility_new_choices_and_bindings_persist_and_clear() {
 fn visibility_alt_reverses_explicit_operation_and_hold_release_cancels() {
     for shape in VisibilityShape::ALL {
         let mut app = App::default();
+        app.ui.preferences.selection_mode = preferences::SelectionMode::Visibility;
         let ctx = egui::Context::default();
         app.ui.preferences.visibility_hold = crate::preferences::HoldBinding {
             alt: true,
@@ -244,6 +245,7 @@ fn visibility_alt_reverses_explicit_operation_and_hold_release_cancels() {
         }
     }
     let mut app = App::default();
+    app.ui.preferences.selection_mode = preferences::SelectionMode::Visibility;
     let ctx = egui::Context::default();
     app.ui.preferences.visibility_hold = crate::preferences::HoldBinding {
         alt: true,

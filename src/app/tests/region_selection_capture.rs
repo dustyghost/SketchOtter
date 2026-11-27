@@ -79,7 +79,7 @@ fn region_selection_offscreen_review() {
             preferences::MaskShape::Rectangle
         );
         g.app.open_quick_menu(&g.ctx, Action::MaskVisibilityMenu);
-        click_guide_label(&mut g, "Visible only");
+        click_viewport_menu_label(&mut g, "Visible only");
         assert!(g.app.ui.preferences.mask_preset.visible_only);
         g.save(&format!("mask-depth-z-{}", size[0]));
         assert_eq!(g.app.document.geometry_snapshot(), before);

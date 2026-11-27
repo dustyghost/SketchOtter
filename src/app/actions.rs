@@ -124,6 +124,26 @@ impl App {
                 self.change_temporary_mask(action);
                 None
             }
+            Action::MaskVertexGroup | Action::VisibilityVertexGroup | Action::ModelVertexGroup => {
+                self.viewport.cancel(&mut self.document);
+                self.viewport.wait_for_release();
+                match action {
+                    Action::MaskVertexGroup => {
+                        self.ui.preferences.mask_vertex_group = true;
+                        self.ui.preferences.selection_mode = preferences::SelectionMode::Mask;
+                    }
+                    Action::VisibilityVertexGroup => {
+                        self.ui.preferences.visibility_vertex_group = true;
+                        self.ui.preferences.visibility_selection.hide = true;
+                        self.ui.preferences.selection_mode = preferences::SelectionMode::Visibility;
+                    }
+                    _ => {
+                        self.ui.preferences.component_vertex_group = true;
+                        self.ui.preferences.selection_mode = preferences::SelectionMode::Components;
+                    }
+                }
+                None
+            }
             Action::ViewportContextMenu => {
                 self.open_viewport_menu(ctx);
                 None
@@ -138,6 +158,7 @@ impl App {
                 None
             }
             Action::TemporaryVisibilityRectangle | Action::TemporaryVisibilityLasso => {
+                self.ui.preferences.visibility_vertex_group = false;
                 self.ui.preferences.visibility_selection.shape =
                     if action == Action::TemporaryVisibilityRectangle {
                         crate::preferences::VisibilityShape::Rectangle
@@ -236,6 +257,7 @@ impl App {
             }
             Action::ModelRegionShape(shape) => {
                 self.viewport.cancel(&mut self.document);
+                self.ui.preferences.component_vertex_group = false;
                 self.ui.preferences.component_region_shape = shape;
                 self.ui.preferences.selection_mode = preferences::SelectionMode::Components;
                 None
@@ -585,11 +607,14 @@ impl App {
             Action::InvertMask => Some(Command::InvertMask),
             Action::DeleteMasked => Some(Command::DeleteMasked),
             Action::SplitMasked => Some(Command::SplitMasked),
+            Action::SplitSelectedFaces => Some(Command::SplitSelectedFaces),
+            Action::SplitDisconnectedIslands => Some(Command::SplitDisconnectedIslands),
             Action::ExpandMask => Some(Command::GrowMask(true)),
             Action::ContractMask => Some(Command::GrowMask(false)),
             Action::BlurMask => Some(Command::BlurMask),
             Action::SharpenMask => Some(Command::SharpenMask),
             Action::SelectVisibilityLine | Action::SelectVisibilityPath => {
+                self.ui.preferences.visibility_vertex_group = false;
                 use crate::preferences::VisibilityShape;
                 self.ui.preferences.visibility_selection.shape =
                     if action == Action::SelectVisibilityLine {
@@ -791,6 +816,12 @@ impl App {
             )),
             Action::LineTransform => Some(Command::TransformMode(
                 crate::viewport::TransformMode::ActionLine,
+            )),
+            Action::TransformWorldSpace => Some(Command::TransformSpace(
+                crate::viewport::TransformSpace::World,
+            )),
+            Action::TransformScreenSpace => Some(Command::TransformSpace(
+                crate::viewport::TransformSpace::Screen,
             )),
             Action::Move => Some(Command::TransformOperation(
                 crate::viewport::TransformOperation::Move,

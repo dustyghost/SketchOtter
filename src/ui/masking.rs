@@ -15,9 +15,12 @@ impl UiState {
             }
             ui.weak("Hold over a model in Sculpt or Modeling. Release to restore your tool and component selection.");
             for (shape, action) in [(MaskShape::Brush, Action::TemporaryMaskBrush), (MaskShape::Rectangle, Action::TemporaryMaskRectangle), (MaskShape::Lasso, Action::TemporaryMaskLasso), (MaskShape::Line, Action::TemporaryMaskLine)] {
-                if ui.selectable_label(self.preferences.mask_preset.shape == shape, shape.label()).customize(action.clone()).clicked() {
+                if ui.selectable_label(!self.preferences.mask_vertex_group && self.preferences.mask_preset.shape == shape, shape.label()).customize(action.clone()).clicked() {
                     commands.push(Command::Action(action));
                 }
+            }
+            if ui.selectable_label(self.preferences.mask_vertex_group, "Vertex Group").customize(Action::MaskVertexGroup).clicked() {
+                commands.push(Command::Action(Action::MaskVertexGroup));
             }
             ui.horizontal(|ui| {
                 for (erase, action, label) in [(false, Action::TemporaryMaskAdd, "Add"), (true, Action::TemporaryMaskErase, "Erase")] {
@@ -26,10 +29,10 @@ impl UiState {
                     }
                 }
             });
-            if self.preferences.mask_preset.shape == MaskShape::Line && ui.selectable_label(self.preferences.mask_preset.flip, "Flip side").customize(Action::TemporaryMaskFlip).clicked() {
+            if !self.preferences.mask_vertex_group && self.preferences.mask_preset.shape == MaskShape::Line && ui.selectable_label(self.preferences.mask_preset.flip, "Flip side").customize(Action::TemporaryMaskFlip).clicked() {
                 commands.push(Command::Action(Action::TemporaryMaskFlip));
             }
-            if self.preferences.mask_preset.shape != MaskShape::Brush {
+            if !self.preferences.mask_vertex_group && self.preferences.mask_preset.shape != MaskShape::Brush {
                 ui.horizontal_wrapped(|ui| {
                     for (visible, label) in [(true, "Visible only"), (false, "Through mesh")] {
                         if ui.selectable_label(self.preferences.mask_preset.visible_only == visible, label).clicked() { commands.push(Command::Action(Action::TemporaryMaskVisibleOnly(visible))); }
@@ -149,19 +152,36 @@ impl UiState {
         ]
         .into_iter()
         .map(|(action, label, selected, hint)| ViewportMenuEntry {
+            selected: selected
+                && (!matches!(
+                    action,
+                    Action::TemporaryMaskBrush
+                        | Action::TemporaryMaskRectangle
+                        | Action::TemporaryMaskLasso
+                        | Action::TemporaryMaskLine
+                ) || !self.preferences.mask_vertex_group),
             action,
             label: label.into(),
-            selected,
             enabled,
             hint: hint.into(),
         })
         .collect::<Vec<_>>();
-        if preset.shape != MaskShape::Brush {
+        entries.insert(
+            4,
+            ViewportMenuEntry {
+                action: Action::MaskVertexGroup,
+                label: "Vertex Group".into(),
+                selected: self.preferences.mask_vertex_group,
+                enabled,
+                hint: Action::MaskVertexGroup.help().unwrap().into(),
+            },
+        );
+        if !self.preferences.mask_vertex_group && preset.shape != MaskShape::Brush {
             for (visible, label) in [(true, "Visible only"), (false, "Through mesh")] {
                 entries.push(ViewportMenuEntry { action: Action::TemporaryMaskVisibleOnly(visible), label: label.into(), selected: preset.visible_only == visible, enabled, hint: "Visible only protects occluded and back-facing surfaces. Through mesh includes them. Explicitly hidden geometry stays protected.".into() });
             }
         }
-        if preset.shape == MaskShape::Line {
+        if !self.preferences.mask_vertex_group && preset.shape == MaskShape::Line {
             entries.push(ViewportMenuEntry {
                 action: Action::TemporaryMaskFlip,
                 label: "Flip side".into(),
