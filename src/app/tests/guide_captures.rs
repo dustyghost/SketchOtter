@@ -1660,6 +1660,13 @@ impl Guide {
         }
     }
     fn frame(&mut self, events: Vec<egui::Event>) -> (egui::Rect, Vec<u8>) {
+        self.frame_with_readback(events, true)
+    }
+    fn frame_with_readback(
+        &mut self,
+        events: Vec<egui::Event>,
+        readback: bool,
+    ) -> (egui::Rect, Vec<u8>) {
         self.app.poll_fusion();
         self.app.poll_projection();
         self.time += 0.1;
@@ -1738,7 +1745,12 @@ impl Guide {
         for shape in &output.shapes {
             collect_text(&shape.shape, &mut self.text_positions);
         }
-        let rgba = self.capture.render(&self.ctx, output);
+        let rgba = if readback {
+            self.capture.render(&self.ctx, output)
+        } else {
+            self.capture.render_without_readback(&self.ctx, output);
+            Vec::new()
+        };
         if self.interactive {
             for command in commands {
                 self.app.dispatch(command, &self.ctx);
@@ -1747,6 +1759,14 @@ impl Guide {
         (rect, rgba)
     }
     fn save(&mut self, name: &str) {
+        if std::env::var_os("CLAY_GUIDE_SKIP_IMAGES").is_some() {
+            // Keep layout, command dispatch, GPU preparation and frame timing.
+            // Only the unused pixel copies and PNG encoding are optional.
+            for _ in 0..3 {
+                self.frame_with_readback(vec![], false);
+            }
+            return;
+        }
         for _ in 0..2 {
             self.frame(vec![]);
         }

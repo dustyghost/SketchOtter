@@ -40,7 +40,31 @@ Mesh deformation, subdivision, remeshing, undo, and surface picking remain CPU o
 
 ## Validation
 
-The ordinary test suite retains a CPU paint path for headless UI and picking tests. CI also runs every ignored GPU correctness test in a separate Linux job using Mesa lavapipe software Vulkan. Install `mesa-vulkan-drivers` and `libvulkan1` (plus the usual build dependencies). No EGL library, display server or window is required:
+The ordinary test suite retains a CPU paint path for headless UI and picking tests. CI also runs the selected ignored GPU correctness and interaction tests on Linux using Mesa lavapipe software Vulkan. Install `mesa-vulkan-drivers` and `libvulkan1` (plus the usual build dependencies). No EGL library, display server or window is required.
+
+GPU CI is split into `core`, `interactions-a`, and `interactions-b` runners. The
+existing **Headless wgpu/Vulkan regressions** check requires all three to pass.
+`scripts/gpu-ci-tests.json` lists the interaction checks; the core group selects
+all ignored `viewport::gpu::` tests except the manual load profiles. Each runner
+builds the library harness once, audits every interaction selector against its
+ignored-test inventory, then runs its group serially with exact names. A missing,
+ambiguous, or duplicate selection fails the audit. Per-test timings appear in
+the job summary and `gpu-timings-*` artifacts, including completed tests before a
+failure. The initial interaction groups were balanced using the same successful
+CI run, rather than timings from different runners.
+
+CI sets `CLAY_GUIDE_SKIP_IMAGES=1` for optional Guide captures. Screenshot points
+still advance all three frames, dispatch commands, render through wgpu and wait
+for GPU completion; only framebuffer readback and PNG encoding are skipped.
+Normal `Guide::frame` calls still read pixels, including pixel comparisons.
+The native retopology control test keeps its existing review images. Manual
+capture commands below retain their default behavior when this variable is unset.
+To run a CI group locally, use
+`CLAY_GPU_SOFTWARE=1 WGPU_BACKEND=vulkan LP_NUM_THREADS=2 python3 scripts/run-gpu-ci.py interactions-a`.
+Set `CARGO_BUILD_JOBS=2` (or `1` under memory pressure) and use the local build
+lock when running on a memory-limited development laptop.
+
+Individual capture commands:
 
 ```sh
 CLAY_GPU_SOFTWARE=1 cargo test --locked --lib viewport::gpu:: -- --ignored --skip gpu_load_profile --test-threads=1
