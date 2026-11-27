@@ -896,6 +896,8 @@ impl App {
         } else {
             self.ui.instances.editor.as_ref().map(|s| s.id)
         };
+        let selected_mask =
+            selected.is_some_and(|i| self.document.brushes()[i].kind == crate::sculpt::Kind::Mask);
         self.viewport.show(
             ui,
             &mut self.document,
@@ -926,7 +928,16 @@ impl App {
                     .filter(|_| !temporary_visibility),
                 select: if temporary_slice {
                     None
-                } else if temporary_visibility {
+                } else if temporary_visibility
+                    || matches!(
+                        self.ui.selection_tool,
+                        Some(
+                            crate::viewport::SelectionTool::Visibility(_)
+                                | crate::viewport::SelectionTool::Rectangle
+                                | crate::viewport::SelectionTool::Lasso
+                        )
+                    )
+                {
                     Some(self.ui.preferences.visibility_selection.tool())
                 } else if self.ui.mask_active {
                     self.ui.preferences.mask_preset.selection_tool()
@@ -953,6 +964,30 @@ impl App {
                     self.ui.transform_mode
                 },
                 transform_operation: self.ui.transform_operation,
+                transform_space: self.ui.transform_space,
+                invert_context: if self.ui.transform_mode != crate::viewport::TransformMode::Sculpt
+                    || self.ui.slice_active
+                    || temporary_slice
+                    || temporary_components
+                {
+                    None
+                } else if temporary_visibility {
+                    Some(crate::viewport::ModifierTap::Visibility)
+                } else if self.ui.mask_active
+                    || matches!(
+                        self.ui.selection_tool,
+                        Some(
+                            crate::viewport::SelectionTool::MaskLasso
+                                | crate::viewport::SelectionTool::MaskLassoOperation { .. }
+                                | crate::viewport::SelectionTool::MaskLine { .. }
+                        )
+                    )
+                    || selected_mask
+                {
+                    Some(crate::viewport::ModifierTap::Mask)
+                } else {
+                    None
+                },
                 boolean_enabled: self.ui.boolean_enabled,
                 cage_axis: self.ui.cage_axis,
                 respect_mask: self.ui.respect_transform_mask,
@@ -1443,3 +1478,5 @@ mod scheduling_tests;
 
 #[cfg(test)]
 mod mixed_invariant_tests;
+#[cfg(test)]
+mod workflow_tests;

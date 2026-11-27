@@ -110,6 +110,16 @@ The recipe saves with the model and survives duplication, transforms, and reopen
 
 Open **Transform** and select **World axes**.
 
+Choose **World space** for fixed scene axes or **Screen space** for axes that
+follow the current view, including camera roll. Screen X points right, Y up,
+and Z towards the viewer. The diagonal Z move/scale handle controls depth (it
+does not move diagonally across the surface). Rotation rings use the same axes
+as the indicated space in perspective and orthographic views. Changing space
+does not move the model or pivot. Action Line and Deformation frame retain their
+own direction/axis controls.
+
+![Screen-aligned Transform axes after orbit and camera roll](../images/transform-screen-space.png)
+
 | Operation | Gesture |
 | --- | --- |
 | Move | Drag an axis, or the center for view-plane movement |
@@ -1017,9 +1027,9 @@ Merge bakes primitives and thickness modifier, uses current mesh levels, and res
 
 Open **Modeling** in the toolbar, or press **Q** over the viewport for its quick popup. Choose **Face**, **Edge** or **Vertex** under **Component**, then choose a **Target** such as Individual, Loop, Connected or Flat island. Targets follow the current component mode, just like the Modeling panel. Component changes convert the selection; target changes keep the current tool and selection. These controls leave the menu open so you can then choose a function.
 
-The same controls are also in **Model → Modeling** on the top bar. Use its Panel controls to pin a movable window or dock a collapsible section on the left or right. These placements are saved with your workspace. Pinned and docked controls stay open when you choose a function. Q also has **Keep open**: enable it to use the viewport while the menu stays visible, and drag its title to reposition it. Opening or moving the menu alone does not edit the model.
+The same controls are also in **Model → Modeling** on the top bar. Use its Panel controls to pin a movable window or dock a collapsible section on the left or right. These placements are saved with your workspace. Pinned and docked controls stay open when you choose a function. Q also has a **Pin menu open** pushpin near the header: click it to use the viewport while the menu stays visible, and drag its title to reposition it. The crossed-pin **Unpin menu** button restores quick-menu behaviour. Opening, pinning or moving the menu alone does not edit the model. Quick-menu pinning remains session-only.
 
-The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Delete vertices**, **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes **Create face**, both **Delete loop** options, **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu unless **Keep open** is enabled. An outside click closes an unpinned menu and immediately starts the chosen viewport action, so selection needs only one click. Escape or focus loss dismisses the menu. Q shares the panel’s tool options and **Tool presets** section; scroll down to reach them. Finish the current drag before opening it.
+The Q menu shows functions and **Topology** actions for the current component mode and marks the active choices. Vertex mode includes **Delete vertices**, **Create face**, **Connect vertices** and **Weld vertices**; Edge mode includes **Create face**, both **Delete loop** options, **Fill boundary**, **Bridge boundaries**, **Split edges** and **Collapse edges**; Face mode includes **Delete faces**. Topology actions apply immediately with normal Undo/Redo. The Mesh panel also places Topology beside the Modeling functions. Choose with the mouse/pen or use Up/Down and Enter. Picking a function closes the menu unless it is pinned. An outside click closes an unpinned menu and immediately starts the chosen viewport action, so selection needs only one click. Escape or focus loss dismisses the menu. Q shares the panel’s tool options and **Tool presets** section; scroll down to reach them. Finish the current drag before opening it.
 
 ![Q menu with topology actions beside Modeling functions](../images/modeling-topology-q-1100.png)
 

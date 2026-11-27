@@ -15,6 +15,12 @@ pub(crate) enum TransformMode {
     ActionLine,
 }
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub(crate) enum TransformSpace {
+    #[default]
+    World,
+    Screen,
+}
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub(crate) enum TransformOperation {
     #[default]
     Move,
@@ -92,6 +98,7 @@ enum Handle {
 }
 #[derive(Default)]
 pub(super) struct TransformControls {
+    pub space: TransformSpace,
     pub line: Option<[Vec3; 2]>,
     drag: Option<Handle>,
     last: Option<Pos2>,
@@ -157,6 +164,21 @@ pub(super) fn axis_motion(
 }
 
 impl TransformControls {
+    fn axes(&self, scene: &Scene) -> [Vec3; 3] {
+        match self.space {
+            TransformSpace::World => [Vec3(1., 0., 0.), Vec3(0., 1., 0.), Vec3(0., 0., 1.)],
+            TransformSpace::Screen => [scene.right, scene.up, scene.view],
+        }
+    }
+    fn projected_axis(&self, scene: &Scene, pivot: Vec3, axis: Vec3, index: usize) -> Vec2 {
+        if self.space == TransformSpace::Screen && index == 2 {
+            // View depth has no screen-plane projection. A diagonal depth handle
+            // gives it a deliberate, stable drag direction in both projections.
+            Vec2::new(-0.6, -0.6)
+        } else {
+            scene.axis_direction(pivot, axis)
+        }
+    }
     pub fn finish_drag(&mut self) {
         self.drag = None;
         self.last = None;
@@ -206,20 +228,17 @@ impl TransformControls {
             rotation::RADIUS
         };
         if mode == TransformMode::World {
-            [
-                (Vec3(1., 0., 0.), controls::AXES[0], "Rotate X"),
-                (Vec3(0., 1., 0.), controls::AXES[1], "Rotate Y"),
-                (Vec3(0., 0., 1.), controls::AXES[2], "Rotate Z"),
-            ]
-            .into_iter()
-            .map(|(axis, color, label)| Ring {
-                axis,
-                pivot,
-                color,
-                label,
-                radius,
-            })
-            .collect()
+            self.axes(scene)
+                .into_iter()
+                .enumerate()
+                .map(|(i, axis)| Ring {
+                    axis,
+                    pivot,
+                    color: controls::AXES[i],
+                    label: ["Rotate X", "Rotate Y", "Rotate Z"][i],
+                    radius,
+                })
+                .collect()
         } else if let Some([a, b]) = self.line
             && (b - a).len() > 1e-5
         {
@@ -276,12 +295,14 @@ impl TransformControls {
                         "Scale all",
                     ),
                 ];
-                for (axis, color, label) in [
-                    (Vec3(1., 0., 0.), controls::AXES[0], "X"),
-                    (Vec3(0., 1., 0.), controls::AXES[1], "Y"),
-                    (Vec3(0., 0., 1.), controls::AXES[2], "Z"),
-                ] {
-                    let projected = scene.axis_direction(pivot, axis);
+                for (i, axis) in self.axes(scene).into_iter().enumerate() {
+                    let color = controls::AXES[i];
+                    let label = if self.space == TransformSpace::Screen && i == 2 {
+                        "Z depth"
+                    } else {
+                        ["X", "Y", "Z"][i]
+                    };
+                    let projected = self.projected_axis(scene, pivot, axis, i);
                     if projected.length() > 0.1 {
                         let direction = projected.normalized();
                         handles.push((
@@ -314,12 +335,20 @@ impl TransformControls {
                     "MOVE"
                 },
             )];
-            for (axis, projected, color, label) in world_axes(scene, pivot) {
+            for (i, axis) in self.axes(scene).into_iter().enumerate() {
+                let projected = self.projected_axis(scene, pivot, axis, i);
+                if projected.length() <= 0.1 {
+                    continue;
+                }
                 handles.push((
                     origin + projected * 85.,
                     Handle::Axis(axis, projected),
-                    color,
-                    label,
+                    controls::AXES[i],
+                    if self.space == TransformSpace::Screen && i == 2 {
+                        "Z depth"
+                    } else {
+                        ["X", "Y", "Z"][i]
+                    },
                 ));
             }
             handles
@@ -513,14 +542,15 @@ impl TransformControls {
                     || matches!(self.drag, Some(Handle::ScaleAxis(..)))
                 {
                     let factor = (amount * 0.01).clamp(-2., 2.).exp();
-                    transform.scale = Vec3(
-                        1. + axis.0 * (factor - 1.),
-                        1. + axis.1 * (factor - 1.),
-                        1. + axis.2 * (factor - 1.),
-                    );
+                    transform.stretch = Some((axis, factor));
                 } else {
-                    transform.translation =
-                        axis_motion(scene, pivot, axis, projected, pointer - delta, pointer);
+                    transform.translation = if self.space == TransformSpace::Screen
+                        && axis.dot(scene.view).abs() > 0.999
+                    {
+                        axis * (amount / scale)
+                    } else {
+                        axis_motion(scene, pivot, axis, projected, pointer - delta, pointer)
+                    };
                 }
             }
             Handle::Uniform => {

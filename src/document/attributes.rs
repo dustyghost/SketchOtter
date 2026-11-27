@@ -258,30 +258,125 @@ impl Document {
         prefix: &str,
         label: &'static str,
     ) {
-        let name = (1..)
-            .map(|i| format!("{prefix} {i}"))
-            .find(|name| !self.submodel_names().any(|n| n == name))
-            .unwrap();
+        self.install_surface_parts(vec![remaining, separated], prefix, label);
+    }
+    /// All parts are extracted and validated before this single history boundary.
+    fn install_surface_parts(&mut self, parts: Vec<Mesh>, prefix: &str, label: &'static str) {
         let mut models = self.ordered_models();
         let active = self.active_model_index();
-        models[active].mesh = remaining;
-        models[active].mesh_settings = MeshSettings::default();
         let mut metadata = models[active].metadata.clone();
         metadata.model_id = 0;
         metadata.visible = true;
-        models.insert(
-            active + 1,
-            crate::sculpt::Submodel {
-                name,
-                metadata,
-                mesh: separated,
-                mesh_settings: MeshSettings::default(),
-            },
-        );
+        for (offset, mesh) in parts.into_iter().enumerate() {
+            if offset == 0 {
+                models[active].mesh = mesh;
+                models[active].mesh_settings = MeshSettings::default();
+            } else {
+                let name = (1..)
+                    .map(|i| format!("{prefix} {i}"))
+                    .find(|name| !models.iter().any(|m| m.name == *name))
+                    .unwrap();
+                models.insert(
+                    active + offset,
+                    crate::sculpt::Submodel {
+                        name,
+                        metadata: metadata.clone(),
+                        mesh,
+                        mesh_settings: MeshSettings::default(),
+                    },
+                );
+            }
+        }
         self.end_edit();
         self.end_stroke();
         self.record_edit(label);
         self.install_models(models, active);
+    }
+    pub(crate) fn split_selected_faces(&mut self, polygons: &[usize]) -> Result<(), String> {
+        if let Some(reason) = self.surface_partition_unavailable() {
+            return Err(reason.into());
+        }
+        if self.model_count() >= 64 {
+            return Err("Split needs a free submodel slot (maximum 64)".into());
+        }
+        let faces = crate::sculpt::uv::polygon_triangles(self.mesh());
+        let mut selected = vec![false; self.mesh().triangles.len()];
+        for &p in polygons {
+            let Some(faces) = faces.get(p) else {
+                return Err("The face selection changed; select the region again".into());
+            };
+            for &f in faces {
+                selected[f] = true;
+            }
+        }
+        if !selected.iter().any(|&s| s) {
+            return Err(
+                "Select a face region first (Modeling → Face → Select; Connected selects a part)"
+                    .into(),
+            );
+        }
+        if selected.iter().all(|&s| s) {
+            return Err(
+                "Keep some faces unselected; use Split disconnected islands for separate parts"
+                    .into(),
+            );
+        }
+        let remaining = self.mesh().face_subset(|f| !selected[f])?;
+        let separated = self.mesh().face_subset(|f| selected[f])?;
+        self.split_surface_parts(remaining, separated, "Selected", "Split selected faces");
+        Ok(())
+    }
+    pub(crate) fn split_disconnected_islands(&mut self) -> Result<(), String> {
+        if let Some(reason) = self.surface_partition_unavailable() {
+            return Err(reason.into());
+        }
+        // Vertex connectivity includes hidden faces; visibility and masks are
+        // attributes, not implicit island boundaries.
+        let mesh = self.mesh();
+        let mut owner = vec![usize::MAX; mesh.vertices.len()];
+        let mut incident = vec![Vec::new(); mesh.vertices.len()];
+        for (f, t) in mesh.triangles.iter().enumerate() {
+            for &v in t {
+                incident[v].push(f);
+            }
+        }
+        let mut groups = vec![usize::MAX; mesh.triangles.len()];
+        let mut count = 0;
+        for seed in 0..mesh.triangles.len() {
+            if groups[seed] != usize::MAX {
+                continue;
+            }
+            let mut stack = vec![seed];
+            groups[seed] = count;
+            while let Some(f) = stack.pop() {
+                for &v in &mesh.triangles[f] {
+                    if owner[v] == count {
+                        continue;
+                    }
+                    owner[v] = count;
+                    for &next in &incident[v] {
+                        if groups[next] == usize::MAX {
+                            groups[next] = count;
+                            stack.push(next);
+                        }
+                    }
+                }
+            }
+            count += 1;
+            if self.model_count() + count - 1 > 64 {
+                return Err("Not enough submodel slots to split every island (maximum 64)".into());
+            }
+        }
+        if count < 2 {
+            return Err(
+                "The active mesh has only one connected part; select a face region instead".into(),
+            );
+        }
+        let parts = (0..count)
+            .map(|g| mesh.face_subset(|f| groups[f] == g))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.install_surface_parts(parts, "Island", "Split disconnected islands");
+        Ok(())
     }
     /// Shared prerequisites for menus, search and document operations. Visibility
     /// means face/group hiding inside the active model, never camera occlusion.
@@ -298,7 +393,7 @@ impl Document {
             None
         }
     }
-    pub(super) fn surface_partition_unavailable(&self) -> Option<&'static str> {
+    pub(crate) fn surface_partition_unavailable(&self) -> Option<&'static str> {
         if self.primitive().is_some() {
             Some("Convert the primitive to an editable mesh first")
         } else if self.require_sculpt_mesh().is_err() {

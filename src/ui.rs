@@ -90,6 +90,7 @@ pub(crate) struct UiState {
     pub slice_path_mode: bool,
     pub slice_options: crate::sculpt::SliceOptions,
     pub transform_operation: crate::viewport::TransformOperation,
+    pub transform_space: crate::viewport::TransformSpace,
     pub boolean_enabled: bool,
     pub boolean_ready: bool,
     pub boolean_notice: String,
@@ -199,6 +200,7 @@ impl Default for UiState {
             slice_path_mode: false,
             slice_options: Default::default(),
             transform_operation: crate::viewport::TransformOperation::Move,
+            transform_space: Default::default(),
             boolean_enabled: false,
             boolean_ready: false,
             boolean_notice: String::new(),
@@ -1470,6 +1472,14 @@ impl UiState {
                 let merge_target = document.merge_down_target();
                 let merge_hint = merge_target.map_or_else(|| "No submodel below the active one".into(), |i| format!("Combine with {} below. Keeps positions, masks and groups without welding. Bakes primitives and thickness; resets subdivision levels. Undo restores both models.", document.model(i).unwrap().name));
                 if ui.add_enabled(merge_target.is_some(), design::button(ui, Glyph::Layers, "Merge down")).on_hover_text(merge_hint).customize(Action::MergeDown).clicked() { commands.push(Command::MergeDown); }
+                for action in [Action::SplitSelectedFaces, Action::SplitDisconnectedIslands] {
+                    if ui.add_enabled(self.action_enabled(&action, document), egui::Button::new(action.label()))
+                        .on_hover_text(action.help().unwrap())
+                        .on_disabled_hover_text(self.action_unavailable(&action, document).unwrap_or("Choose an editable surface"))
+                        .customize(action.clone()).clicked() {
+                        commands.push(Command::Action(action));
+                    }
+                }
                 if ui.add(design::button(ui, Glyph::Mask, "Extract masked")).on_hover_text("Copy faces meeting the mask threshold at every vertex; keep the source. Boundaries remain open.").customize(Action::ExtractMasked).clicked() { commands.push(Command::ExtractMasked); }
             });
             let active_name = document.model(document.active_model_index()).unwrap().name;

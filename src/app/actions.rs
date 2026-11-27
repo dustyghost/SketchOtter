@@ -585,6 +585,8 @@ impl App {
             Action::InvertMask => Some(Command::InvertMask),
             Action::DeleteMasked => Some(Command::DeleteMasked),
             Action::SplitMasked => Some(Command::SplitMasked),
+            Action::SplitSelectedFaces => Some(Command::SplitSelectedFaces),
+            Action::SplitDisconnectedIslands => Some(Command::SplitDisconnectedIslands),
             Action::ExpandMask => Some(Command::GrowMask(true)),
             Action::ContractMask => Some(Command::GrowMask(false)),
             Action::BlurMask => Some(Command::BlurMask),
@@ -791,6 +793,12 @@ impl App {
             )),
             Action::LineTransform => Some(Command::TransformMode(
                 crate::viewport::TransformMode::ActionLine,
+            )),
+            Action::TransformWorldSpace => Some(Command::TransformSpace(
+                crate::viewport::TransformSpace::World,
+            )),
+            Action::TransformScreenSpace => Some(Command::TransformSpace(
+                crate::viewport::TransformSpace::Screen,
             )),
             Action::Move => Some(Command::TransformOperation(
                 crate::viewport::TransformOperation::Move,

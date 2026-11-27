@@ -909,6 +909,26 @@ impl UiState {
             }
         });
         ui.weak("One polygon step. Hidden/protected geometry blocks growth. Selection Undo/Redo is separate from geometry history.");
+        ui.horizontal_wrapped(|ui| {
+            for action in [Action::SplitSelectedFaces, Action::SplitDisconnectedIslands] {
+                if ui
+                    .add_enabled(
+                        self.action_enabled(&action, document),
+                        egui::Button::new(action.label()),
+                    )
+                    .on_hover_text(action.help().unwrap())
+                    .on_disabled_hover_text(
+                        self.action_unavailable(&action, document)
+                            .unwrap_or("Choose an editable surface"),
+                    )
+                    .customize(action.clone())
+                    .clicked()
+                {
+                    commands.push(Command::Action(action));
+                }
+            }
+        });
+        ui.weak("Split uses the current surface; subdivision and adaptive/voxel settings reset. Undo restores all parts.");
         if self.modeling.mode == ComponentMode::Face
             && ui
                 .button("Select region boundary")

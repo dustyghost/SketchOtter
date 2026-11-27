@@ -373,6 +373,25 @@ struct ExtrudeDrag {
     result: Option<Result<Extrusion, String>>,
 }
 impl ModelingState {
+    pub(super) fn modifier_handle(
+        &self,
+        document: &Document,
+        scene: &Scene,
+        options: Option<ModelingOptions>,
+        point: Pos2,
+        painter: &egui::Painter,
+    ) -> bool {
+        options.is_some_and(|options| {
+            self.paint_transform_gizmo(
+                document,
+                scene,
+                &painter.with_clip_rect(egui::Rect::NOTHING),
+                options,
+                Some(point),
+            )
+            .is_some()
+        })
+    }
     pub(crate) fn symmetry_error(&self) -> Option<&str> {
         self.symmetry
             .as_ref()
@@ -1195,8 +1214,19 @@ impl Viewport {
         if self.session.gesture.is_some_and(|g| g != Gesture::Modeling) {
             return false;
         }
-        let pressed =
-            response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed());
+        let pressed = response.is_pointer_button_down_on()
+            && ui.input(|i| {
+                i.events.iter().any(|e| {
+                    matches!(
+                        e,
+                        egui::Event::PointerButton {
+                            button: egui::PointerButton::Primary,
+                            pressed: true,
+                            ..
+                        }
+                    )
+                })
+            });
         let clicked = response.clicked_by(egui::PointerButton::Primary);
         if let (true, Some(handle), Some(point)) = (pressed || clicked, transform_handle, eligible)
             && self.session.gesture.is_none()

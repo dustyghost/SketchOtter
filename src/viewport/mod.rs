@@ -9,6 +9,8 @@ pub(crate) mod frame_trace;
 mod edges;
 mod interaction;
 mod modeling;
+mod modifier_click;
+pub(crate) use modifier_click::Tap as ModifierTap;
 pub(crate) mod objects;
 mod retopology_density;
 pub(crate) use modeling::{
@@ -72,7 +74,7 @@ impl JoinDisplay {
         Self(std::sync::Arc::new(gpu::DisplayMesh::new(document)))
     }
 }
-pub(crate) use transform::{TransformMode, TransformOperation};
+pub(crate) use transform::{TransformMode, TransformOperation, TransformSpace};
 // Keep frame appearance separate from the geometry and picking cache keys.
 pub(crate) fn set_flat_shading(ctx: &egui::Context, flat: bool) {
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("viewport_flat_shading"), flat));
@@ -139,6 +141,8 @@ pub(crate) struct ViewportOptions {
     pub slice_path_mode: bool,
     pub transform_mode: TransformMode,
     pub transform_operation: TransformOperation,
+    pub transform_space: TransformSpace,
+    pub invert_context: Option<ModifierTap>,
     pub boolean_enabled: bool,
     pub cage_axis: crate::sculpt::Axis,
     pub respect_mask: bool,
@@ -281,6 +285,7 @@ impl Viewport {
         }
         let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
         let rect = response.rect;
+        self.session.transform.space = options.transform_space;
         if std::mem::take(&mut self.frame_array)
             && let Some(set) = document.attached_array(document.active_model_index())
             && let Some([min, max]) = document.array_bounds(set.id)
@@ -795,6 +800,18 @@ impl Viewport {
             draw_gizmo(camera, &painter, gizmo_rect, response.hover_pos());
             return;
         }
+        if self.modifier_click(ui, &response, &scene, document, options, gizmo_rect) {
+            self.session.transform.paint(
+                document,
+                &scene,
+                &painter,
+                options.transform_mode,
+                options.transform_operation,
+            );
+            draw_gizmo(camera, &painter, gizmo_rect, response.hover_pos());
+            return;
+        }
+        let resumed_drag = self.session.resumed_drag.take();
         // Away from an edit handle the preview owns the surface as well as empty space for navigation.
         if edit_instances
             && options.enabled
@@ -930,8 +947,8 @@ impl Viewport {
             draw_gizmo(camera, &painter, gizmo_rect, response.hover_pos());
             return;
         }
-        let primary =
-            response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down());
+        let primary = resumed_drag.is_some()
+            || (response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down()));
         if self.update_modeling(
             ui, &response, &painter, &scene, document, options, gizmo_rect,
         ) {
@@ -968,6 +985,7 @@ impl Viewport {
             return;
         }
         if (!edit_instances || attached)
+            && resumed_drag.is_none()
             && (primary || response.clicked_by(egui::PointerButton::Primary))
             && self.session.gesture.is_none()
             && options.enabled
@@ -1059,9 +1077,14 @@ impl Viewport {
             && matches!(self.session.gesture, Some(Gesture::Orbit | Gesture::Gizmo))
             && options.enabled
         {
-            let mut delta = ui.input(|i| i.pointer.delta());
+            let mut delta = resumed_drag.zip(pointer).map_or_else(
+                || ui.input(|i| i.pointer.delta()),
+                |(start, end)| end - start,
+            );
             // The press frame's pointer movement is not part of the drag.
-            if !ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
+            if resumed_drag.is_some()
+                || !ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary))
+            {
                 if self.session.gesture == Some(Gesture::Gizmo) && !self.session.gizmo_dragged {
                     let travel = self
                         .session

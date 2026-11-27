@@ -93,6 +93,45 @@ Choose **Delete masked** to remove faces whose vertices all meet the threshold. 
 
 **Deletion can leave open boundaries and resets the active subdivision stack and adaptive/voxel settings.** Undo restores the previous state. Deleting the entire surface leaves an empty model; undo, initialize a primitive, or create a new sphere.
 
+### Modifier taps and drags
+
+**Ctrl-click** (or a pen tip tap with Ctrl held) activates the frontmost visible
+submodel in Sculpt, Modeling, Mask, Slice and Transform. Empty space and the
+already-active model leave the target unchanged. This uses the same undoable
+selection as the Submodels panel and does not modify geometry.
+
+**Ctrl+Shift-click** in Mask inverts soft mask weights; in Visibility it inverts
+face visibility. One tap is one Undo/Redo operation. The active temporary
+selection context takes priority; Slice, component selection and Transform do
+not invert. Menu/popup controls and text entry do not perform viewport taps.
+
+Taps are resolved on release. Moving beyond the normal click tolerance instead
+uses the existing drag gesture: Ctrl zoom by default, or the configured
+navigation/selection hold bindings. Navigation borders, the view gizmo and edit
+handles keep their own interactions. Remapping drag holds does not remap these
+explicit Ctrl/Ctrl+Shift tap shortcuts. Escape, focus loss or a disappearing
+pointer cancels a pending tap.
+
+### Split selected faces and disconnected islands
+
+For a direct Modeling face selection, use **Split selected faces to submodel**
+in the Q menu, Modeling controls or Submodels. In Face mode choose **Connected**
+and select a face to select its connected part first. The selected face region
+moves into one new submodel; an empty or whole-surface selection reports why it
+cannot split.
+
+**Split disconnected islands** separates every vertex-connected surface part
+of the active mesh, including hidden faces, into its own submodel. The first
+part remains the active source. A mesh with only one part, or insufficient room
+under the 64-submodel limit, is unchanged with an explanation.
+
+Both operations leave pieces in place and cut boundaries open. They preserve
+masks, groups/weights, visibility, materials, UVs/textures, creases, shading
+boundaries and complete quads. They use the current surface and reset the
+pieces' subdivision/adaptive/voxel settings; Undo restores the original stack.
+Each complete split is one Undo/Redo step and is retained when saving/reopening.
+Apply Thickness and convert primitives/array outputs before splitting.
+
 ### Split masked geometry
 
 1. Paint a mask, and blur it if needed.

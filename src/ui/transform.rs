@@ -10,7 +10,30 @@ use crate::{
 use eframe::egui::{self, Vec2};
 
 impl UiState {
+    fn transform_space_controls(&self, ui: &mut egui::Ui, commands: &mut Vec<Command>) {
+        use crate::viewport::TransformSpace;
+        if self.transform_mode != Mode::World || self.transform_operation == Operation::Cage {
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Space");
+            for (space, action) in [
+                (TransformSpace::World, Action::TransformWorldSpace),
+                (TransformSpace::Screen, Action::TransformScreenSpace),
+            ] {
+                if ui
+                    .selectable_label(self.transform_space == space, action.label())
+                    .on_hover_text(action.help().unwrap())
+                    .customize(action)
+                    .clicked()
+                {
+                    commands.push(Command::TransformSpace(space));
+                }
+            }
+        });
+    }
     fn transform_operations(&mut self, ui: &mut egui::Ui, commands: &mut Vec<Command>) {
+        self.transform_space_controls(ui, commands);
         ui.horizontal_wrapped(|ui| {
             for operation in Operation::ALL
                 .into_iter()
@@ -101,6 +124,7 @@ impl UiState {
                             return;
                         }
                         if self.transform_operation == Operation::Universal {
+                            self.transform_space_controls(ui, &mut commands);
                             ui.horizontal_wrapped(|ui| {
                                 // Keep the compact toolbar clear of the centre pivot
                                 // in a short, narrow viewport.

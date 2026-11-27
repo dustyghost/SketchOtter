@@ -26,6 +26,8 @@ pub(crate) enum Action {
     MaskVisibilityMenu,
     TransformMenu,
     UniversalTransform,
+    TransformWorldSpace,
+    TransformScreenSpace,
     ModelAxis(crate::viewport::ModelAxis),
     TemporaryVisibilityRectangle,
     TemporaryVisibilityLasso,
@@ -130,6 +132,8 @@ pub(crate) enum Action {
     InvertMask,
     DeleteMasked,
     SplitMasked,
+    SplitSelectedFaces,
+    SplitDisconnectedIslands,
     ExpandMask,
     ContractMask,
     BlurMask,
@@ -320,6 +324,8 @@ impl Action {
         Self::InvertMask,
         Self::DeleteMasked,
         Self::SplitMasked,
+        Self::SplitSelectedFaces,
+        Self::SplitDisconnectedIslands,
         Self::ExpandMask,
         Self::ContractMask,
         Self::BlurMask,
@@ -563,6 +569,8 @@ impl Action {
         Self::MaskVisibilityMenu,
         Self::TransformMenu,
         Self::UniversalTransform,
+        Self::TransformWorldSpace,
+        Self::TransformScreenSpace,
         Self::ModelAxis(crate::viewport::ModelAxis::X),
         Self::ModelAxis(crate::viewport::ModelAxis::Y),
         Self::ModelAxis(crate::viewport::ModelAxis::Z),
@@ -577,6 +585,10 @@ impl Action {
     /// Help shared by the built-in controls, custom menus, and shelves.
     pub fn help(&self) -> Option<&'static str> {
         Some(match self {
+            Self::TransformWorldSpace => "Use fixed scene axes without moving the model or pivot.",
+            Self::TransformScreenSpace => {
+                "Align X/Y with the viewport and Z with view depth, including camera roll. The diagonal Z handle moves in depth."
+            }
             Self::GroupAll => {
                 "Group visible faces on the active model across stored subdivision levels. Hidden memberships and face labels stay intact; shared boundary vertices also join the new group. Undo restores the previous groups."
             }
@@ -588,6 +600,12 @@ impl Action {
             }
             Self::SplitMasked => {
                 "Move faces whose corners all meet Mask → Selection threshold into a new submodel. Includes masked hidden faces; preserves masks and visibility. Review the threshold and subdivision/settings reset before applying."
+            }
+            Self::SplitSelectedFaces => {
+                "Move the Modeling face selection to a new submodel in place. Use Connected selection for a connected part. Preserves surface attributes and open boundaries; resets subdivision/adaptive/voxel settings to the current surface. One Undo restores both parts."
+            }
+            Self::SplitDisconnectedIslands => {
+                "Separate every disconnected part of the active mesh (including hidden faces) into independently editable submodels in place. Preserves surface attributes; resets subdivision/adaptive/voxel settings. One Undo restores all parts."
             }
             Self::DeleteMasked => {
                 "Remove faces meeting the mask threshold at every vertex. Creates open boundaries and resets subdivision levels and closed-surface modes. Undo restores everything."
@@ -819,6 +837,8 @@ impl Action {
             Self::InvertMask => "Invert mask",
             Self::DeleteMasked => "Delete masked",
             Self::SplitMasked => "Split masked",
+            Self::SplitSelectedFaces => "Split selected faces to submodel",
+            Self::SplitDisconnectedIslands => "Split disconnected islands",
             Self::ExpandMask => "Expand mask",
             Self::ContractMask => "Contract mask",
             Self::BlurMask => "Blur mask",
@@ -882,6 +902,8 @@ impl Action {
             Self::DeformationFrame => "Deformation frame",
             Self::PlacePivot => "Place transform pivot",
             Self::ResetPivot => "Reset transform pivot",
+            Self::TransformWorldSpace => "World space",
+            Self::TransformScreenSpace => "Screen space",
             Self::RespectMask => "Toggle transform mask protection",
             Self::PolygroupColors => "Toggle vertex group colors",
             Self::Backfaces => "Toggle back-facing surfaces",
