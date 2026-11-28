@@ -10,7 +10,7 @@ SketchOtter is a desktop sculpting prototype. Shape a sphere with a mouse or pen
 
 *Head Sculpt*
 
-This checkout builds **0.1.0-alpha.5**, the first published SketchOtter alpha.
+This checkout builds **0.1.0-alpha.6**. Alpha 5 was the first published SketchOtter alpha.
 On startup, a development notice explains the current version and testing
 expectations. Choose **Continue to SketchOtter** to begin; **Don’t show again for
 this version** remembers your choice until the version changes.
