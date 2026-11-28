@@ -41,11 +41,11 @@ SketchOtter release.
 
 ## Create a draft release
 
-The current testing version is **0.1.0-alpha.5 (Alpha 5)**. Continue with a new alpha tag or `0.1.0-beta.1` when ready for beta testing, and `0.1.0`
+The current testing version is **0.1.0-alpha.6 (Alpha 6)**. Continue with a new alpha tag or `0.1.0-beta.1` when ready for beta testing, and `0.1.0`
 when that development cycle is ready for a stable release. Earlier alphas remain
 available under their original tags. Hyphenated versions
 are automatically marked as GitHub prereleases, in addition to being drafts.
-Arch uses `pkgver=0.1.0alpha5` and a separate `_upstream_version` for its tag;
+Arch uses `pkgver=0.1.0alpha6` and a separate `_upstream_version` for its tag;
 update both together. macOS uses the numeric `0.1.0` marketing version and CI
 run number as its bundle build counter; About retains the full alpha version.
 
