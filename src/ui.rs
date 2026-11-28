@@ -50,6 +50,7 @@ mod references;
 mod sidebar;
 mod transform;
 use customization::ActionResponse;
+pub(crate) use transform::gizmo_target_toggle;
 pub(crate) struct UiState {
     pub(crate) search: search::SearchState,
     pub(crate) zen_mode: bool,
@@ -91,6 +92,7 @@ pub(crate) struct UiState {
     pub slice_options: crate::sculpt::SliceOptions,
     pub transform_operation: crate::viewport::TransformOperation,
     pub transform_space: crate::viewport::TransformSpace,
+    pub edit_gizmo: bool,
     pub boolean_enabled: bool,
     pub boolean_ready: bool,
     pub boolean_notice: String,
@@ -201,6 +203,7 @@ impl Default for UiState {
             slice_options: Default::default(),
             transform_operation: crate::viewport::TransformOperation::Move,
             transform_space: Default::default(),
+            edit_gizmo: false,
             boolean_enabled: false,
             boolean_ready: false,
             boolean_notice: String::new(),

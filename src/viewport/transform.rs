@@ -99,6 +99,10 @@ enum Handle {
 #[derive(Default)]
 pub(super) struct TransformControls {
     pub space: TransformSpace,
+    pub edit_gizmo: bool,
+    model: Option<usize>,
+    axes: Option<[Vec3; 3]>,
+    drag_start: Option<(Option<Vec3>, Option<[Vec3; 3]>)>,
     pub line: Option<[Vec3; 2]>,
     drag: Option<Handle>,
     last: Option<Pos2>,
@@ -165,13 +169,13 @@ pub(super) fn axis_motion(
 
 impl TransformControls {
     fn axes(&self, scene: &Scene) -> [Vec3; 3] {
-        match self.space {
+        self.axes.unwrap_or(match self.space {
             TransformSpace::World => [Vec3(1., 0., 0.), Vec3(0., 1., 0.), Vec3(0., 0., 1.)],
             TransformSpace::Screen => [scene.right, scene.up, scene.view],
-        }
+        })
     }
     fn projected_axis(&self, scene: &Scene, pivot: Vec3, axis: Vec3, index: usize) -> Vec2 {
-        if self.space == TransformSpace::Screen && index == 2 {
+        if self.axes.is_none() && self.space == TransformSpace::Screen && index == 2 {
             // View depth has no screen-plane projection. A diagonal depth handle
             // gives it a deliberate, stable drag direction in both projections.
             Vec2::new(-0.6, -0.6)
@@ -179,7 +183,34 @@ impl TransformControls {
             scene.axis_direction(pivot, axis)
         }
     }
+    pub fn sync_model(&mut self, document: &Document) {
+        let model = document.active_model_index();
+        if self.model.is_some_and(|previous| previous != model) {
+            self.finish_drag();
+            self.pivot = None;
+            self.axes = None;
+            self.line = None;
+        }
+        self.model = Some(model);
+    }
+    pub fn set_space(&mut self, space: TransformSpace) {
+        if self.space != space {
+            self.axes = None;
+            self.space = space;
+        }
+    }
+    pub fn cancel_gizmo_drag(&mut self) {
+        if let Some((pivot, axes)) = self.drag_start.take() {
+            self.pivot = pivot;
+            self.axes = axes;
+        }
+        self.finish_drag();
+    }
+    pub fn reset_axes(&mut self) {
+        self.axes = None;
+    }
     pub fn finish_drag(&mut self) {
+        self.drag_start = None;
         self.drag = None;
         self.last = None;
         self.drag_pivot = None;
@@ -263,6 +294,9 @@ impl TransformControls {
         if !document.active_visible() || document.mesh().vertices.is_empty() {
             return vec![];
         }
+        if self.edit_gizmo && op == TransformOperation::Scale {
+            return vec![];
+        }
         if matches!(op, TransformOperation::Cage | TransformOperation::Rotate) {
             return vec![];
         }
@@ -297,11 +331,12 @@ impl TransformControls {
                 ];
                 for (i, axis) in self.axes(scene).into_iter().enumerate() {
                     let color = controls::AXES[i];
-                    let label = if self.space == TransformSpace::Screen && i == 2 {
-                        "Z depth"
-                    } else {
-                        ["X", "Y", "Z"][i]
-                    };
+                    let label =
+                        if self.axes.is_none() && self.space == TransformSpace::Screen && i == 2 {
+                            "Z depth"
+                        } else {
+                            ["X", "Y", "Z"][i]
+                        };
                     let projected = self.projected_axis(scene, pivot, axis, i);
                     if projected.length() > 0.1 {
                         let direction = projected.normalized();
@@ -318,6 +353,11 @@ impl TransformControls {
                             label,
                         ));
                     }
+                }
+                if self.edit_gizmo {
+                    handles.retain(|(_, h, _, _)| {
+                        !matches!(h, Handle::ScaleAxis(..) | Handle::Uniform)
+                    });
                 }
                 return handles;
             }
@@ -344,7 +384,7 @@ impl TransformControls {
                     origin + projected * 85.,
                     Handle::Axis(axis, projected),
                     controls::AXES[i],
-                    if self.space == TransformSpace::Screen && i == 2 {
+                    if self.axes.is_none() && self.space == TransformSpace::Screen && i == 2 {
                         "Z depth"
                     } else {
                         ["X", "Y", "Z"][i]
@@ -461,6 +501,7 @@ impl TransformControls {
             return Ok(());
         };
         if self.drag.is_none() {
+            self.drag_start = Some((self.pivot, self.axes));
             self.drag_pivot = Some(self.origin(document, mode));
             self.drag = self.hit(document, scene, mode, op, pointer);
             if self.drag == Some(Handle::Pivot) {
@@ -565,6 +606,17 @@ impl TransformControls {
                 transform.stretch = Some((axis, (amount * 0.01).clamp(-2., 2.).exp()));
             }
         }
+        if self.edit_gizmo && mode == TransformMode::World {
+            if let Some((axis, angle)) = transform.rotation {
+                let axes = self.axes(scene);
+                let x = axes[0].rotated(axis, angle).norm();
+                let z = x.cross(axes[1].rotated(axis, angle)).norm();
+                self.axes = Some([x, z.cross(x).norm(), z]);
+            }
+            self.pivot = Some(pivot + transform.translation);
+            self.drag_pivot = self.pivot;
+            return Ok(());
+        }
         if document.apply_transform(transform, respect_mask)? {
             if mode == TransformMode::ActionLine
                 && let Some(line) = &mut self.line
@@ -579,6 +631,49 @@ impl TransformControls {
             }
         }
         Ok(())
+    }
+    /// Keep the target switch close to the pivot, outside the handle envelope.
+    pub fn inline_mode_toggle(
+        &self,
+        ui: &egui::Ui,
+        document: &Document,
+        scene: &Scene,
+        op: TransformOperation,
+        enabled: bool,
+    ) -> (Option<bool>, bool) {
+        if op == TransformOperation::Cage
+            || !document.active_visible()
+            || document.mesh().vertices.is_empty()
+        {
+            return (None, false);
+        }
+        let origin = scene.project(self.origin(document, TransformMode::World));
+        let reach = if op == TransformOperation::Universal {
+            universal_size(scene)
+        } else {
+            rotation::RADIUS
+        };
+        let size = Vec2::new(74., 40.);
+        let bounds = scene.rect.shrink(8.);
+        let right = origin + Vec2::new(reach + 12., 20.);
+        let left = origin + Vec2::new(-reach - 12. - size.x, 20.);
+        let position = if right.x + size.x <= bounds.right() {
+            right
+        } else if left.x >= bounds.left() {
+            left
+        } else {
+            origin + Vec2::new(-size.x * 0.5, reach + 12.)
+        };
+        let mut requested = None;
+        let response = egui::Area::new(egui::Id::new("gizmo_affect_model_toggle"))
+            .order(egui::Order::Foreground)
+            .movable(false)
+            .fixed_pos(position.clamp(bounds.min, (bounds.max - size).max(bounds.min)))
+            .constrain_to(scene.rect)
+            .show(ui.ctx(), |ui| {
+                requested = crate::ui::gizmo_target_toggle(ui, self.edit_gizmo, enabled);
+            });
+        (requested, enabled && response.response.contains_pointer())
     }
     pub fn paint(
         &self,

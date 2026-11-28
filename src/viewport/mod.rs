@@ -115,6 +115,7 @@ pub(crate) struct Viewport {
     surface_outline: instances::SurfaceOutline,
     pub(crate) array_layer: Option<usize>,
     pub(crate) array_command: Option<crate::command::InstanceCommand>,
+    pub(crate) gizmo_edit_requested: Option<bool>,
     pub(crate) array_selected: bool,
     pub(crate) frame_array: bool,
     array_controls: arrays::Editor,
@@ -144,6 +145,7 @@ pub(crate) struct ViewportOptions {
     pub transform_mode: TransformMode,
     pub transform_operation: TransformOperation,
     pub transform_space: TransformSpace,
+    pub edit_gizmo: bool,
     pub invert_context: Option<ModifierTap>,
     pub clear_context: Option<ModifierTap>,
     pub boolean_enabled: bool,
@@ -247,6 +249,9 @@ impl Viewport {
             self.wait_for_release();
         }
     }
+    pub(crate) fn reset_transform_axes(&mut self) {
+        self.session.transform.reset_axes();
+    }
     pub(crate) fn reset_transform_pivot(&mut self, document: &Document, mode: TransformMode) {
         self.session.transform.reset_pivot(document, mode);
     }
@@ -288,7 +293,10 @@ impl Viewport {
         }
         let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
         let rect = response.rect;
-        self.session.transform.space = options.transform_space;
+        self.session.transform.sync_model(document);
+        self.session.transform.set_space(options.transform_space);
+        self.session.transform.edit_gizmo =
+            options.edit_gizmo && options.transform_mode == TransformMode::World;
         if std::mem::take(&mut self.frame_array)
             && let Some(set) = document.attached_array(document.active_model_index())
             && let Some([min, max]) = document.array_bounds(set.id)
@@ -441,6 +449,22 @@ impl Viewport {
                     .or_else(|| self.object_brush.as_ref().and_then(|b| b.preview())),
                 self.session.scene_preview.clone(),
             )
+        };
+        let mut over_gizmo_toggle = false;
+        if options.transform_mode == TransformMode::World {
+            let (requested, hovered) = self.session.transform.inline_mode_toggle(
+                ui,
+                document,
+                &scene,
+                options.transform_operation,
+                options.inline_controls_enabled && self.session.gesture.is_none(),
+            );
+            self.gizmo_edit_requested = requested;
+            over_gizmo_toggle = hovered;
+        }
+        let options = ViewportOptions {
+            enabled: options.enabled && !over_gizmo_toggle,
+            ..options
         };
         if let Some(renderer) = &self.renderer {
             renderer.set_backfaces(options.backface_opacity);
@@ -1180,6 +1204,15 @@ impl Viewport {
             return;
         }
         if options.transform_mode != TransformMode::Sculpt {
+            if self.session.transform.edit_gizmo
+                && self.session.gesture == Some(Gesture::Transform)
+                && ui.input(|i| i.key_pressed(egui::Key::Escape))
+            {
+                self.session.transform.cancel_gizmo_drag();
+                self.finish_transform_drag(document);
+                self.wait_for_release();
+                return;
+            }
             let dragging =
                 primary && self.session.gesture == Some(Gesture::Transform) && options.enabled;
             // A complete tap may arrive in one frame. Placement and release
