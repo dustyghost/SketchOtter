@@ -169,7 +169,7 @@ pub(super) fn axis_motion(
 
 impl TransformControls {
     fn axes(&self, scene: &Scene) -> [Vec3; 3] {
-        self.axes.unwrap_or_else(|| match self.space {
+        self.axes.unwrap_or(match self.space {
             TransformSpace::World => [Vec3(1., 0., 0.), Vec3(0., 1., 0.), Vec3(0., 0., 1.)],
             TransformSpace::Screen => [scene.right, scene.up, scene.view],
         })
